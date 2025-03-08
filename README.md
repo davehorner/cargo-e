@@ -1,15 +1,13 @@
-
 # cargo-e
 
 <img id="screenshot" src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/doc/media/screenshot-cargo-e.webp" 
      alt="Cargo-e Screenshot" title="Cargo-e running in terminal"
      onerror="this.onerror=null; this.src='../media/screenshot-cargo-e.webp';">
 
-
-e is for Example. cargo-e is a Cargo subcommand for running and exploring examples, binaries, and source code in Rust projects. Unlike `cargo run --example`, it will execute the example directly if only one exists.
+e is for Example. cargo-e is a Cargo subcommand for running and exploring examples, binaries, and source code in Rust projects. Unlike `cargo run --example`, it executes the example directly if only one exists.
 
 ## Most Important Features
-- Runs single example automatically when only one example is defined.
+- Runs a single example automatically when only one example is defined.
 - Supports examples in different locations (bins, workspaces, etc.)
 
 ## Quick Start
@@ -29,8 +27,8 @@ See the [GitHub repository](https://github.com/davehorner/cargo-e) for more deta
 - **Runs the default example if there is only one example defined.**
 - **Seamless Sample Execution:** Run built-in examples and extended samples (located in the `examples` directory) with a simple command. Improved discoverability of examples and binaries, even across workspaces.
 - **Interactive Terminal UI (TUI):** Optionally launch a feature-rich, interactive interface for browsing and selecting targets. (-t option)
-- **VSCode Integration:** Jump directly into your source code and navigate to the `fn main` entry point automatically. ('e' key in tui)
-- **bacon Integration:** Quickly run bacon on your project/example. ('b' key in tui)
+- **VSCode Integration:** Jump directly into your source code and navigate to the `fn main` entry point automatically. ('e' key in TUI)
+- **bacon Integration:** Quickly run bacon on your project/example. ('b' key in TUI)
 - **Workspace Integration:** Automatically detects and uses workspace manifests for multi-crate projects. (-w option)
 - **Configurable behavior** – Optional compatibility mode – cargo-e can behave identically to `cargo run --example`.
 
@@ -38,13 +36,11 @@ See the [GitHub repository](https://github.com/davehorner/cargo-e) for more deta
 
 When using `cargo run --example` in a project with a single example, Cargo does not execute the example. Instead of running the obvious example, it displays that there is one example available. This behavior differs from that of `cargo run`, which automatically runs the default build target without requiring additional arguments.
 
-If you read `cargo --help`, you'll notice short keys such as `r` for run and `b` for build. **cargo-e** fills the 'e' gap by serving as a dedicated tool for examples. It functions similarly to `cargo run --example`, it will take example name and pass arguments just like --example but with the added benefit that it will automatically run the single example if that is the only one defined.
+If you read `cargo --help`, you'll notice short keys such as `r` for run and `b` for build. **cargo-e** fills the 'e' gap by serving as a dedicated tool for examples. It functions similarly to `cargo run --example`; it takes the example name and passes arguments just like `--example`, but with the added benefit that it will automatically run the single example if that is the only one defined.
 
-Running the single example if there is only one example defined is a primary feature of cargo-e;  it's what brought about this project.
---example and --bin are often parsed, so changing cargo's behavior is out of the question.  In fact, this tool relies upon --example returning the list of examples instead of running the single example.
+Running the single example if there is only one example defined is a primary feature of cargo-e; it's what brought about this project. `--example` and `--bin` are often parsed, so changing Cargo's behavior is out of the question. In fact, this tool relies upon `--example` returning the list of examples instead of running the single example.
 
 Projects organize examples in different ways – some using binaries, others placing them in an `examples` directory – cargo-e helps navigate and execute targets across diverse structures. Whether your project uses bins, examples, or even workspace configurations, cargo-e unifies these scenarios and simplifies the process of running and exploring your sample code.
-
 
 ## Installation
 
@@ -70,7 +66,7 @@ Run an example directly from your project:
 cargo e [OPTIONS] [EXAMPLE] [-- extra arguments]
 ```
 
-If there is only one example, it will run the example.
+If there is only one example, it will run that example.
 
 ### Command-line Options
 

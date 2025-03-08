@@ -34,18 +34,9 @@ pub fn run_bacon(sample: &Example, _extra_args: &[String]) -> Result<(), Box<dyn
     ];
     cmd.args(args);
 
-
-    #[cfg(not(windows))]
-    {
-        // On Unix-like systems, redirect standard I/O to our file.
-        cmd.stdout(Stdio::from(output_file.try_clone()?))
-            .stderr(Stdio::from(output_file));
-    }
-
     // Spawn the bacon process detached. We do not wait on it.
     let child = cmd.spawn()?;
     std::mem::forget(child);
-    println!("Bacon process detached; output is captured in 'output_bacon.txt'.");
 
     // crossterm::terminal::enable_raw_mode()?;
     // crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen, crossterm::event::EnableMouseCapture)?;
