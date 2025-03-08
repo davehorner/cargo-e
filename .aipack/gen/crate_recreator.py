@@ -57,7 +57,7 @@ def gather_files(source_folder):
         # Process each file in the current directory.
         for file in files:
             # Check ignore conditions for file names.
-            if file in ignore_files:
+            if file in ignore_files  or file.endswith(('.bak', '~')):
                 print(f"[TRACE] Ignoring file: {file}")
                 continue
             if file.startswith("LICENSE") or file.startswith("NOTICE"):

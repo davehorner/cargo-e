@@ -1,10 +1,7 @@
 // src/e_findmain.rs
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use crate::prelude::*;
 use toml::Value;
-use tracing::error;
 
 use crate::e_types::{Example, TargetKind};
 
@@ -435,20 +432,25 @@ mod tests {
 
     #[test]
     fn test_compute_vscode_args_non_extended() -> Result<(), Box<dyn std::error::Error>> {
-        // Simulate a non-extended example where the file is "examples/<name>.rs".
-        let cwd = std::env::current_dir()?;
-        let examples_dir = cwd.join("examples");
+                // Create a temporary directory and change the current working directory to it.
+        let dir = tempdir()?;
+        let temp_path = dir.path();
+        env::set_current_dir(&temp_path)?;
+
+        // Create the examples directory and a dummy example file.
+        let examples_dir = temp_path.join("examples");
         fs::create_dir_all(&examples_dir)?;
         let sample_file = examples_dir.join("sample_non_ext.rs");
         fs::write(&sample_file, "fn main() { println!(\"non-ext\"); }")?;
 
-        // Create a dummy Cargo.toml in the current directory.
-        let manifest_path = cwd.join("Cargo.toml");
+        // Create a dummy Cargo.toml in the temporary directory.
+        let manifest_path = temp_path.join("Cargo.toml");
         fs::write(
             &manifest_path,
             "[package]\nname = \"dummy\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         )?;
 
+        // Construct the sample object using the temp folder's Cargo.toml path.
         let sample = Example {
             name: "sample_non_ext".to_string(),
             display_name: "non-extended".to_string(),
@@ -458,11 +460,12 @@ mod tests {
         };
 
         let (folder_str, goto_arg) = compute_vscode_args(&sample);
-        // In this case, we expect folder_str to end with "examples" and goto_arg to point to sample_non_ext.rs.
+        // In this case, we expect folder_str to contain "examples" and goto_arg to refer to sample_non_ext.rs.
         assert!(folder_str.contains("examples"));
         assert!(goto_arg.unwrap().contains("sample_non_ext.rs"));
-        fs::remove_file(manifest_path)?;
-        fs::remove_file(sample_file)?;
+
+        // Cleanup is not required because the tempdir will be dropped,
+        // which deletes all files inside the temporary directory.
         Ok(())
     }
 

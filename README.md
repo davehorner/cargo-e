@@ -30,7 +30,7 @@ See the [GitHub repository](https://github.com/davehorner/cargo-e) for more deta
 - **VSCode Integration:** Jump directly into your source code and navigate to the `fn main` entry point automatically. ('e' key in TUI)
 - **bacon Integration:** Quickly run bacon on your project/example. ('b' key in TUI)
 - **Workspace Integration:** Automatically detects and uses workspace manifests for multi-crate projects. (-w option)
-- **Configurable behavior** – Optional compatibility mode – cargo-e can behave identically to `cargo run --example`.
+- **Configurable behavior** – Optional equivalentibility mode – cargo-e can behave identically to `cargo run --example`.
 
 ## Introduction
 

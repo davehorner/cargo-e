@@ -1,10 +1,33 @@
-use std::process::Command;
+use crate::prelude::*;
+// use std::process::Command;
+// #[cfg(not(feature = "equivalent"))]
 use std::sync::{Arc, Mutex};
-use ctrlc;
-use std::error::Error;
+// #[cfg(not(feature = "equivalent"))]
+// use ctrlc;
+// use std::error::Error;
 use crate::Example;
 
+/// In "equivalent" mode, behave exactly like "cargo run --example <name>"
+#[cfg(feature = "equivalent")]
+pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
+    // In "equivalent" mode, behave exactly like "cargo run --example <name>"
+    let mut cmd = Command::new("cargo");
+    cmd.args(&["run", "--example", &example.name]);
+    if !extra_args.is_empty() {
+        cmd.arg("--").args(extra_args);
+    }
+    // Inherit the standard input (as well as stdout/stderr) so that input is passed through.
+    use std::process::Stdio;
+    cmd.stdin(Stdio::inherit())
+       .stdout(Stdio::inherit())
+       .stderr(Stdio::inherit());
+
+    let status = cmd.status()?;
+    std::process::exit(status.code().unwrap_or(1));
+}
+
 /// Runs the given example (or binary) target.
+#[cfg(not(feature = "equivalent"))]
 pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::new("cargo");
 
@@ -33,4 +56,26 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     let status = child_arc.lock().unwrap().wait()?;
     println!("Process exited with status: {:?}", status.code());
     Ok(())
+}
+
+
+
+/// Helper function to spawn a cargo process.
+/// On Windows, this sets the CREATE_NEW_PROCESS_GROUP flag.
+pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        let child = Command::new("cargo")
+            .args(args)
+            .creation_flags(CREATE_NEW_PROCESS_GROUP)
+            .spawn()?;
+        Ok(child)
+    }
+    #[cfg(not(windows))]
+    {
+        let child = Command::new("cargo").args(args).spawn()?;
+        Ok(child)
+    }
 }
