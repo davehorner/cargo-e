@@ -1,5 +1,4 @@
-use std::process::{Command, Child};
-use std::path::Path;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use ctrlc;
 use std::error::Error;

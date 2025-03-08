@@ -3,10 +3,7 @@
 use crate::e_types::Example;
 use std::error::Error;
 use std::path::Path;
-use std::process::{Command, Stdio};
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use std::process::Command;
 
 // src/e_bacon.rs
 
@@ -20,11 +17,7 @@ use std::os::windows::process::CommandExt;
 ///
 /// On Windows, if the environment variable DEBUG_BACON is set, it uses `/K` and echoes
 /// the folder parameter so that you can inspect it; otherwise it uses normal detached flags.
-pub fn run_bacon(sample: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
-    // Disable raw mode for debug printing.
-    crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
-
+pub fn run_bacon(sample: &Example, _extra_args: &[String]) -> Result<(), Box<dyn Error>> {
     println!("Running bacon for sample: {}", sample.name);
 
     // Determine the project directory from the sample's manifest_path.
@@ -41,30 +34,6 @@ pub fn run_bacon(sample: &Example, extra_args: &[String]) -> Result<(), Box<dyn 
     ];
     cmd.args(args);
 
-    let output_file = std::fs::File::create("output_bacon.txt")?;
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::io::AsRawHandle;
-        use windows::Win32::Foundation::HANDLE;
-        // use windows::Win32::System::Console::{SetHandleInformation, HANDLE_FLAG_INHERIT};
-
-        // Mark the file handle as inheritable.
-        // let raw_handle: HANDLE = output_file.as_raw_handle().into();
-        // unsafe {
-        //     // SetHandleInformation returns a BOOL.
-        //     if !SetHandleInformation(raw_handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT).as_bool() {
-        //         eprintln!("Failed to set handle inheritance for file {}", project_dir.display());
-        //     }
-        // }
-        // Continue with setting stdout and stderr...
-        // cmd.stdout(Stdio::from(output_file.try_clone()?))
-        //    .stderr(Stdio::from(output_file));
-
-        //  const DETACHED_PROCESS: u32 = 0x00000008;
-        //  const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        //  cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-    }
 
     #[cfg(not(windows))]
     {

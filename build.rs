@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// This build script ensures documentation images are available in `cargo doc` output.
 /// It copies `doc/media/` into `target/doc/cargo_e/doc/media/`
