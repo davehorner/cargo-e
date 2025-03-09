@@ -4,7 +4,7 @@ use clap::Parser;
 #[command(author,version, about = "cargo-e is for Example.", long_about = None)]
 #[command(disable_version_flag = true)]
 pub struct Cli {
-     /// Print version and feature flags in JSON format.
+    /// Print version and feature flags in JSON format.
     #[arg(long, short = 'v')]
     pub version: bool,
 
@@ -65,7 +65,6 @@ pub fn print_version_and_features() {
     println!("{}", json_features);
     std::process::exit(0);
 }
-
 
 /// Returns a vector of feature flag strings.  
 /// Enabled features are listed as-is while disabled ones are prefixed with "!".

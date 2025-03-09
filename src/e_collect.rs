@@ -1,6 +1,5 @@
-
 use crate::prelude::*;
-use crate::{ Example, TargetKind};
+use crate::{Example, TargetKind};
 
 /// Runs `cargo run --bin` with the given manifest path and without specifying a binary name,
 /// so that Cargo prints an error with a list of available binary targets.
@@ -64,10 +63,10 @@ pub fn collect_examples(
         .output()?;
 
     let stderr_str = String::from_utf8_lossy(&output.stderr);
-    eprintln!("DEBUG: stderr (examples) = {:?}", stderr_str);
+    debug!("DEBUG: stderr (examples) = {:?}", stderr_str);
 
     let names = crate::parse_available(&stderr_str, "examples");
-    eprintln!("DEBUG: example names = {:?}", names);
+    debug!("DEBUG: example names = {:?}", names);
 
     let examples = names
         .into_iter()
@@ -96,17 +95,12 @@ pub fn collect_examples(
     Ok(examples)
 }
 
-
 // --- Concurrent or sequential collection ---
 pub fn collect_samples(
     manifest_infos: Vec<(String, PathBuf, bool)>,
     __max_concurrency: usize,
 ) -> Result<Vec<Example>, Box<dyn Error>> {
-    let start_total = Instant::now();
     let mut all_samples = Vec::new();
-
-    // "Before" message: starting collection
-    println!("Timing: Starting sample collection...");
 
     #[cfg(feature = "concurrent")]
     {
@@ -133,9 +127,9 @@ pub fn collect_samples(
         drop(tx);
         pool.join(); // Wait for all tasks to finish.
         let duration_concurrent = start_concurrent.elapsed();
-        println!(
-            "Timing: Concurrent processing took {:?}",
-            duration_concurrent
+        debug!(
+            "timing: {} threads took {:?}",
+            __max_concurrency, duration_concurrent
         );
 
         for samples in rx {
@@ -143,11 +137,11 @@ pub fn collect_samples(
         }
     }
 
+    // Sequential fallback: process one manifest at a time.
     #[cfg(not(feature = "concurrent"))]
     {
-        // Sequential fallback: process one manifest at a time.
         let start_seq = Instant::now();
-        for (prefix, manifest_path,extended) in manifest_infos {
+        for (prefix, manifest_path, extended) in manifest_infos {
             if let Ok(mut ex) = collect_examples(&prefix, &manifest_path, extended) {
                 all_samples.append(&mut ex);
             }
@@ -156,13 +150,11 @@ pub fn collect_samples(
             }
         }
         let duration_seq = start_seq.elapsed();
-        println!("Timing: Sequential processing took {:?}", duration_seq);
+        debug!("timing: Sequential processing took {:?}", duration_seq);
     }
-
-    let total_duration = start_total.elapsed();
-    println!("Timing: Total collection time: {:?}", total_duration);
     Ok(all_samples)
 }
+
 /// This function collects sample targets (examples and binaries) from both the current directory
 /// and, if the --workspace flag is used, from each workspace member. The built–in samples (from
 /// the current directory) are tagged with a "builtin" prefix, while workspace member samples are
@@ -177,14 +169,9 @@ pub fn collect_all_samples(
     // Built-in samples: if there is a Cargo.toml in cwd, add it.
     let built_in_manifest = cwd.join("Cargo.toml");
     if built_in_manifest.exists() {
-        println!(
-            "Found built-in Cargo.toml in current directory: {}",
-            cwd.display()
-        );
-        // For built-in samples, we use a fixed prefix.
-        manifest_infos.push(("builtin".to_string(), built_in_manifest, false));
+        manifest_infos.push(("-".to_string(), built_in_manifest, false));
     } else {
-        eprintln!("No Cargo.toml found in current directory for built-in samples.");
+        error!("No Cargo.toml found in current directory for built-in samples.");
     }
 
     // If workspace flag is used, locate the workspace root and then collect all member manifests.
@@ -212,13 +199,13 @@ pub fn collect_all_samples(
             }
         }
     } else {
-        eprintln!(
-            "Extended samples directory {:?} does not exist.",
+        error!(
+            "extended samples directory {:?} does not exist.",
             extended_root
         );
     }
 
-    eprintln!("DEBUG: manifest infos: {:?}", manifest_infos);
+    debug!("DEBUG: manifest infos: {:?}", manifest_infos);
 
     // Now, use either concurrent or sequential collection.
     // Here we assume a function similar to our earlier collect_samples_concurrently.

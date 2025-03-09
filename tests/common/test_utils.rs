@@ -45,7 +45,10 @@ pub fn create_testgen_ex_project(ex_name: &str) -> IoResult<TestProject> {
     // The example prints its own name followed by " HAS RUN SUCCESSFULLY"
     fs::write(
         &ex_file,
-        format!("fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}", ex_name),
+        format!(
+            "fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}",
+            ex_name
+        ),
     )?;
     Ok(project)
 }
@@ -58,7 +61,10 @@ pub fn create_testgen_bin_project(bin_name: &str) -> IoResult<TestProject> {
     let bin_file = bin_dir.join(format!("{}.rs", bin_name));
     fs::write(
         &bin_file,
-        format!("fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}", bin_name),
+        format!(
+            "fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}",
+            bin_name
+        ),
     )?;
     Ok(project)
 }
@@ -73,7 +79,10 @@ pub fn create_testgen_ext_project(ex_name: &str) -> IoResult<TestProject> {
     let ext_file = ext_dir.join(format!("{}.rs", ex_name));
     fs::write(
         &ext_file,
-        format!("fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}", ex_name),
+        format!(
+            "fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}",
+            ex_name
+        ),
     )?;
     Ok(project)
 }
@@ -86,15 +95,14 @@ pub fn create_testgen_ext_project(ex_name: &str) -> IoResult<TestProject> {
 /// 3. All `.rs` files in the `src/bin` folder.
 pub fn count_samples(project_root: &Path) -> usize {
     let mut count = 0;
-    
+
     // Count examples in "examples", but exclude subfolder "extended"
     let examples_dir = project_root.join("examples");
     if examples_dir.exists() {
         if let Ok(entries) = fs::read_dir(&examples_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() 
-                   && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
                     count += 1;
                 }
             }
@@ -105,29 +113,26 @@ pub fn count_samples(project_root: &Path) -> usize {
             if let Ok(entries) = fs::read_dir(&ext_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_file() 
-                       && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
                         count += 1;
                     }
                 }
             }
         }
     }
-    
+
     // Count binaries in "src/bin"
     let bin_dir = project_root.join("src").join("bin");
     if bin_dir.exists() {
         if let Ok(entries) = fs::read_dir(&bin_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() 
-                   && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
                     count += 1;
                 }
             }
         }
     }
-    
+
     count
 }
-

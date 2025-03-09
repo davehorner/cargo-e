@@ -1,8 +1,8 @@
-// Below is an integration test that sets up a temporary project with a dummy Cargo.toml and a single example file 
-// (that prints "non-ext"). The test then runs your binary with no additional arguments. Depending on whether the 
+// Below is an integration test that sets up a temporary project with a dummy Cargo.toml and a single example file
+// (that prints "non-ext"). The test then runs your binary with no additional arguments. Depending on whether the
 // equivalent feature is enabled, it expects different output:
 //
-// In equivalent mode, since no explicit example name is given, the binary will forward to Cargo and Cargo will complain 
+// In equivalent mode, since no explicit example name is given, the binary will forward to Cargo and Cargo will complain
 // that --example takes one argument (and list the available examples).
 // In non‑equivalent mode, the binary will automatically run the single example and output "non-ext".
 
@@ -43,7 +43,9 @@ fn test_single_example_functionality() -> Result<(), Box<dyn std::error::Error>>
         // Cargo should error about "--example" missing its argument.
         assert
             .failure()
-            .stderr(predicate::str::contains("error: \"--example\" takes one argument"))
+            .stderr(predicate::str::contains(
+                "error: \"--example\" takes one argument",
+            ))
             .stderr(predicate::str::contains("Available examples:"))
             .stderr(predicate::str::contains("sample_non_ext"));
     } else {

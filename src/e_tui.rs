@@ -1,10 +1,8 @@
-
 #[cfg(feature = "tui")]
 pub mod tui_interactive {
+    use crate::prelude::*;
+    use crate::{e_bacon, e_findmain, Cli, Example, TargetKind};
     use crossterm::event::KeyEventKind;
-use crate::prelude::*;
-use crate::{e_bacon, e_findmain, Cli, Example, TargetKind};
-    use super::*;
     use crossterm::{
         event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
         execute,
@@ -348,7 +346,6 @@ use crate::{e_bacon, e_findmain, Cli, Example, TargetKind};
         Ok(())
     }
 
-
     /// Runs the given example (or binary) target. It leaves TUI mode, spawns a cargo process,
     /// installs a Ctrl+C handler to kill the process, waits for it to finish, updates history,
     /// flushes stray input, and then reinitializes the terminal.
@@ -506,14 +503,6 @@ use crate::{e_bacon, e_findmain, Cli, Example, TargetKind};
             Clear(ClearType::All)
         )?;
         *terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-        Ok(())
-    }
-}
-
-#[cfg(not(feature = "tui"))]
-mod tui_interactive {
-    pub fn launch_tui(_available: &Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-        eprintln!("TUI feature not enabled.");
         Ok(())
     }
 }

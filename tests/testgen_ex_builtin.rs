@@ -1,5 +1,5 @@
-// Below is an integration test that sets up a temporary project with a generated Cargo.toml 
-// and a single example file (named according to the ex_name variable) that prints its own name 
+// Below is an integration test that sets up a temporary project with a generated Cargo.toml
+// and a single example file (named according to the ex_name variable) that prints its own name
 // followed by " HAS RUN SUCCESSFULLY". The test then runs your binary with the explicit example name.
 // It verifies that:
 // 1. The example file exists on the filesystem.
@@ -61,4 +61,3 @@ fn testgen_ex_builtin() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

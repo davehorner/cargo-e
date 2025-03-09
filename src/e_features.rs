@@ -1,12 +1,23 @@
-
 /// Returns a vector of feature flag strings.
 /// Enabled features are listed as-is while disabled ones are prefixed with "!".
 pub fn get_feature_flags() -> Vec<&'static str> {
     [
         if cfg!(feature = "tui") { "tui" } else { "!tui" },
-        if cfg!(feature = "concurrent") { "concurrent" } else { "!concurrent" },
-        if cfg!(feature = "windows") { "windows" } else { "!windows" },
-        if cfg!(feature = "equivalent") { "equivalent" } else { "!equivalent" },
+        if cfg!(feature = "concurrent") {
+            "concurrent"
+        } else {
+            "!concurrent"
+        },
+        if cfg!(feature = "windows") {
+            "windows"
+        } else {
+            "!windows"
+        },
+        if cfg!(feature = "equivalent") {
+            "equivalent"
+        } else {
+            "!equivalent"
+        },
     ]
     .to_vec()
 }

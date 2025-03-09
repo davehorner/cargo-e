@@ -1,10 +1,6 @@
 use crate::prelude::*;
-// use std::process::Command;
-// #[cfg(not(feature = "equivalent"))]
-use std::sync::{Arc, Mutex};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
-// use std::error::Error;
 use crate::Example;
 
 /// In "equivalent" mode, behave exactly like "cargo run --example <name>"
@@ -19,8 +15,8 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     // Inherit the standard input (as well as stdout/stderr) so that input is passed through.
     use std::process::Stdio;
     cmd.stdin(Stdio::inherit())
-       .stdout(Stdio::inherit())
-       .stderr(Stdio::inherit());
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
     let status = cmd.status()?;
     std::process::exit(status.code().unwrap_or(1));
@@ -32,8 +28,12 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     let mut cmd = Command::new("cargo");
 
     if example.extended {
-        println!("Running extended example in folder: examples/{}", example.name);
-        cmd.arg("run").current_dir(format!("examples/{}", example.name));
+        println!(
+            "Running extended example in folder: examples/{}",
+            example.name
+        );
+        cmd.arg("run")
+            .current_dir(format!("examples/{}", example.name));
     } else {
         println!("Running: cargo run --release --example {}", example.name);
         cmd.args(&["run", "--release", "--example", &example.name]);
@@ -44,6 +44,7 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     }
 
     let child = cmd.spawn()?;
+    use std::sync::{Arc, Mutex};
     let child_arc = Arc::new(Mutex::new(child));
     let child_for_handler = Arc::clone(&child_arc);
 
@@ -57,8 +58,6 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     println!("Process exited with status: {:?}", status.code());
     Ok(())
 }
-
-
 
 /// Helper function to spawn a cargo process.
 /// On Windows, this sets the CREATE_NEW_PROCESS_GROUP flag.

@@ -28,7 +28,10 @@ fn main() {
         let dest_path = dest.join(path.file_name().unwrap());
 
         if let Err(e) = fs::copy(&path, &dest_path) {
-            eprintln!("Warning: Failed to copy {:?} to {:?}: {}", path, dest_path, e);
+            eprintln!(
+                "Warning: Failed to copy {:?} to {:?}: {}",
+                path, dest_path, e
+            );
         } else {
             println!("Copied {:?} to {:?}", path, dest_path);
         }
@@ -36,4 +39,3 @@ fn main() {
 
     println!("✅ Image copying complete.");
 }
-

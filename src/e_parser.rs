@@ -1,8 +1,6 @@
-
-
 /// Parses the stderr output to extract available items (e.g. binaries or examples)
 /// by looking for a marker of the form "Available {item}:".
-/// 
+///
 /// # Example
 /// ```
 /// use cargo_e::e_parser::parse_available;

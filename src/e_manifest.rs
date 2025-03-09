@@ -1,7 +1,7 @@
+use std::error::Error;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::fs;
-use std::error::Error;
 use toml::Value;
 
 /// Locate the Cargo.toml by invoking `cargo locate-project --message-format plain`.
@@ -28,9 +28,13 @@ pub fn locate_manifest(workspace: bool) -> Result<String, Box<dyn Error>> {
 /// Parses the workspace manifest (in TOML format) to return a vector of workspace member names and
 /// their corresponding manifest paths. The workspace manifest is expected to have a [workspace]
 /// table with a "members" array. Each member is joined with the workspace root directory.
-pub fn collect_workspace_members(workspace_manifest: &str) -> Result<Vec<(String, PathBuf)>, Box<dyn Error>> {
+pub fn collect_workspace_members(
+    workspace_manifest: &str,
+) -> Result<Vec<(String, PathBuf)>, Box<dyn Error>> {
     let manifest_path = Path::new(workspace_manifest);
-    let workspace_root = manifest_path.parent().ok_or("Cannot determine workspace root")?;
+    let workspace_root = manifest_path
+        .parent()
+        .ok_or("Cannot determine workspace root")?;
     let manifest_contents = fs::read_to_string(workspace_manifest)?;
     let value: Value = manifest_contents.parse::<Value>()?;
     let mut members = Vec::new();

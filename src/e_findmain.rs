@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_compute_vscode_args_non_extended() -> Result<(), Box<dyn std::error::Error>> {
-                // Create a temporary directory and change the current working directory to it.
+        // Create a temporary directory and change the current working directory to it.
         let dir = tempdir()?;
         let temp_path = dir.path();
         env::set_current_dir(&temp_path)?;
