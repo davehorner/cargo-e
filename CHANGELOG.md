@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/davehorner/cargo-e/compare/v0.1.1...v0.1.2) - 2025-03-10
+
+### Other
+
+- update permissions in release-plz.yml to allow write access for pull-requests and contents
+
 ## [0.1.1](https://github.com/davehorner/cargo-e/compare/v0.1.0...v0.1.1) - 2025-03-10
 
 ### Added

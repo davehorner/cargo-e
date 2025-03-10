@@ -1,4 +1,5 @@
 # cargo-e
+[![Crates.io](https://img.shields.io/crates/v/cargo-e.svg)](https://crates.io/crates/cargo-e)
 
 <img id="screenshot" src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/doc/media/screenshot-cargo-e.webp" 
      alt="Cargo-e Screenshot" title="Cargo-e running in terminal"
@@ -9,6 +10,8 @@ e is for Example. cargo-e is a Cargo subcommand for running and exploring exampl
 ## Most Important Features
 - Runs a single example automatically when only one example is defined.
 - Supports examples in different locations (bins, workspaces, etc.)
+- **cargo-e as an Example:**  
+  cargo-e itself serves as a practical example of an attempt to write a well-managed Rust project. It adopts conventional commits and adheres to semantic versioning. The project leverages GitHub Actions to automate releases, generate a CHANGELOG, and handle versioning via [release-plz](https://release-plz.dev/docs/github/quickstart). As a learning vehicle for its creator, cargo-e also provides a model for others interested in effective coding and project management practices.
 
 ## Quick Start
 ```sh
@@ -16,7 +19,16 @@ cargo install cargo-e
 cargo e
 ```
 
-See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
+<div id="github-link">
+  See the <a href="https://github.com/davehorner/cargo-e">GitHub repository</a> for more details.
+</div>
+
+<script>
+  // Example condition: if the current URL contains "github.com"
+  if (window.location.href.indexOf("github.com") !== -1) {
+    document.getElementById("github-link").style.display = "none";
+  }
+</script>
 
 ## Overview
 
@@ -66,7 +78,7 @@ Run an example directly from your project:
 cargo e [OPTIONS] [EXAMPLE] [-- extra arguments]
 ```
 
-If there is only one example, it will run that example.
+If there is only one example, it will run that example, did I mention that already?
 
 ### Command-line Options
 
@@ -94,10 +106,65 @@ If there is only one example, it will run that example.
   ```
 
 - **Use workspace mode:**
-
   ```bash
   cargo e --workspace
   ```
+  
+## Features and Configuration
+
+cargo-e leverages Cargo's feature flags to provide fine-grained control over the included components and dependencies. Using conditional compilation whenever possible, the dependency tree remains lean by including only what is necessary.
+
+- **Default Features:**  
+  Building cargo-e without specifying additional features enables the `tui` and `concurrent` features by default. Terminal UI support is provided via `crossterm` and `ratatui`, while concurrency support is offered through `threadpool`.
+
+- **Optional and Platform-Specific Features:**  
+  - **`windows`**: Includes Windows-specific dependencies to enhance compatibility on Windows systems and to limit unneeded energy, time, space on bloat.  
+  - **`equivalent`**: Functions as an alias/shortcut for `--example` without enabling extra features.
+
+- **Customizing the Build:**  
+  Default features may be disabled using `--no-default-features`, and desired features can be enabled using `--features`. For example:
+
+  ```bash
+  cargo build --no-default-features --features tui
+  ```
+
+## Prior Art and Alternative Approaches
+
+Several tools and techniques have been developed to ease the exploration and execution of example code in Rust projects:
+
+- **Built-in Cargo Support:**  
+  
+    Cargo provides support for running examples with the `cargo run --example` command. However, this approach places the example at the level of an option, requiring users to type out a longer command—at least 19 characters per invocation—and, in many cases, two separate invocations (one for seeing and another to actually do something). This extra keystroke overhead can make the process less efficient for quick experimentation.
+
+- **cargo-examples:**  
+  
+  The [cargo-examples](https://github.com/richardhozak/cargo-examples) project offers another approach to handling examples in Rust projects. It focuses on running all the examples in alphabetical order with options to start from a point in the list.  Simplifying the execution of example code, demonstrating a similar intent to cargo-e by reducing the overhead of managing example invocations.
+    
+
+    It handles various example structures:
+    - **Single-file examples:** Located directly as `<project>/examples/foo.rs`
+    - **Multi-file examples:** Structured as `<project>/examples/bar/main.rs`
+    - **Manifest-based examples:** Defined in `Cargo.toml` using the `[[example]]` configuration
+    - **Subproject examples:** Examples in subdirectories containing their own `Cargo.toml`, which standard Cargo commands cannot run out-of-the-box.
+  
+    - **Efficient Execution:**  
+        Examples are run in alphabetical order, and the tool provides options such as `--from` to start execution at a specific example. This reduces the need for multiple long invocations and simplifies the workflow.
+- **cargo-play:**  
+              
+  The [cargo-play](https://crates.io/crates/cargo-play) tool is designed to run Rust code files without  the need to manually set up a Cargo project, streamlining rapid prototyping and experimentation. Key aspects include:
+
+  - **Ease of Use:**  
+    Run Rust files directly with a simple command (`cargo play <files>`). External dependencies can be specified inline at the top of your file using the `//#` syntax, following the same TOML format as in `Cargo.toml`.
+
+  - **Multi-file and Subdirectory Support:**  
+    It supports running multiple files at once, and handles files located in subdirectories by copying them relative to the first file provided, enabling seamless execution of more complex code bases.
+
+  - **Editor Integrations:**  
+    With built-in support for editors like Vim, VS Code, and Micro, cargo-play enables you to test your current file directly from your development environment, enhancing workflow efficiency.
+
+  - **Installation and Versatility:**  
+    Installation is as simple as running `cargo install cargo-play`, making it an accessible and lightweight option for quickly executing and experimenting with Rust code without the overhead of a full project setup.
+
 
 ## Contributing
 
