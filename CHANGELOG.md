@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/davehorner/cargo-e/compare/v0.1.0...v0.1.1) - 2025-03-10
+
+### Added
+
+- feat: add anyhow dependency and implement command builder with target discovery
+- add anyhow dependency and implement command builder with target discovery
+- work on move towards targets of the test,bin,example,manifest kind.
+- getting testing started.
+
 ## [0.1.0](https://github.com/davehorner/cargo-e/releases/tag/v0.1.0) - 2025-03-09
 
 ### Added
