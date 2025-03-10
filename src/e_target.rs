@@ -1,8 +1,5 @@
 // src/e_target.rs
-use std::{
-    ffi::OsString,
-    path::PathBuf,
-};
+use std::{ffi::OsString, path::PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum TargetOrigin {
@@ -12,7 +9,7 @@ pub enum TargetOrigin {
     Named(OsString),
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TargetKind {
     Example,
     Binary,
@@ -29,4 +26,3 @@ pub struct CargoTarget {
     pub extended: bool,
     pub origin: Option<TargetOrigin>,
 }
-

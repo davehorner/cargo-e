@@ -9,7 +9,9 @@ fn integration_test_builder() {
         manifest_path: "Cargo.toml".to_string(),
         kind: TargetKind::Example,
         extended: true,
-        origin: Some(TargetOrigin::SingleFile(PathBuf::from("examples/my_example.rs"))),
+        origin: Some(TargetOrigin::SingleFile(PathBuf::from(
+            "examples/my_example.rs",
+        ))),
     };
 
     let args = CargoCommandBuilder::new()
@@ -19,4 +21,3 @@ fn integration_test_builder() {
 
     assert!(args.contains(&"run".to_string()));
 }
-

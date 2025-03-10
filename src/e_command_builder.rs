@@ -121,7 +121,9 @@ mod tests {
             manifest_path: "Cargo.toml".to_string(),
             kind: TargetKind::Example,
             extended: true,
-            origin: Some(TargetOrigin::SingleFile(PathBuf::from("examples/my_example.rs"))),
+            origin: Some(TargetOrigin::SingleFile(PathBuf::from(
+                "examples/my_example.rs",
+            ))),
         };
 
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
@@ -143,4 +145,3 @@ mod tests {
         assert!(args.contains(&"value".to_string()));
     }
 }
-

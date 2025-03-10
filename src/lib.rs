@@ -32,9 +32,8 @@ pub use e_parser::parse_available;
 pub mod e_runner;
 pub use e_runner::run_example;
 pub mod e_collect;
-pub mod e_features;
-pub mod e_tui;
 pub mod e_command_builder;
-pub mod e_target;
 pub mod e_discovery;
-
+pub mod e_features;
+pub mod e_target;
+pub mod e_tui;

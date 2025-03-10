@@ -1,8 +1,7 @@
-mod common {
-    pub mod test_prelude;
-}
+use assert_cmd::Command;
 use cargo_e::e_features::{get_feature_flags, get_feature_flags_json};
-use common::test_prelude::*;
+use predicates::prelude::*;
+use predicates::str::contains;
 
 #[test]
 fn test_version_feature_flags() {
