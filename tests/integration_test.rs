@@ -2,7 +2,7 @@
 mod common;
 
 // use common::test_prelude::*;
-use common::test_existing::project_setup::{create_testgen_ex_project, create_testgen_bin_project};
+use common::test_testgen::project_setup::{create_testgen_bin_project, create_testgen_ex_project};
 
 #[test]
 fn test_example_project() {
@@ -10,7 +10,7 @@ fn test_example_project() {
     // Use assert_cmd or other prelude items from test_prelude
     assert!(project.path().join("Cargo.toml").exists());
 }
- 
+
 #[test]
 fn test_create_testgen_bin_project() -> std::io::Result<()> {
     // Use a known binary name for testing.
@@ -27,9 +27,15 @@ fn test_create_testgen_bin_project() -> std::io::Result<()> {
     assert!(bin_file.exists(), "The binary file should exist");
 
     // Read the file and verify its contents.
-    let contents =std::fs::read_to_string(&bin_file)?;
-    let expected = format!("fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}", bin_name);
-    assert_eq!(contents, expected, "The file content should match the expected output");
+    let contents = std::fs::read_to_string(&bin_file)?;
+    let expected = format!(
+        "fn main() {{ println!(\"{} HAS RUN SUCCESSFULLY\"); }}",
+        bin_name
+    );
+    assert_eq!(
+        contents, expected,
+        "The file content should match the expected output"
+    );
 
     Ok(())
 }

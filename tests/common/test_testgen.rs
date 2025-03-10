@@ -1,4 +1,4 @@
-// tests/test_utils.rs
+// tests/common/test_existing.rs
 
 pub mod project_setup {
     use std::fs;
@@ -9,6 +9,7 @@ pub mod project_setup {
     /// A wrapper around a temporary project directory.
     pub struct TestProject {
         /// The temporary directory. When this is dropped, the directory and its contents are removed.
+        #[allow(dead_code)]
         pub temp_dir: TempDir,
         /// The root directory for the generated project.
         pub root: PathBuf,
@@ -118,7 +119,8 @@ pub mod file_ops {
                 if let Ok(entries) = fs::read_dir(&ext_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs")
+                        {
                             count += 1;
                         }
                     }
@@ -143,3 +145,60 @@ pub mod file_ops {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_create_testgen_ext_project_creates_extended_example() -> std::io::Result<()> {
+        let project = project_setup::create_testgen_ext_project("ext_example")?;
+        let file_path = project
+            .path()
+            .join("examples")
+            .join("extended")
+            .join("ext_example.rs");
+        assert!(
+            file_path.exists(),
+            "Expected extended example file to exist at {:?}",
+            file_path
+        );
+        let content = fs::read_to_string(&file_path)?;
+        assert_eq!(
+            content, "fn main() { println!(\"ext_example HAS RUN SUCCESSFULLY\"); }",
+            "File content did not match expected output"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_count_samples_counts_correctly() -> std::io::Result<()> {
+        let temp = tempdir()?;
+        let project_root = temp.path();
+
+        // Create fake structure: examples, examples/extended, and src/bin.
+        fs::create_dir_all(project_root.join("examples"))?;
+        fs::write(
+            project_root.join("examples").join("sample1.rs"),
+            "fn main() {}",
+        )?;
+        fs::create_dir_all(project_root.join("examples").join("extended"))?;
+        fs::write(
+            project_root
+                .join("examples")
+                .join("extended")
+                .join("ext_sample.rs"),
+            "fn main() {}",
+        )?;
+        fs::create_dir_all(project_root.join("src").join("bin"))?;
+        fs::write(
+            project_root.join("src").join("bin").join("bin_sample.rs"),
+            "fn main() {}",
+        )?;
+
+        let count = file_ops::count_samples(project_root);
+        assert_eq!(count, 3, "Expected 3 sample files, got {}", count);
+        Ok(())
+    }
+}

@@ -1,8 +1,5 @@
 // src/e_discovery.rs
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 use anyhow::{Context, Result};
@@ -41,7 +38,8 @@ pub fn discover_targets(current_dir: &Path) -> Result<Vec<CargoTarget>> {
                             targets.push(CargoTarget {
                                 name: stem.to_string_lossy().to_string(),
                                 display_name: stem.to_string_lossy().to_string(),
-                                manifest_path: current_dir.join("Cargo.toml")
+                                manifest_path: current_dir
+                                    .join("Cargo.toml")
                                     .to_string_lossy()
                                     .to_string(),
                                 kind: TargetKind::Example,
@@ -112,4 +110,3 @@ mod tests {
         assert!(example_target.is_some());
     }
 }
-
