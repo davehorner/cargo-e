@@ -16,7 +16,7 @@ fn integration_test_builder() {
 
     let args = CargoCommandBuilder::new()
         .with_target(&target)
-        .with_extra_args(&vec!["--flag".to_string(), "value".to_string()])
+        .with_extra_args(&["--flag".to_string(), "value".to_string()])
         .build();
 
     assert!(args.contains(&"run".to_string()));

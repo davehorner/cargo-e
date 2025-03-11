@@ -39,17 +39,14 @@ pub mod tui_interactive {
     }
 
     /// Launches an interactive terminal UI for selecting an example.
-    pub fn launch_tui(
-        cli: &Cli,
-        examples: &Vec<Example>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn launch_tui(cli: &Cli, examples: &[Example]) -> Result<(), Box<dyn std::error::Error>> {
         flush_input()?; // Clear any buffered input (like stray Return keys)
-        let mut exs = examples.clone();
-        exs.sort();
+        let mut exs = examples.to_vec();
         if exs.is_empty() {
             println!("No examples found!");
             return Ok(());
         }
+        exs.sort();
 
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let history_path = format!("{}/run_history.txt", manifest_dir);
@@ -180,7 +177,7 @@ pub mod tui_interactive {
                                     .unwrap_or(5)
                                     as usize;
                                 let current = list_state.selected().unwrap_or(0);
-                                let new = if current < page { 0 } else { current - page };
+                                let new = current.saturating_sub(page);
                                 list_state.select(Some(new));
                             }
                             KeyCode::Char('b') => {
@@ -218,7 +215,7 @@ pub mod tui_interactive {
                             KeyCode::Enter => {
                                 if let Some(selected) = list_state.selected() {
                                     run_piece(
-                                        &examples,
+                                        examples,
                                         selected,
                                         &history_path,
                                         &mut run_history,
@@ -268,7 +265,7 @@ pub mod tui_interactive {
                                     exit_hover = false;
                                     let inner_y = list_area.y + 1;
                                     let inner_height = list_area.height.saturating_sub(2);
-                                    if mouse_event.column >= list_area.x + 1
+                                    if mouse_event.column > list_area.x + 1
                                         && mouse_event.column < list_area.x + list_area.width - 1
                                         && mouse_event.row >= inner_y
                                         && mouse_event.row < inner_y + inner_height
@@ -289,7 +286,7 @@ pub mod tui_interactive {
                                 }
                                 let inner_y = list_area.y + 1;
                                 let inner_height = list_area.height.saturating_sub(2);
-                                if mouse_event.column >= list_area.x + 1
+                                if mouse_event.column > list_area.x + 1
                                     && mouse_event.column < list_area.x + list_area.width - 1
                                     && mouse_event.row >= inner_y
                                     && mouse_event.row < inner_y + inner_height
@@ -298,7 +295,7 @@ pub mod tui_interactive {
                                     if index < exs.len() {
                                         list_state.select(Some(index));
                                         run_piece(
-                                            &exs,
+                                            &exs.clone(),
                                             index,
                                             &history_path,
                                             &mut run_history,
@@ -350,7 +347,7 @@ pub mod tui_interactive {
     /// installs a Ctrl+C handler to kill the process, waits for it to finish, updates history,
     /// flushes stray input, and then reinitializes the terminal.
     pub fn run_piece(
-        examples: &Vec<Example>,
+        examples: &[Example],
         index: usize,
         history_path: &str,
         run_history: &mut HashSet<String>,
@@ -474,11 +471,9 @@ pub mod tui_interactive {
 
         if !detached {
             // Only update run history if update_history is true and exit code is zero.
-            if update_history && status_code == 0 {
-                if run_history.insert(target.name.clone()) {
-                    let history_data = run_history.iter().cloned().collect::<Vec<_>>().join("\n");
-                    fs::write(history_path, history_data)?;
-                }
+            if update_history && status_code == 0 && run_history.insert(target.name.clone()) {
+                let history_data = run_history.iter().cloned().collect::<Vec<_>>().join("\n");
+                fs::write(history_path, history_data)?;
             }
             println!(
                 "Exitcode {}  Waiting for {} seconds...",

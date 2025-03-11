@@ -10,14 +10,14 @@ use crate::e_types::{Example, TargetKind};
 /// For **extended samples** (i.e. sample.extended is true), it first checks for a file at:
 /// 1. `<manifest_dir>/src/main.rs`  
 /// 2. `<manifest_dir>/main.rs`  
-/// and if found returns that path.
+///    and if found returns that path.
 ///
 /// Otherwise (or if the above do not exist), it falls back to parsing the Cargo.toml:
 ///   - For binaries: it looks in the `[[bin]]` section.
 ///   - For examples: it first checks the `[[example]]` section, and if not found, falls back to `[[bin]]`.
-/// If a target matching the sample name is found, it uses the provided `"path"` (if any)
-/// or defaults to `"src/main.rs"`.
-/// Returns Some(candidate) if the file exists.
+///     If a target matching the sample name is found, it uses the provided `"path"` (if any)
+///     or defaults to `"src/main.rs"`.
+///   - Returns Some(candidate) if the file exists.
 pub fn find_main_file(sample: &Example) -> Option<PathBuf> {
     let manifest_path = Path::new(&sample.manifest_path);
     let base = manifest_path.parent()?;
@@ -77,11 +77,11 @@ pub fn find_main_line(file: &Path) -> Option<(usize, usize)> {
 /// Computes the arguments for VSCode given a sample target.
 /// Returns a tuple (folder_str, goto_arg).
 /// - `folder_str` is the folder that will be opened in VSCode.
-/// - `goto_arg` is an optional string of the form "<file>:<line>:<column>"
+/// - `goto_arg` is an optional string of the form "\<file\>:\<line\>:\<column\>"
 ///   determined by searching for "fn main" in the candidate file.
 ///
 /// For extended samples, it checks first for "src/main.rs", then "main.rs".
-/// For non-extended examples, it assumes the file is at "examples/<name>.rs" relative to cwd.
+/// For non-extended examples, it assumes the file is at "examples/\<name\>.rs" relative to cwd.
 pub fn compute_vscode_args(sample: &Example) -> (String, Option<String>) {
     let manifest_path = Path::new(&sample.manifest_path);
     // Debug print
@@ -154,18 +154,18 @@ pub async fn open_vscode_for_sample(sample: &Example) {
     let output = if cfg!(target_os = "windows") {
         if let Some(ref goto) = goto_arg {
             Command::new("cmd")
-                .args(&["/C", "code", folder_str.as_str(), "--goto", goto.as_str()])
+                .args(["/C", "code", folder_str.as_str(), "--goto", goto.as_str()])
                 .output()
         } else {
             Command::new("cmd")
-                .args(&["/C", "code", folder_str.as_str()])
+                .args(["/C", "code", folder_str.as_str()])
                 .output()
         }
     } else {
         let mut cmd = Command::new("code");
         cmd.arg(folder_str.as_str());
         if let Some(goto) = goto_arg {
-            cmd.args(&["--goto", goto.as_str()]);
+            cmd.args(["--goto", goto.as_str()]);
         }
         cmd.output()
     };
@@ -435,7 +435,7 @@ mod tests {
         // Create a temporary directory and change the current working directory to it.
         let dir = tempdir()?;
         let temp_path = dir.path();
-        env::set_current_dir(&temp_path)?;
+        env::set_current_dir(temp_path)?;
 
         // Create the examples directory and a dummy example file.
         let examples_dir = temp_path.join("examples");

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/davehorner/cargo-e/compare/v0.1.3...v0.1.4) - 2025-03-11
+
+fix(docs): update README and examples for clarity and consistency
+feat(bacon): integrate bacon tool configuration and checks
+feat(quality): add quality assurance support script `support/checks.sh`
+
+- Create `bacon.toml` to define job commands for building, linting (clippy), testing, and generating documentation.
+- Add `support/checks.sh` to automate common checks and launch commands in a new terminal for both `bacon` and `cbacon`.
+- Revise `README.md` to improve descriptions of execution options and overall format.
+- Enhance `examples/funny_example.rs` with detailed comments and a test that illustrates compiler behavior with unused constants.
+- Update test documentation in `src/a_funny_docs.rs` and add new tests for improved clarity.
+- Refactor comments and argument handling in `src/e_bacon.rs`, `src/e_collect.rs`, and related files to boost readability.
+- Streamline example handling and environment settings in `src/main.rs` and test files to simplify setup and ensure correctness.
+
+### Fixed
+
+- *(docs)* update README and examples for clarity and consistency
+
 ## [0.1.3](https://github.com/davehorner/cargo-e/compare/v0.1.2...v0.1.3) - 2025-03-10
 
 ### Other

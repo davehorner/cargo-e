@@ -19,7 +19,7 @@ fn test_single_example_functionality() -> Result<(), Box<dyn std::error::Error>>
     let temp_path = temp_dir.path();
 
     // Change the current working directory to the temporary directory.
-    env::set_current_dir(&temp_path)?;
+    env::set_current_dir(temp_path)?;
 
     // Create a dummy Cargo.toml in the temporary directory.
     let manifest_path = temp_path.join("Cargo.toml");

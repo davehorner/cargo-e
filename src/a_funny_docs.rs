@@ -428,27 +428,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_constant() {
-        let _ = A_CONST;
+    // This approach uses std::mem::drop to consume the value of A_CONST (even though it's just ())
+    // without creating a binding. It's a neat trick to silence the "no effect" warning while keeping
+    // the intent fun and explicit.
+    #[allow(dropping_copy_types)]
+    fn test_epic_void_drop() {
+        // Instead of binding A_CONST to underscore, we simply drop it.
+        // This is our unique way of showing that we care about nothing!
+        // calls to `std::mem::drop` with a value that implements `Copy` does nothing
+        // `#[warn(dropping_copy_types)]` on by default
+        std::mem::drop(A_CONST);
+        //calls to `std::mem::drop` with a value that implements `Copy` does nothing
     }
 
     #[test]
+    /// Tests that `a_function` does what it does—presumably, something functionally awesome.
     fn test_function() {
         a_function();
     }
 
     #[test]
+    /// Creates an instance of `AStruct` to prove that structs can be instantiated
+    /// even if they don't have a personality (or much else) to show.
     fn test_struct() {
         let _instance = AStruct;
     }
 
     #[test]
+    /// Matches against `AEnum::AVariant`—because even enums like to have their moment in the spotlight.
     fn test_enum() {
         match AEnum::AVariant {
             AEnum::AVariant => (),
         }
     }
 
+    /// Implements `ATrait` for a dummy type just to confirm that even dummy jokes are valid,
+    /// and that our trait really does have a punchline.
     struct Dummy;
 
     impl ATrait for Dummy {
@@ -458,23 +473,28 @@ mod tests {
     }
 
     #[test]
+    /// Creates a dummy and verifies that the joke is as laughable as expected.
     fn test_trait() {
         let dummy = Dummy;
         assert_eq!(dummy.do_joke(), "I'm a dummy telling a dummy joke!");
     }
 
     #[test]
+    /// Tests that the type alias `AType` works as intended,
+    /// because even type aliases deserve a little bit of the limelight.
     fn test_type_alias() {
         let _x: AType = ();
     }
 
     #[test]
+    /// Tests the dynamic struct `ACrazyDuck`—a wild duck that defies both logic and gravity.
     fn test_dynamic_struct() {
         // ACrazyDuck is defined directly in this module.
         let _instance: ACrazyDuck = ACrazyDuck;
     }
 
     #[test]
+    /// Executes the `funny_macro!` macro, proving that even macros can bring a little humor to your code.
     fn test_funny_macro() {
         funny_macro!();
     }

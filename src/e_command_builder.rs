@@ -32,7 +32,11 @@ pub struct CargoTarget {
 pub struct CargoCommandBuilder {
     args: Vec<String>,
 }
-
+impl Default for CargoCommandBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl CargoCommandBuilder {
     /// Creates a new, empty builder.
     pub fn new() -> Self {
@@ -70,16 +74,10 @@ impl CargoCommandBuilder {
         }
 
         // Optionally use the origin information if available.
-        if let Some(ref origin) = target.origin {
-            match origin {
-                // If it's a subproject, override the manifest path to point directly to that subproject.
-                TargetOrigin::SubProject(path) => {
-                    self.args.push("--manifest-path".into());
-                    self.args.push(path.to_string_lossy().to_string());
-                }
-                // For other variants, you might want to log or adjust behavior.
-                _ => { /* No additional flags needed for SingleFile, MultiFile, or Named */ }
-            }
+
+        if let Some(TargetOrigin::SubProject(ref path)) = target.origin {
+            self.args.push("--manifest-path".into());
+            self.args.push(path.display().to_string());
         }
 
         self

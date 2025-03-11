@@ -28,7 +28,7 @@ pub fn run_bacon(sample: &Example, _extra_args: &[String]) -> Result<(), Box<dyn
     let args = &[
         "/c",
         "START",
-        &format!(""),
+        "",
         "bacon",
         &format!("--path={}", project_dir.to_str().unwrap_or_default()),
     ];
@@ -92,16 +92,11 @@ pub fn run_bacon(sample: &Example, _extra_args: &[String]) -> Result<(), Box<dyn
 
 // src/e_bacon.rs
 
-/// Runs the "bacon" command on the given sample in detached mode.
-/// It passes the project directory (derived from the sample’s manifest_path) via the "--path" flag,
-/// and appends any extra arguments. The process is detached so that the caller does not wait for it.
 // pub fn run_bacon(sample: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
 //     println!("Running bacon for sample: {}", sample.name);
-
 //     // Determine the project directory from the sample's manifest_path.
 //     let manifest_path = std::path::Path::new(&sample.manifest_path);
 //     let project_dir = manifest_path.parent().unwrap_or(manifest_path);
-
 //     let mut cmd = Command::new("bacon");
 //     cmd.args(&["--path", project_dir.to_str().unwrap_or_default()]);
 //     if !extra_args.is_empty() {

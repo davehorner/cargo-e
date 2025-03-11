@@ -37,10 +37,10 @@ pub fn collect_binaries(
 
             Example {
                 name: name.clone(),
-                display_name: display_name,
+                display_name,
                 manifest_path: manifest_path.to_string_lossy().to_string(),
                 kind: TargetKind::Binary,
-                extended: extended,
+                extended,
             }
         })
         .collect();
@@ -84,10 +84,10 @@ pub fn collect_examples(
 
             Example {
                 name: name.clone(),
-                display_name: display_name,
+                display_name,
                 manifest_path: manifest_path.to_string_lossy().to_string(),
                 kind: TargetKind::Example,
-                extended: extended,
+                extended,
             }
         })
         .collect();
