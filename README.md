@@ -1,9 +1,34 @@
-# cargo-e
-[![Crates.io](https://img.shields.io/crates/v/cargo-e.svg)](https://crates.io/crates/cargo-e)
+<a href="https://crates.io/crates/cargo-e" rel="nofollow noopener noreferrer">
+  <img src="https://img.shields.io/crates/v/cargo-e.svg" alt="Crates.io">
+</a>
 
-<goimg id="screenshot" src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/documents/media/screenshot-cargo-e.webp"
+<!-- Version notice -->
+<p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.5</span>.
+  If this does not match the version displayed above, then you're not reading the latest documentation!
+</p>
+
+<img id="screenshot"
+     src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/documents/media/screenshot-cargo-e.webp"
      alt="Cargo-e Screenshot" title="Cargo-e running in terminal"
-     onerror="this.onerror=null; this.src='../media/screenshot-cargo-e.webp';">
+     onload="
+       // When the image loads (which happens locally), check if we're not on GitHub.
+       if (!window.location.hostname.includes('github') && !this.dataset.messageInserted) {
+         this.insertAdjacentHTML('afterend', ' <div style=\'color: #ccc; font-style: italic;\'>See the <a href=\'https://github.com/davehorner/cargo-e\' target=\'_blank\'>GitHub repository</a> for more details.</div>');
+         this.dataset.messageInserted = 'true';
+       }
+     "
+     onerror="
+       // First error: if remote image fails, try loading the local image.
+       if (this.src.indexOf('../media/screenshot-cargo-e.webp') === -1) {
+         this.onerror = this.onerror;
+         this.src = '../media/screenshot-cargo-e.webp';
+       } else if (!window.location.hostname.includes('github')) {
+         // If the local image also fails and we're not on GitHub, insert the fallback message.
+         this.insertAdjacentHTML('afterend', ' <div style=\'color: #ccc; font-style: italic;\'>See the <a href=\'https://github.com/davehorner/cargo-e\' target=\'_blank\'>GitHub repository</a> for more details.</div>');
+       }
+     ">
+
 
 e is for Example. `cargo-e` is a Cargo subcommand for running and exploring examples, binaries, and source code in Rust projects. Unlike `cargo run --example`, it executes the example directly if only one exists.
 
@@ -17,7 +42,7 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 
 ```sh
   cargo install cargo-e
-  cd cool_examples;
+  cd cool_examples
   cargo e
 ```
 
@@ -198,4 +223,12 @@ Many developers create their own custom scripts or tools to expose examples and 
 - Built with the power of the Rust ecosystem and libraries like [clap](https://crates.io/crates/clap), [crossterm](https://crates.io/crates/crossterm) (optional), and [ratatui](https://crates.io/crates/ratatui) (optional).
 - Special thanks to the Rust community and all contributors for their continued support.
   
-[![Crates.io](https://img.shields.io/crates/v/cargo-e.svg)](https://crates.io/crates/cargo-e)
+<a href="https://crates.io/crates/cargo-e" rel="nofollow noopener noreferrer">
+  <img src="https://img.shields.io/crates/v/cargo-e.svg" alt="Crates.io">
+</a>
+
+<!-- Version notice -->
+<p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.5</span>.
+  If this does not match the version displayed above, then you're not reading the latest documentation!
+</p>

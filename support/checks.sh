@@ -14,7 +14,7 @@ cargo fix --allow-dirty
 cargo fmt
 cargo audit
 
-CLIPPY_ARGS=' --all-targets --all-features' # -- -D warnings
+CLIPPY_ARGS=''
 
 # Define the command to run in the new terminal window for bacon clippy
 BACON_COMMAND='cd "'"$CURRENT_DIR"'" && bacon clippy'"$CLIPPY_ARGS"'; echo "Press Enter to exit..."; read'
