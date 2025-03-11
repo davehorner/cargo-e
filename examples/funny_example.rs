@@ -5,8 +5,20 @@ fn main() {
     use cargo_e::a_funny_docs::ATrait;
     println!("Testing humorous docs...");
 
-    // Constant.
-    let _ = guide::A_CONST;
+    /// Demonstrates the art of appeasing the compiler:
+    ///
+    /// Instead of just calling `guide::A_CONST` (which would trigger a "path statement with no effect"
+    /// warning), we bind it to `_` even though it's just `()`. Yes, it's like giving a participation
+    /// trophy to something that did absolutely nothing. We also silence the Clippy lint about binding a
+    /// unit value, because sometimes, even nothing deserves a little recognition.
+    ///
+    /// # Note
+    ///
+    /// This function is never used, but it lives on in our docs as a shining example of minimalist code.
+    #[allow(dead_code, clippy::let_unit_value)]
+    fn use_a_const() {
+        let _ = guide::A_CONST;
+    }
 
     // Function.
     guide::a_function();

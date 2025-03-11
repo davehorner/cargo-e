@@ -8,7 +8,7 @@ use crate::Example;
 pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
     // In "equivalent" mode, behave exactly like "cargo run --example <name>"
     let mut cmd = Command::new("cargo");
-    cmd.args(&["run", "--example", &example.name]);
+    cmd.args(["run", "--example", &example.name]);
     if !extra_args.is_empty() {
         cmd.arg("--").args(extra_args);
     }
@@ -36,7 +36,7 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
             .current_dir(format!("examples/{}", example.name));
     } else {
         println!("Running: cargo run --release --example {}", example.name);
-        cmd.args(&["run", "--release", "--example", &example.name]);
+        cmd.args(["run", "--release", "--example", &example.name]);
     }
 
     if !extra_args.is_empty() {

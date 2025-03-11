@@ -107,19 +107,19 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref ex) = cli.explicit_example {
         let ex = Example {
             name: ex.to_string(),
-            display_name: format!("explicit example"),
+            display_name: "explicit example".to_string(),
             manifest_path: "Cargo.toml".to_string(),
             kind: TargetKind::Example,
             extended: false, // assume it's a standard example
         };
         cargo_e::run_example(&ex, &cli.extra)?;
     } else if builtin_examples.len() == 1 && !cli.tui {
-        cargo_e::run_example(&builtin_examples[0], &Vec::new())?;
-    } else if examples.len() == 0 && !cli.tui {
+        cargo_e::run_example(builtin_examples[0], &Vec::new())?;
+    } else if examples.is_empty() && !cli.tui {
         println!("No examples available.");
     } else {
         if cli.tui {
-            #[cfg(all(feature = "tui"))]
+            #[cfg(feature = "tui")]
             {
                 if let Err(e) = cargo_e::e_tui::tui_interactive::launch_tui(&cli, &examples) {
                     eprintln!("error launching TUI: {:?}", e);

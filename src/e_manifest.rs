@@ -26,7 +26,7 @@ pub fn locate_manifest(workspace: bool) -> Result<String, Box<dyn Error>> {
 }
 
 /// Parses the workspace manifest (in TOML format) to return a vector of workspace member names and
-/// their corresponding manifest paths. The workspace manifest is expected to have a [workspace]
+/// their corresponding manifest paths. The workspace manifest is expected to have a \[workspace\]
 /// table with a "members" array. Each member is joined with the workspace root directory.
 pub fn collect_workspace_members(
     workspace_manifest: &str,

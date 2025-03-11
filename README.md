@@ -1,7 +1,7 @@
 # cargo-e
 [![Crates.io](https://img.shields.io/crates/v/cargo-e.svg)](https://crates.io/crates/cargo-e)
 
-<img id="screenshot" src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/doc/media/screenshot-cargo-e.webp" 
+<goimg id="screenshot" src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/documents/media/screenshot-cargo-e.webp"
      alt="Cargo-e Screenshot" title="Cargo-e running in terminal"
      onerror="this.onerror=null; this.src='../media/screenshot-cargo-e.webp';">
 
@@ -140,7 +140,7 @@ Several tools and techniques have been developed to ease the exploration and exe
     - **Subproject examples:** Examples in subdirectories containing their own `Cargo.toml`, which standard Cargo commands cannot run out-of-the-box.
   
     - **Efficient Execution:**  
-        Examples are run in alphabetical order, and the tool provides options such as `--from` to start execution at a specific example. This reduces the need for multiple long invocations and simplifies the workflow.
+      Examples are run in alphabetical order, and the tool provides options such as `--from` to start execution at a specific example. This reduces the need for multiple long invocations and simplifies the workflow.
 
 - **cargo-play:**  
               
@@ -197,4 +197,5 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 - Built with the power of the Rust ecosystem and libraries like [clap](https://crates.io/crates/clap), [crossterm](https://crates.io/crates/crossterm) (optional), and [ratatui](https://crates.io/crates/ratatui) (optional).
 - Special thanks to the Rust community and all contributors for their continued support.
+  
 [![Crates.io](https://img.shields.io/crates/v/cargo-e.svg)](https://crates.io/crates/cargo-e)

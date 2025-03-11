@@ -18,7 +18,7 @@ fn testgen_ex_builtin() -> Result<(), Box<dyn std::error::Error>> {
     // Create a temporary directory to isolate the test.
     let temp_dir = tempdir()?;
     let temp_path = temp_dir.path();
-    env::set_current_dir(&temp_path)?;
+    env::set_current_dir(temp_path)?;
 
     // Define the example name once.
     let ex_name = "testgen_ex_builtin";
@@ -42,7 +42,7 @@ fn testgen_ex_builtin() -> Result<(), Box<dyn std::error::Error>> {
     // Write the example file which prints the expected output.
     fs::write(
         &example_file,
-        &format!("fn main() {{ println!(\"{}\"); }}", expected_output),
+        format!("fn main() {{ println!(\"{}\"); }}", expected_output),
     )?;
 
     // Verify that the example file exists.
