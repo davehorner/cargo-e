@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/davehorner/cargo-e/compare/v0.1.4...v0.1.5) - 2025-03-11
+
+chore: update version and improve README documentation
+
+- Bumped version in Cargo.toml from "0.1.4" to "0.1.5".
+- Enhanced README.md with an updated badge display and added version notice for documentation.
+- Improved image loading and error handling in README.md to provide fallback messages.
+- Cleared CLIPPY_ARGS in support/checks.sh for cleaner integration.
+
+
 ## [0.1.4](https://github.com/davehorner/cargo-e/compare/v0.1.3...v0.1.4) - 2025-03-11
 
 fix(docs): update README and examples for clarity and consistency
