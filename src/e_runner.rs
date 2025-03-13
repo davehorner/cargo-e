@@ -39,17 +39,10 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     }
 
     if !extra_args.is_empty() {
-        println!("Extra args: {:?}", extra_args);
         cmd.arg("--").args(extra_args);
     }
 
-    let full_command = format!(
-        "cargo {}",
-        cmd.get_args()
-            .map(|arg| arg.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
+    let full_command = format!("cargo {}", cmd.get_args().map(|arg| arg.to_string_lossy()).collect::<Vec<_>>().join(" "));
     println!("Running: {}", full_command);
 
     let child = cmd.spawn()?;
