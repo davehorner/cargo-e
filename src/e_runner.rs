@@ -39,6 +39,7 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
     }
 
     if !extra_args.is_empty() {
+        println!("Extra args: {:?}", extra_args);
         cmd.arg("--").args(extra_args);
     }
 
