@@ -80,6 +80,7 @@ pub mod version {
     /// # Returns
     ///
     /// On success, returns the latest version as a `String`.
+    #[allow(unused_variables)]
     pub fn get_latest_version(crate_name: &str) -> Result<String, Box<dyn Error>> {
         #[cfg(all(feature = "uses_reqwest", feature = "uses_serde"))]
         {
@@ -280,16 +281,23 @@ mod tests {
     #[cfg(feature = "check-version")]
     mod version_tests {
         use super::super::version;
-        #[test]
-        fn test_get_latest_version_valid_crate() {
-            let result = version::get_latest_version("cargo-e");
-            assert!(result.is_ok());
-            let version_str = result.unwrap();
-            assert!(
-                !version_str.is_empty(),
-                "Version string should not be empty"
-            );
-        }
+
+            /// Tests that `get_latest_version("cargo-e")` returns an Ok value containing a non-empty version string.
+#[cfg(all(feature = "uses_reqwest", feature = "uses_serde", feature = "check-version"))]
+#[test]
+fn test_get_latest_version_valid_crate() {
+    let result = version::get_latest_version("cargo-e");
+    eprintln!("Test trace: get_latest_version returned {:?}", result);
+    assert!(result.is_ok(), "Expected Ok result from get_latest_version");
+    let version_str = result.unwrap();
+    eprintln!("Test trace: latest version is '{}'", version_str);
+    assert!(
+        !version_str.is_empty(),
+        "Version string should not be empty"
+    );
+}
+
+
         #[test]
         fn test_get_latest_version_invalid_crate() {
             let result = version::get_latest_version("non-existent-crate-123456");

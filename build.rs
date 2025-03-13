@@ -1,50 +1,43 @@
-use std::fs;
+// build.rs
+
+use std::env;
 use std::path::Path;
 
-/// This build script ensures documentation images are available in `cargo doc` output.
-/// It copies `doc/media/` into `target/doc/cargo_e/doc/media/`
-/// to maintain a consistent structure for documentation rendering.
+// Pull in our custom build modules.
+mod build_addendum_utils;
+mod build_docs;
+
 fn main() {
-    let src = Path::new("documents/media"); // Source images
-    let dest = Path::new("target/doc/media"); // Destination inside crate docs
+    // For example, when inlining, have your build script print:
+    println!("cargo:rustc-cfg=inlined");
 
-    println!("cargo:rerun-if-changed=documents/media"); // Ensure script runs if files change
+    // --- Documentation Copying ---
+    // Call our documentation helper to copy media files.
+    build_docs::copy_doc_media();
 
-    if !src.exists() {
-        eprintln!("Warning: Source directory {:?} does not exist!", src);
-        return;
+    // --- Addendum Code Inlining ---
+    // Determine the addendum source directory.
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let src_dir = Path::new(&manifest_dir)
+        .join("addendum")
+        .join("e_crate_version_checker")
+        .join("src");
+
+    // Write the generated code to a file in OUT_DIR.
+    // Generate module declarations to inline all .rs files in the addendum directory.
+    let out_dir_str = env::var("OUT_DIR").expect("OUT_DIR not set");
+    let out_dir = Path::new(&out_dir_str);
+    let generated_code = build_addendum_utils::generate_module_includes(&src_dir, &out_dir)
+        .expect("Failed to generate module includes");
+    let dest_path = Path::new(&out_dir).join("generated_e_crate_version_checker.rs");
+    println!("cargo:warning=Writing generated file to {:?}", dest_path);
+    if generated_code.is_empty() {
+        println!("cargo:warning=No addendum files found in {:?}", src_dir);
+        std::process::exit(1);
     }
+    build_addendum_utils::write_generated_file(&dest_path, &generated_code)
+        .expect("Failed to write generated file");
 
-    // Ensure the destination directory exists
-    if let Err(e) = fs::create_dir_all(dest) {
-        eprintln!("Error: Could not create {:?}: {}", dest, e);
-        return;
-    }
-
-    // Copy each image from `documents/media/` into `target/doc/cargo_e/doc/media/`
-    for entry in src.read_dir().expect("Failed to read source directory") {
-        let entry = entry.expect("Failed to read directory entry");
-        let path = entry.path();
-        let dest_path = dest.join(path.file_name().unwrap());
-
-        if let Err(e) = fs::copy(&path, &dest_path) {
-            eprintln!(
-                "Warning: Failed to copy {:?} to {:?}: {}",
-                path, dest_path, e
-            );
-        } else {
-            println!("Copied {:?} to {:?}", path, dest_path);
-        }
-    }
-
-    // println!("✅ Image copying complete.");
-    // Force re-run if the dependency’s Cargo.toml changes.
-    //     println!("cargo:rerun-if-changed=extended/e_crate_version_checker/Cargo.toml");
-    //    // Iterate over all environment variables.
-    //     for (key, value) in std::env::vars() {
-    //         // Cargo sets variables starting with "CARGO_FEATURE_"
-    //         if key.starts_with("CARGO_FEATURE_") {
-    //             println!("cargo:warning=Enabled feature: {}={}", key, value);
-    //         }
-    //     }
+    // Re-run build if any addendum source file changes.
+    println!("cargo:rerun-if-changed=addendum/e_crate_version_checker/src/");
 }

@@ -8,9 +8,10 @@ publish = false
 [features]
 default = ["check-version","uses_reqwest","uses_serde"]
 check-version = []
+addendum_inline = []
 check-version-program-start = []
-uses_reqwest = ["dep:reqwest"]
-uses_serde = ["dep:serde","dep:serde_json"]
+uses_reqwest = ["reqwest"]
+uses_serde = ["serde", "serde_json"]
 
 [dependencies]
 reqwest = { version = "0.11", features = ["blocking", "json"], optional=true }

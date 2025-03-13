@@ -1,6 +1,25 @@
 use std::io::IsTerminal;
-use crate::e_crate_update::update_crate;
+//use crate::e_crate_update::update_crate;
+//use e_crate_version_checker::get_latest_version;
+//use crate::e_crate_update::version::get_latest_version;
+//use e_crate_version_checker::e_crate_update;
+//use crate::e_crate_update::version::get_latest_version;
+//use crate::e_crate_update::update_crate;
+// If the build script sets the inlined flag:
+// When inlined, the addendum code is available under the external module path.
+//
+#[cfg(feature = "addendum_inline")]
+use e_crate_version_checker::e_crate_update::version::get_latest_version;
+//#[cfg(feature = "addendum_inline")]
+//use e_crate_version_checker::e_crate_update;
+#[cfg(feature = "addendum_inline")]
+use e_crate_version_checker::e_crate_update::update_crate;
+
+// Otherwise, use the default path:
+#[cfg(not(feature = "addendum_inline"))]
 use crate::e_crate_update::version::get_latest_version;
+#[cfg(not(feature = "addendum_inline"))]
+use crate::e_crate_update::update_crate;
 
 
 use std::sync::mpsc;
@@ -80,6 +99,13 @@ fn parse_version(v: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
+fn should_check_for_update() -> bool {
+    // If CARGOE_NO_UPDATE is set to "1" or "true", then skip checking for update.
+    !std::env::var("CARGOE_NO_UPDATE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 
 pub fn interactive_crate_upgrade(
     crate_name: &str,
@@ -87,6 +113,9 @@ pub fn interactive_crate_upgrade(
     wait: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
 
+    if should_check_for_update() {
+        return Ok(());
+    }
     if !std::io::stdin().is_terminal() {
         println!("Non-interactive mode detected; skipping update prompt.");
         return Ok(());
@@ -139,7 +168,7 @@ pub fn interactive_crate_upgrade(
     }
 
     // Compare versions and prompt the user accordingly.
-    println!(" want to install? [Y/n] (wait {} seconds)",wait);
+    print!(" want to install? [Y/n] (wait {} seconds)",wait);
     std::io::Write::flush(&mut std::io::stdout())?;
 
     // let mut input = String::new();
@@ -152,10 +181,10 @@ pub fn interactive_crate_upgrade(
                 Err(e) => eprintln!("Update failed: {}", e),
             }
         } else {
-            println!("Update canceled.");
+            println!(" no update applied.");
         }
     } else {
-        eprintln!("Failed to read input.");
+        eprintln!(" ok.");
         std::process::exit(1);
     }
     Ok(())

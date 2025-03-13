@@ -8,7 +8,13 @@
 // mod e_crate_info;
 // mod e_crate_update;
 
-use e_crate_update::show_current_version;
+//use e_crate_update::show_current_version;
+// When inlined, the addendum code is available under the external module path.
+#[cfg(feature = "addendum_inline")]
+use crate::e_crate_update::show_current_version;
+#[cfg(not(feature = "addendum_inline"))]
+use e_crate_version_checker::e_crate_update::show_current_version;
+
 use e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade;
 use std::env;
 use std::process;
@@ -28,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Interrogate Cargo for the local version of the target crate.
     let current_version =
         lookup_local_version_via_cargo(crate_name).unwrap_or_else(|| "0.0.0".to_string());
-    interactive_crate_upgrade(crate_name, &current_version)?;
+    interactive_crate_upgrade(crate_name, &current_version,7)?;
     Ok(())
 }
 

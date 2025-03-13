@@ -20,6 +20,8 @@ use cargo_e::prelude::*;
 use cargo_e::{Cli, Example, TargetKind};
 use clap::Parser;
 
+pub mod inlined_e_crate_version_checker;
+
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<String> = env::args().collect();
 
