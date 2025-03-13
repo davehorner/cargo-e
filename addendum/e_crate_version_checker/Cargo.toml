@@ -1,6 +1,6 @@
 [package]
 name = "e_crate_version_checker"
-version = "0.1.6"
+version = "0.2.0"
 authors = ["David Horner"]
 edition = "2021"
 
