@@ -1,15 +1,5 @@
 #![doc = include_str!("../README.md")]
 
-#[cfg(all(
-    feature = "equivalent",
-    any(
-        feature = "uses_reqwest",
-        feature = "uses_serde",
-        feature = "check-version"
-    )
-))]
-compile_error!("The 'equivalent' feature cannot be enabled together with any other features.");
-
 // Re-export std common modules
 pub mod prelude {
     pub use std::env;

@@ -20,8 +20,6 @@ use cargo_e::prelude::*;
 use cargo_e::{Cli, Example, TargetKind};
 use clap::Parser;
 
-pub mod inlined_e_crate_version_checker;
-
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<String> = env::args().collect();
 
@@ -37,21 +35,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
-
+                                       
     #[cfg(feature = "check-version-program-start")]
-    {
-        // Attempt to retrieve the version from `cargo e -v`
-        let version =
-            lookup_cargo_e_version().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
-
-        // Use the version from `lookup_cargo_e_version` if valid,
-        // otherwise fallback to the compile-time version.
-        e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(
-            env!("CARGO_PKG_NAME"),
-            &version,
-            cli.wait,
-        )?;
-    }
+    e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(env!("CARGO_PKG_NAME"),env!("CARGO_PKG_VERSION"))?;
 
     // let manifest_current = locate_manifest(false).unwrap_or_default();
     // let manifest_workspace = locate_manifest(true).unwrap_or_default();
@@ -165,35 +151,4 @@ fn run_equivalent_example(cli: &Cli) -> Result<(), Box<dyn Error>> {
         .stderr(Stdio::inherit());
     let status = cmd.status()?;
     std::process::exit(status.code().unwrap_or(1));
-}
-
-/// Looks up the version of `cargo e` by running `cargo e -v`
-/// and returning the first non-empty line of its output.
-///
-/// Returns `Some(version)` if the command executes successfully,
-/// or `None` otherwise.
-///
-/// # Example
-///
-/// ```rust,no_run
-/// let version = lookup_cargo_e_version()
-///     .expect("Could not retrieve cargo e version");
-/// println!("cargo e version: {}", version);
-/// ```
-pub fn lookup_cargo_e_version() -> Option<String> {
-    // Run `cargo e -v`
-    let output = Command::new("cargo").args(&["e", "-v"]).output().ok()?;
-
-    if !output.status.success() {
-        eprintln!("cargo e -v failed");
-        return None;
-    }
-
-    // Convert the output bytes to a string.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Get the first non-empty line and trim any whitespace.
-    let first_line = stdout.lines().find(|line| !line.trim().is_empty())?.trim();
-    println!("{}", first_line);
-    Some(first_line.to_string())
 }
