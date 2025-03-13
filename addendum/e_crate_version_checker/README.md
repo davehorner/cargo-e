@@ -22,14 +22,30 @@ To use this crate in your project, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
+<<<<<<< HEAD
+<<<<<<< HEAD
+e_crate_version_checker = "0.1.0"
+=======
 e_crate_version_checker = "0.2.0"
+>>>>>>> origin/develop
+=======
+e_crate_version_checker = "0.2.0"
+>>>>>>> develop
 ```
 
 Make sure to enable the features you need. For example:
 
 ```toml
 [dependencies.e_crate_version_checker]
+<<<<<<< HEAD
+<<<<<<< HEAD
+version = "0.1.0"
+=======
 version = "0.2.0"
+>>>>>>> origin/develop
+=======
+version = "0.2.0"
+>>>>>>> develop
 features = ["check-version", "uses_reqwest", "uses_serde", "uses_semver"]
 ```
 

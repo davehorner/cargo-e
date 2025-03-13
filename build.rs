@@ -37,5 +37,14 @@ fn main() {
         }
     }
 
-    println!("✅ Image copying complete.");
+    // println!("✅ Image copying complete.");
+    // Force re-run if the dependency’s Cargo.toml changes.
+    //     println!("cargo:rerun-if-changed=extended/e_crate_version_checker/Cargo.toml");
+    //    // Iterate over all environment variables.
+    //     for (key, value) in std::env::vars() {
+    //         // Cargo sets variables starting with "CARGO_FEATURE_"
+    //         if key.starts_with("CARGO_FEATURE_") {
+    //             println!("cargo:warning=Enabled feature: {}={}", key, value);
+    //         }
+    //     }
 }
