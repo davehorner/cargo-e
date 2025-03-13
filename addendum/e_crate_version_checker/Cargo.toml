@@ -3,6 +3,7 @@ name = "e_crate_version_checker"
 version = "0.2.0"
 authors = ["David Horner"]
 edition = "2021"
+publish = false
 
 [features]
 default = ["check-version","uses_reqwest","uses_serde"]
