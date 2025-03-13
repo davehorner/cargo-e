@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 use std::io::{IsTerminal, Write};
 use crate::e_crate_update::update_crate;
 use crate::e_crate_update::version::get_latest_version;
@@ -79,6 +80,45 @@ pub fn interactive_crate_upgrade(
         print!(
             "'{}' new version available. {} -> {}",
             crate_name, latest_version, current_version
+=======
+use std::error::Error;
+use std::io::{self, Write};
+use std::process;
+
+// Assume these functions are available from your module.
+use crate::e_crate_update::update_crate;
+use crate::e_crate_update::version::get_latest_version;
+
+/// Interactively checks for a newer version of a crate and prompts the user to update it.
+///
+/// # Arguments
+///
+/// * `crate_name` - The name of the crate to check.
+/// * `current_version` - The current version of the crate.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the process completes successfully, or an error otherwise.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade; 
+/// interactive_crate_upgrade("mkcmt", "0.1.0").expect("Upgrade process failed");
+/// ```
+pub fn interactive_crate_upgrade(
+    crate_name: &str,
+    current_version: &str,
+) -> Result<(), Box<dyn Error>> {
+    // Retrieve the latest version from crates.io.
+    let latest_version = get_latest_version(crate_name)?;
+    if current_version == "0.0.0" {
+        println!("'{}' is not installed.", crate_name);
+    } else if latest_version != current_version {
+        println!(
+            "'{}'  new version available. {}",
+            crate_name, latest_version
+>>>>>>> develop
         );
     } else {
         println!("'{}' up-to-date! {}", crate_name, current_version);
@@ -86,12 +126,20 @@ pub fn interactive_crate_upgrade(
     }
 
     // Compare versions and prompt the user accordingly.
+<<<<<<< HEAD
     println!("want to install? [Y/n] (wait 3 seconds)");
     std::io::stdout().flush()?;
 
     // let mut input = String::new();
     // if std::io::stdin().read_line(&mut input).is_ok() {
 if let Some(input) = read_line_with_timeout(Duration::from_secs(3)) {
+=======
+    println!("Do you want to install it? [Y/n] ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_ok() {
+>>>>>>> develop
         let input = input.trim().to_lowercase();
         if input == "y" || input.is_empty() {
             match update_crate(crate_name, &latest_version) {
@@ -103,6 +151,7 @@ if let Some(input) = read_line_with_timeout(Duration::from_secs(3)) {
         }
     } else {
         eprintln!("Failed to read input.");
+<<<<<<< HEAD
         std::process::exit(1);
     }
     Ok(())
@@ -240,3 +289,9 @@ if let Some(input) = read_line_with_timeout(Duration::from_secs(3)) {
 // // }
 
 
+=======
+        process::exit(1);
+    }
+    Ok(())
+}
+>>>>>>> develop

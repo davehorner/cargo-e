@@ -35,6 +35,21 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
+                                       
+    #[cfg(feature = "check-version-program-start")]
+    e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(env!("CARGO_PKG_NAME"),env!("CARGO_PKG_VERSION"))?;
+
+    #[cfg(feature = "check-version-program-start")]
+    e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
+
+    #[cfg(feature = "check-version-program-start")]
+    e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )?;
 
     #[cfg(feature = "check-version-program-start")]
     e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(

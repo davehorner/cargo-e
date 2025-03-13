@@ -12,8 +12,10 @@ keywords = ["cargo", "examples", "binaries", "workspace", "rust"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["David Horner"]
 default-run = "cargo-e"
+default-run = "cargo-e"
 
 [features]
+default = ["tui", "concurrent", "funny-docs", "check-version"]
 default = ["tui", "concurrent", "funny-docs", "check-version"]
 tui = ["crossterm", "ratatui"]
 
@@ -33,6 +35,24 @@ uses_reqwest = []
 uses_serde = []
 # uses_semver = ["dep:semver"]
 uses_paste = ["dep:paste"]
+semver = ["dep:semver"]
+
+
+# [features]
+# default = ["tui","concurrent","funny-docs","check-version-program-start"]
+# check-version = ["check-version-program-start"]
+# check-version-program-start = ["dep:e_crate_version_checker", "uses_serde", "uses_reqwest"]
+# tui = ["crossterm", "ratatui"]
+
+# concurrent = ["dep:threadpool"]
+# windows = ["dep:windows"]
+# equivalent = []  # alias/shortcut to --example; nothing more - other features will not apply.
+# funny-docs = ["uses_paste"]
+# uses_reqwest=[]
+# uses_serde=[]
+# uses_semver=["dep:semver"]
+# uses_paste = ["dep:paste"]
+# semver = ["dep:semver"]
 
 [lib]
 name = "cargo_e"
