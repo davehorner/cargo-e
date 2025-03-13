@@ -227,6 +227,14 @@ Many developers create their own custom scripts or tools to expose examples and 
   <img src="https://img.shields.io/crates/v/cargo-e.svg" alt="Crates.io">
 </a>
 
+## Addendum
+
+- HORNER EXAMPLE 1: 
+  [examples/funny_examples](examples/funny_example.rs)
+
+- HORNER EXAMPLE 2: 
+  [addendum/e_crate_version_checker](addendum/e_crate_version_checker)
+
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
   You are reading documentation version <span id="doc-version" style="color: white;">0.1.5</span>.

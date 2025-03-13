@@ -35,6 +35,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
+                                       
+    #[cfg(feature = "check-version-program-start")]
+    e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade(env!("CARGO_PKG_NAME"),env!("CARGO_PKG_VERSION"))?;
 
     // let manifest_current = locate_manifest(false).unwrap_or_default();
     // let manifest_workspace = locate_manifest(true).unwrap_or_default();
@@ -114,7 +117,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         cargo_e::run_example(&ex, &cli.extra)?;
     } else if builtin_examples.len() == 1 && !cli.tui {
-        cargo_e::run_example(builtin_examples[0], &Vec::new())?;
+        cargo_e::run_example(builtin_examples[0], &cli.extra)?;
     } else if examples.is_empty() && !cli.tui {
         println!("No examples available.");
     } else {

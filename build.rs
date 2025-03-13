@@ -5,10 +5,10 @@ use std::path::Path;
 /// It copies `doc/media/` into `target/doc/cargo_e/doc/media/`
 /// to maintain a consistent structure for documentation rendering.
 fn main() {
-    let src = Path::new("doc/media"); // Source images
+    let src = Path::new("documents/media"); // Source images
     let dest = Path::new("target/doc/media"); // Destination inside crate docs
 
-    println!("cargo:rerun-if-changed=doc/media"); // Ensure script runs if files change
+    println!("cargo:rerun-if-changed=documents/media"); // Ensure script runs if files change
 
     if !src.exists() {
         eprintln!("Warning: Source directory {:?} does not exist!", src);
@@ -21,7 +21,7 @@ fn main() {
         return;
     }
 
-    // Copy each image from `doc/media/` into `target/doc/cargo_e/doc/media/`
+    // Copy each image from `documents/media/` into `target/doc/cargo_e/doc/media/`
     for entry in src.read_dir().expect("Failed to read source directory") {
         let entry = entry.expect("Failed to read directory entry");
         let path = entry.path();
@@ -37,5 +37,14 @@ fn main() {
         }
     }
 
-    println!("✅ Image copying complete.");
+    // println!("✅ Image copying complete.");
+   // Force re-run if the dependency’s Cargo.toml changes.
+//     println!("cargo:rerun-if-changed=extended/e_crate_version_checker/Cargo.toml"); 
+//    // Iterate over all environment variables.
+//     for (key, value) in std::env::vars() {
+//         // Cargo sets variables starting with "CARGO_FEATURE_"
+//         if key.starts_with("CARGO_FEATURE_") {
+//             println!("cargo:warning=Enabled feature: {}={}", key, value);
+//         }
+//     } 
 }

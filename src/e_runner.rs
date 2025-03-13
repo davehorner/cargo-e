@@ -35,13 +35,15 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
         cmd.arg("run")
             .current_dir(format!("examples/{}", example.name));
     } else {
-        println!("Running: cargo run --release --example {}", example.name);
         cmd.args(["run", "--release", "--example", &example.name]);
     }
 
     if !extra_args.is_empty() {
         cmd.arg("--").args(extra_args);
     }
+
+    let full_command = format!("cargo {}", cmd.get_args().map(|arg| arg.to_string_lossy()).collect::<Vec<_>>().join(" "));
+    println!("Running: {}", full_command);
 
     let child = cmd.spawn()?;
     use std::sync::{Arc, Mutex};
