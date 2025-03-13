@@ -1,6 +1,6 @@
 [package]
 name = "cargo-e"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
 description = "e is for Example. A command-line tool for running and exploring source, examples, and binaries from Rust projects. It will run the first example, if no options are given."
 license = "MIT OR Apache-2.0"
@@ -11,15 +11,46 @@ readme = "README.md"
 keywords = ["cargo", "examples", "binaries", "workspace", "rust"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["David Horner"]
+default-run = "cargo-e"
 
 [features]
-default = ["tui","concurrent","funny-docs"]
+default = ["tui", "concurrent", "funny-docs", "check-version"]
 tui = ["crossterm", "ratatui"]
-concurrent = ["threadpool"]
+
+check-version = ["check-version-program-start"]
+check-version-program-start = [
+  "dep:e_crate_version_checker",
+  "e_crate_version_checker/uses_reqwest",
+  "e_crate_version_checker/uses_serde"
+]
+
+concurrent = ["dep:threadpool"]
 windows = ["dep:windows"]
 equivalent = []  # alias/shortcut to --example; nothing more - other features will not apply.
 funny-docs = ["uses_paste"]
+
+uses_reqwest = []
+uses_serde = []
+uses_semver = ["dep:semver"]
 uses_paste = ["dep:paste"]
+semver = ["dep:semver"]
+
+
+# [features]
+# default = ["tui","concurrent","funny-docs","check-version-program-start"]
+# check-version = ["check-version-program-start"]
+# check-version-program-start = ["dep:e_crate_version_checker", "uses_serde", "uses_reqwest"]
+# tui = ["crossterm", "ratatui"]
+
+# concurrent = ["dep:threadpool"]
+# windows = ["dep:windows"]
+# equivalent = []  # alias/shortcut to --example; nothing more - other features will not apply.
+# funny-docs = ["uses_paste"]
+# uses_reqwest=[]
+# uses_serde=[]
+# uses_semver=["dep:semver"]
+# uses_paste = ["dep:paste"]
+# semver = ["dep:semver"]
 
 [lib]
 name = "cargo_e"
@@ -35,6 +66,14 @@ doctest = true
 name = "cargo-e"
 path = "src/main.rs"
 
+
+
+[dependencies.e_crate_version_checker]
+path = "addendum/e_crate_version_checker"
+version = "0.2.0"
+optional = true
+features = ["uses_reqwest", "uses_serde"]
+
 [dependencies]
 anyhow = "1.0.97"
 clap = { version = "4.5.31", features = ["derive"] }
@@ -47,6 +86,7 @@ threadpool = { version = "1.8.1", optional = true }
 toml = "0.8.20"
 tracing = "0.1.41"
 windows = { version = "0.60.0", features = ["Win32", "Win32_System_Console", "Win32_Foundation","Win32_System_SystemServices"], optional = true }
+semver = { version = "1.0.26", optional = true }
 
 
 [dev-dependencies]
