@@ -7,7 +7,7 @@
 //!
 //! # Examples
 //!
-//! **Version checking:** (requires features `check-version`, `uses_reqwest`, `uses_serde`, and optionally `uses_semver`)
+//! **Version checking:** (requires features `check-version`, `uses_reqwest`, `uses_serde`)
 //! ```rust,no_run
 //! use e_crate_version_checker::e_crate_update::version::{get_latest_version, is_newer_version_available, check_for_update};
 //!
@@ -35,9 +35,6 @@
 use std::error::Error;
 use std::process::Command;
 
-// Use semver for version comparisons.
-// #[cfg(feature = "uses_semver")]
-// use semver::Version;
 
 // Include the crate's version number from Cargo.toml in the User-Agent.
 const USER_AGENT: &str = concat!(
@@ -55,8 +52,6 @@ pub mod version {
     // Only compile the following if the required sub-features are enabled.
     #[cfg(all(feature = "uses_reqwest", feature = "uses_serde"))]
     use reqwest;
-    #[cfg(feature = "uses_semver")]
-    use semver::Version;
     #[cfg(all(feature = "uses_reqwest", feature = "uses_serde"))]
     use serde::Deserialize;
 
@@ -124,22 +119,8 @@ pub mod version {
         current_version: &str,
         crate_name: &str,
     ) -> Result<bool, Box<dyn Error>> {
-        #[cfg(feature = "uses_semver")]
-        {
-            let latest_version_str = get_latest_version(crate_name)?;
-            // println!(
-            //     "[TRACE] Comparing current version {} with latest {}",
-            //     current_version, latest_version_str
-            // );
-            let current = Version::parse(current_version)?;
-            let latest = Version::parse(&latest_version_str)?;
-            Ok(latest > current)
-        }
-        #[cfg(not(feature = "uses_semver"))]
-        {
             let latest_version_str = get_latest_version(crate_name)?;
             Ok(naive_is_newer(current_version, &latest_version_str))
-        }
     }
 
     fn naive_is_newer(current: &str, latest: &str) -> bool {
