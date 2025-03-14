@@ -27,6 +27,10 @@ fn transform_file_contents(contents: &str) -> String {
         result.push_str(line);
         result.push('\n');
     }
+    result = result.replace(
+        "crate::e_crate_update",
+        "inlined_e_crate_version_checker::e_crate_update",
+    );
 
     result
 }
@@ -100,6 +104,14 @@ pub fn generate_module_includes(src_dir: &Path, out_dir: &Path) -> io::Result<St
             println!("Processed file: {:?} as module '{}'", path, module_name);
         }
     }
+    // After processing all files, append a prelude module:
+    output.push_str(
+        "\npub mod prelude {\n\
+     \tpub use super::e_crate_update::version::get_latest_version;\n\
+     \tpub use super::e_crate_update::update_crate;\n\
+     \tpub use super::e_interactive_crate_upgrade::interactive_crate_upgrade;\n\
+     }\n",
+    );
     Ok(output)
 }
 

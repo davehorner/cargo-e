@@ -12,6 +12,15 @@ keywords = ["cargo", "examples", "binaries", "workspace", "rust"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["David Horner"]
 default-run = "cargo-e"
+include = [
+    "src/**",
+    "addendum/**",
+    "Cargo.toml",
+    "build.rs",
+    "build_addendum_utils.rs",
+    "build_docs.rs",
+    # other files you want to include
+]
 
 [features]
 default = ["tui", "concurrent", "funny-docs", "check-version","addendum_inline","uses_reqwest","uses_serde"]
