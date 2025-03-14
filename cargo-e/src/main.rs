@@ -16,7 +16,6 @@
 //!
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
-
 // Now import from the prelude.
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;

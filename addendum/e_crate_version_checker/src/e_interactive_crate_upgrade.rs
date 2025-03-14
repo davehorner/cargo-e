@@ -1,17 +1,14 @@
-use std::error::Error;
-use std::io::{self, Write};
-use std::process;
 use std::io::IsTerminal;
 
+#[cfg(not(feature = "addendum_inline"))]
+use crate::e_crate_update::version::get_latest_version;
 #[cfg(feature = "addendum_inline")]
 use crate::inlined_e_crate_version_checker::e_crate_update::update_crate;
 #[cfg(feature = "addendum_inline")]
 use crate::inlined_e_crate_version_checker::e_crate_update::version::get_latest_version;
-#[cfg(not(feature = "addendum_inline"))]
-use crate::e_crate_update::version::get_latest_version;
 
 #[cfg(not(feature = "addendum_inline"))]
-use crate::e_crate_update::update_crate; 
+use crate::e_crate_update::update_crate;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -31,7 +28,7 @@ use std::time::Duration;
 // ///
 // /// ```rust,no_run
 // /// use std::time::Duration;
-// /// 
+// ///
 // /// let timeout = Duration::from_secs(5);
 // /// if let Some(key) = read_key_with_timeout(timeout) {
 // ///     println!("Key pressed: {}", key);
@@ -44,7 +41,7 @@ use std::time::Duration;
 //     if enable_raw_mode().is_err() {
 //         return None;
 //     }
-    
+
 //     let result = if poll(timeout).ok()? {
 //         // We have an event; try to read it.
 //         if let Ok(Event::Key(event)) = read() {
@@ -61,12 +58,11 @@ use std::time::Duration;
 //         // No event was received within the timeout.
 //         None
 //     };
-    
+
 //     // Disable raw mode before returning.
 //     let _ = disable_raw_mode();
 //     result
 // }
-
 
 fn read_line_with_timeout(timeout: Duration) -> Option<String> {
     let (tx, rx) = mpsc::channel();
@@ -89,13 +85,11 @@ fn parse_version(v: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
-
 pub fn interactive_crate_upgrade(
     crate_name: &str,
     current_version: &str,
     wait: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     if !std::io::stdin().is_terminal() {
         println!("Non-interactive mode detected; skipping update prompt.");
         return Ok(());
@@ -105,9 +99,13 @@ pub fn interactive_crate_upgrade(
     let latest_version = get_latest_version(crate_name)?;
     if current_version == "0.0.0" {
         print!("'{}' is not installed.", crate_name);
-    } else if let (Some((cur_major, cur_minor, cur_patch)), Some((lat_major, lat_minor, lat_patch))) =
-        (parse_version(current_version), parse_version(&latest_version))
-    {
+    } else if let (
+        Some((cur_major, cur_minor, cur_patch)),
+        Some((lat_major, lat_minor, lat_patch)),
+    ) = (
+        parse_version(current_version),
+        parse_version(&latest_version),
+    ) {
         let current_tuple = (cur_major, cur_minor, cur_patch);
         let latest_tuple = (lat_major, lat_minor, lat_patch);
         if current_tuple == latest_tuple {
@@ -148,7 +146,7 @@ pub fn interactive_crate_upgrade(
     }
 
     // Compare versions and prompt the user accordingly.
-    println!(" want to install? [Y/n] (wait {} seconds)",wait);
+    println!(" want to install? [Y/n] (wait {} seconds)", wait);
     std::io::Write::flush(&mut std::io::stdout())?;
 
     // let mut input = String::new();
