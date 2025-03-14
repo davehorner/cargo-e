@@ -10,74 +10,8 @@ use crate::inlined_e_crate_version_checker::e_crate_update::version::get_latest_
 #[cfg(not(feature = "addendum_inline"))]
 use crate::e_crate_update::version::get_latest_version;
 
-// #[cfg(feature = "addendum_inline")]
-// use e_crate_version_checker::e_crate_update::update_crate;
-
-#[cfg(not(feature = "addendum_inline"))]
-compile_error!("The 'addendum_inline' feature is not enabled. Please enable it for the desired behavior.");
-
 #[cfg(not(feature = "addendum_inline"))]
 use crate::e_crate_update::update_crate; 
-// use crate::e_crate_update::version::update_crate;
-
-/// Interactively checks for a newer version of a crate and prompts the user to update it.
-///
-/// # Arguments
-///
-/// * `crate_name` - The name of the crate to check.
-/// * `current_version` - The current version of the crate.
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the process completes successfully, or an error otherwise.
-///
-/// # Example
-///
-/// ```rust,no_run
-/// use e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade; 
-/// interactive_crate_upgrade("mkcmt", "0.1.0").expect("Upgrade process failed");
-/// ```
-// pub fn interactive_crate_upgrade(
-//     crate_name: &str,
-//     current_version: &str,
-// ) -> Result<(), Box<dyn Error>> {
-//     // Retrieve the latest version from crates.io.
-//     let latest_version = get_latest_version(crate_name)?;
-//     if current_version == "0.0.0" {
-//         println!("'{}' is not installed.", crate_name);
-//     } else if latest_version != current_version {
-//         println!(
-//             "'{}'  new version available. {}",
-//             crate_name, latest_version
-//         );
-//     } else {
-//         println!("'{}' up-to-date! {}", crate_name, current_version);
-//         return Ok(());
-//     }
-//
-//     // Compare versions and prompt the user accordingly.
-//     println!("Do you want to install it? [Y/n] ");
-//     io::stdout().flush()?;
-//
-//     let mut input = String::new();
-//     if io::stdin().read_line(&mut input).is_ok() {
-//         let input = input.trim().to_lowercase();
-//         if input == "y" || input.is_empty() {
-//             match update_crate(crate_name, &latest_version) {
-//                 Ok(()) => println!("Update complete."),
-//                 Err(e) => eprintln!("Update failed: {}", e),
-//             }
-//         } else {
-//             println!("Update canceled.");
-//         }
-//     } else {
-//         eprintln!("Failed to read input.");
-//         process::exit(1);
-//     }
-//     Ok(())
-// }
-
-
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
