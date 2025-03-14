@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.5</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.6</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 
@@ -237,6 +237,6 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.5</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.6</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
