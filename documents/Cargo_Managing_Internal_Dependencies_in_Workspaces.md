@@ -53,3 +53,10 @@ The tension between ensuring reliable, reproducible builds and enabling internal
   Use this document as a living record to gather feedback, iterate on potential solutions, and refine best practices for managing internal dependencies.
 
 
+## User discussions
+
+(https://users.rust-lang.org/t/referencing-workspace-member-as-dependency/86496) - use path, path doesn't work on the build runners, auto closed.
+
+(https://internals.rust-lang.org/t/feature-discussion-allow-internal-dependencies-in-cargo/16445/4) user apologizes for spamming was auto closed - pointed to (https://github.com/rust-lang/rust/issues/44663).
+
+(https://internals.rust-lang.org/t/publish-libraries-with-internal-dependencies/10843) this user was told they did something wrong by posting here, this question should be asked on the [https://users.rust-lang.org](https://users.rust-lang.org/) forum. This forum ([https://internals.rust-lang.org](https://internals.rust-lang.org/)) is dedicated to the development of Rust itself.
