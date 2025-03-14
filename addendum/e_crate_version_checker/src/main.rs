@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Interrogate Cargo for the local version of the target crate.
     let current_version =
-        lookup_local_version_via_cargo(crate_name).unwrap_or_else(|| "0.0.0".to_string());
+    lookup_local_version_via_cargo(crate_name).unwrap_or_else(|| "0.0.0".to_string());
     interactive_crate_upgrade(crate_name, &current_version, 5)?;
     Ok(())
 }
