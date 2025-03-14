@@ -5,8 +5,8 @@
 //! compares it with the currently running version, and prompts the user
 //! to update the crate if a new version is available.
 
-// mod e_crate_info;
-// mod e_crate_update;
+//mod e_crate_info;
+mod e_crate_update;
 
 use e_crate_update::show_current_version;
 use e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade;
@@ -80,4 +80,3 @@ pub fn lookup_local_version_via_cargo(crate_name: &str) -> Option<String> {
         .find(|pkg| pkg.name == crate_name)
         .map(|pkg| pkg.version)
 }
-
