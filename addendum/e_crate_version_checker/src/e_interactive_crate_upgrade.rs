@@ -13,8 +13,8 @@ use crate::e_crate_update::version::get_latest_version;
 // #[cfg(feature = "addendum_inline")]
 // use e_crate_version_checker::e_crate_update::update_crate;
 
-#[cfg(not(feature = "addendum_inline"))]
-compile_error!("The 'addendum_inline' feature is not enabled. Please enable it for the desired behavior.");
+// #[cfg(not(feature = "addendum_inline"))]
+// compile_error!("The 'addendum_inline' feature is not enabled. Please enable it for the desired behavior.");
 
 #[cfg(not(feature = "addendum_inline"))]
 use crate::e_crate_update::update_crate; 

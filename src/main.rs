@@ -16,12 +16,16 @@
 //!
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
-use crate::inlined_e_crate_version_checker::e_interactive_crate_upgrade;
+// Declare the module so that the contents of "src/inlined_e_crate_version_checker.rs" are compiled.
+mod inlined_e_crate_version_checker;
+
+// Now import from the prelude.
+#[cfg(feature = "check-version-program-start")]
+use inlined_e_crate_version_checker::prelude::*;
+
 use cargo_e::prelude::*;
 use cargo_e::{Cli, Example, TargetKind};
 use clap::Parser;
-#[cfg(feature = "check-version-program-start")]
-mod inlined_e_crate_version_checker;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<String> = env::args().collect();
@@ -47,11 +51,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Use the version from `lookup_cargo_e_version` if valid,
         // otherwise fallback to the compile-time version.
-        e_interactive_crate_upgrade::interactive_crate_upgrade(
-            env!("CARGO_PKG_NAME"),
-            &version,
-            cli.wait,
-        )?;
+        interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait)?;
     }
 
     // let manifest_current = locate_manifest(false).unwrap_or_default();
