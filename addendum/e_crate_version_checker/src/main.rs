@@ -5,7 +5,7 @@
 //! compares it with the currently running version, and prompts the user
 //! to update the crate if a new version is available.
 
-mod e_crate_info;
+//mod e_crate_info;
 mod e_crate_update;
 
 use e_crate_update::show_current_version;
