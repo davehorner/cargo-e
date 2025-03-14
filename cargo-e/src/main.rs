@@ -16,12 +16,10 @@
 //!
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
-// Declare the module so that the contents of "src/inlined_e_crate_version_checker.rs" are compiled.
-mod inlined_e_crate_version_checker;
 
 // Now import from the prelude.
 #[cfg(feature = "check-version-program-start")]
-use inlined_e_crate_version_checker::prelude::*;
+use e_crate_version_checker::prelude::*;
 
 use cargo_e::prelude::*;
 use cargo_e::{Cli, Example, TargetKind};
