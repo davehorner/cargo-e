@@ -1,3 +1,3 @@
 [workspace]
+resolver = "2"
 members = ["cargo-e","addendum/e_crate_version_checker"]
-workspace.resolver = "2"

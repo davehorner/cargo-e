@@ -119,7 +119,7 @@ pub mod version {
         }
     }
 
-    fn naive_is_newer(current: &str, latest: &str) -> bool {
+    pub fn naive_is_newer(current: &str, latest: &str) -> bool {
         // Split the version strings on '.'
         let current_parts: Vec<u32> = current
             .split('.')
@@ -184,7 +184,6 @@ pub mod version {
 /// When the feature `check-version` is disabled, provide stub implementations.
 #[cfg(not(any(feature = "check-version", feature = "check-version-program-start")))]
 pub mod version {
-    use super::*;
     pub fn get_latest_version(_crate_name: &str) -> Result<String, Box<dyn Error>> {
         Err("Feature check-version is disabled".into())
     }
