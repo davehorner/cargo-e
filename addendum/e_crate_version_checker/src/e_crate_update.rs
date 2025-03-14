@@ -7,30 +7,7 @@
 //!
 //! # Examples
 //!
-//! **Version checking:** (requires features `check-version`, `uses_reqwest`, `uses_serde`, and optionally `uses_semver`)
-//! ```rust,no_run
-//! use e_crate_version_checker::e_crate_update::version::{get_latest_version, is_newer_version_available, check_for_update};
 //!
-//! let latest = get_latest_version("cargo-e").expect("Failed to get version");
-//! println!("Latest version: {}", latest);
-//!
-//! if is_newer_version_available(env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME")).unwrap() {
-//!     println!("A new version is available!");
-//! }
-//!
-//! // Or simply:
-//! check_for_update().expect("Failed to check for update");
-//! ```
-//!
-//! **Updating the crate:**  
-//! ```rust,no_run
-//! use cargo_e::e_version_update::{build_update_args, update_crate};
-//! use e_crate_version_checker::e_crate_update::version::{build_update_args, update_crate};
-//!
-//! let args = build_update_args("cargo-e", "0.1.5");
-//! println!("Update arguments: {:?}", args);
-//! update_crate("cargo-e", "0.1.5").expect("Update failed");
-//! ```
 
 use std::error::Error;
 use std::process::Command;

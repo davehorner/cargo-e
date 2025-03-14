@@ -31,6 +31,8 @@ fn main() {
         .expect("Failed to generate module includes");
     let dest_path = Path::new(&out_dir).join("generated_e_crate_version_checker.rs");
     println!("cargo:warning=Writing generated file to {:?}", dest_path);
+    let generated = std::fs::read_to_string(&dest_path).expect("Failed to read the generated file");
+    println!("cargo:warning=Generated file content:\n{}", generated);
     if generated_code.is_empty() {
         println!("cargo:warning=No addendum files found in {:?}", src_dir);
         std::process::exit(1);
