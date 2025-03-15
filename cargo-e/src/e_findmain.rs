@@ -4,7 +4,7 @@ use crate::prelude::*;
 use toml::Value;
 
 use crate::e_types::{Example, TargetKind};
-use crate::e_workspace::{is_workspace_manifest,get_workspace_member_manifest_paths};
+use crate::e_workspace::{get_workspace_member_manifest_paths, is_workspace_manifest};
 
 /// Given an Example, attempts to locate the main file.
 ///
@@ -22,13 +22,13 @@ use crate::e_workspace::{is_workspace_manifest,get_workspace_member_manifest_pat
 pub fn find_main_file(sample: &Example) -> Option<PathBuf> {
     let manifest_path = Path::new(&sample.manifest_path);
 
-
     // Determine the base directory.
     let base = if is_workspace_manifest(manifest_path) {
         // Try to locate a workspace member manifest matching the sample name.
         if let Some(members) = get_workspace_member_manifest_paths(manifest_path) {
-            if let Some((_, member_manifest)) =
-                members.into_iter().find(|(member_name, _)| member_name == &sample.name)
+            if let Some((_, member_manifest)) = members
+                .into_iter()
+                .find(|(member_name, _)| member_name == &sample.name)
             {
                 member_manifest.parent().map(|p| p.to_path_buf())?
             } else {
@@ -53,13 +53,16 @@ pub fn find_main_file(sample: &Example) -> Option<PathBuf> {
     if candidate_main.exists() {
         return Some(candidate_main);
     }
-    let candidate_main = base.join(format!("{}.rs",sample.name));
+    let candidate_main = base.join(format!("{}.rs", sample.name));
     println!("DEBUG: candidate_src: {:?}", candidate_main);
     if candidate_main.exists() {
         return Some(candidate_main);
     }
     // Check conventional location src\bin samples.
-    let candidate_src = base.join("src").join("bin").join(format!("{}.rs",sample.name));
+    let candidate_src = base
+        .join("src")
+        .join("bin")
+        .join(format!("{}.rs", sample.name));
     println!("DEBUG: candidate_src: {:?}", candidate_src);
     if candidate_src.exists() {
         return Some(candidate_src);
@@ -119,27 +122,29 @@ pub fn compute_vscode_args(sample: &Example) -> (String, Option<String>) {
     println!("DEBUG: manifest_path: {:?}", manifest_path);
 
     let candidate_file: Option<PathBuf> = find_main_file(sample).or_else(|| {
-    if sample.kind == TargetKind::Binary || (sample.kind == TargetKind::Example && sample.extended) {
-        // Fallback to "src/main.rs" in the manifest's folder.
-        let base = manifest_path.parent()?;
-        let fallback = base.join("src/main.rs");
-        if fallback.exists() {
-            Some(fallback)
+        if sample.kind == TargetKind::Binary
+            || (sample.kind == TargetKind::Example && sample.extended)
+        {
+            // Fallback to "src/main.rs" in the manifest's folder.
+            let base = manifest_path.parent()?;
+            let fallback = base.join("src/main.rs");
+            if fallback.exists() {
+                Some(fallback)
+            } else {
+                None
+            }
+        } else if sample.kind == TargetKind::Example && !sample.extended {
+            // For built-in examples, assume the file is "examples/<name>.rs" relative to the current directory.
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let fallback = cwd.join("examples").join(format!("{}.rs", sample.name));
+            if fallback.exists() {
+                Some(fallback)
+            } else {
+                None
+            }
         } else {
             None
         }
-    } else if sample.kind == TargetKind::Example && !sample.extended {
-        // For built-in examples, assume the file is "examples/<name>.rs" relative to the current directory.
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let fallback = cwd.join("examples").join(format!("{}.rs", sample.name));
-        if fallback.exists() {
-            Some(fallback)
-        } else {
-            None
-        }
-    } else {
-        None
-    }
     });
 
     println!("DEBUG: candidate_file: {:?}", candidate_file);
@@ -217,6 +222,119 @@ pub async fn open_vscode_for_sample(sample: &Example) {
         }
     }
 }
+
+// /// Opens Vim for the given sample target.
+// /// It computes the file and (optionally) the line and column to jump to.
+// /// If the goto argument is in the format "file:line:column", it spawns Vim with a command to move the cursor.
+// pub fn open_vim_for_sample(sample: &Example) {
+//     let (folder_str, goto_arg) = compute_vscode_args(sample);
+
+//     // Determine the file to open and optionally extract line and column.
+//     let (file, line, col) = if let Some(goto) = goto_arg {
+//         // Split into parts and convert each to an owned String.
+//         let parts: Vec<String> = goto.split(':').map(|s| s.to_string()).collect();
+//         if parts.len() >= 3 {
+//             (parts[0].clone(), parts[1].clone(), parts[2].clone())
+//         } else {
+//             (goto.clone(), "1".to_string(), "1".to_string())
+//         }
+//     } else {
+//         (folder_str.clone(), "1".to_string(), "1".to_string())
+//     };
+
+//     // Prepare Vim command arguments.
+//     // We use the Vim command to jump to the given line and column:
+//     //   +":call cursor(line, col)"
+//     let cursor_cmd = format!("+call cursor({}, {})", line, col);
+// println!("nvim {}",&file);
+//     // Spawn the Vim process.
+//     let output = if cfg!(target_os = "windows") {
+//         let args=&["/C", "nvim", &cursor_cmd, &file];
+//         println!("{:?}",args);
+//         // On Windows, we might need to run via cmd.
+//         Command::new("cmd")
+//             .args(args)
+//             .output()
+//     } else {
+//         let args=&[&cursor_cmd, &file];
+//         println!("{:?}",args);
+//         Command::new("nvim")
+//             .args(args)
+//             .output()
+//     };
+
+//     match output {
+//         Ok(output) if output.status.success() => {
+//             println!("DEBUG: Vim opened successfully.");
+//         }
+//         Ok(output) => {
+//             let msg = format!(
+//                 "Error opening Vim:\nstdout: {}\nstderr: {}",
+//                 String::from_utf8_lossy(&output.stdout),
+//                 String::from_utf8_lossy(&output.stderr)
+//             );
+//             error!("{}", msg);
+//         }
+//         Err(e) => {
+//             let msg = format!("Failed to execute Vim command: {}", e);
+//             error!("{}", msg);
+//         }
+//     }
+// }
+
+// /// Opens Emacs (via emacsclient) for the given sample target.
+// ///
+// /// It computes the file and (optionally) the line (and column) where "fn main"
+// /// is located. Emacsclient supports jumping to a line with `+<line>`, so we use that.
+// /// Note: column information is not used by default.
+// pub fn open_emacs_for_sample(sample: &Example) {
+//     let (folder_str, goto_arg) = compute_vscode_args(sample);
+
+//     // Parse the goto argument if available.
+//     let (file, line, _col) = if let Some(goto) = goto_arg {
+//         // Expect the format "file:line:column". Convert each to an owned String.
+//         let parts: Vec<String> = goto.split(':').map(|s| s.to_string()).collect();
+//         if parts.len() >= 3 {
+//             (parts[0].clone(), parts[1].clone(), parts[2].clone())
+//         } else {
+//             (goto.clone(), "1".to_string(), "1".to_string())
+//         }
+//     } else {
+//         (folder_str.clone(), "1".to_string(), "1".to_string())
+//     };
+
+//     // Create the line argument for emacsclient: "+<line>"
+//     let line_arg = format!("+{}", line);
+
+//     // Spawn emacsclient to open the file at the desired line.
+//     let output = if cfg!(target_os = "windows") {
+//         Command::new("cmd")
+//             .args(&["/C", "emacsclient", "-n", &line_arg, &file])
+//             .output()
+//     } else {
+//         Command::new("emacsclient")
+//             .args(&["-n", &line_arg, &file])
+//             .output()
+//     };
+
+//     match output {
+//         Ok(output) if output.status.success() => {
+//             println!("DEBUG: Emacs opened successfully.");
+//         }
+//         Ok(output) => {
+//             let msg = format!(
+//                 "Error opening Emacs:\nstdout: {}\nstderr: {}",
+//                 String::from_utf8_lossy(&output.stdout),
+//                 String::from_utf8_lossy(&output.stderr)
+//             );
+//             error!("{}", msg);
+//         }
+//         Err(e) => {
+//             let msg = format!("Failed to execute Emacs command: {}", e);
+//             error!("{}", msg);
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

@@ -211,6 +211,24 @@ pub mod tui_interactive {
                                     reinit_terminal(&mut terminal)?;
                                 }
                             }
+                            // KeyCode::Char('v') => {
+                            //     if let Some(selected) = list_state.selected() {
+                            //         // Disable raw mode for debug printing.
+                            //         crossterm::terminal::disable_raw_mode()?;
+                            //         crossterm::execute!(
+                            //             std::io::stdout(),
+                            //             crossterm::terminal::LeaveAlternateScreen
+                            //         )?;
+                            //         // When 'e' is pressed, attempt to open the sample in VSCode.
+                            //         let sample = &examples[selected];
+                            //         println!("Opening VIM for path: {}", sample.manifest_path);
+                            //         // Here we block on the asynchronous open_vscode call.
+                            //         // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
+                            //         e_findmain::open_vim_for_sample(sample);
+                            //         std::thread::sleep(std::time::Duration::from_secs(5));
+                            //         reinit_terminal(&mut terminal)?;
+                            //     }
+                            // }
                             KeyCode::Enter => {
                                 if let Some(selected) = list_state.selected() {
                                     run_piece(

@@ -14,7 +14,8 @@ pub mod prelude {
     pub use std::sync::mpsc;
     pub use std::sync::{Arc, Mutex};
     pub use std::time::Instant;
-    pub use tracing::{debug, error, info};
+    //pub use tracing::{debug, error, info};
+    pub use log::{debug, error, info, log_enabled, Level};
 }
 
 pub mod e_findmain;

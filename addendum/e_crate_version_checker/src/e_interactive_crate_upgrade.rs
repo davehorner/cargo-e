@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 
-use crate::e_crate_update::version::get_latest_version;
 use crate::e_crate_update::update_crate;
+use crate::e_crate_update::version::get_latest_version;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;

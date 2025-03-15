@@ -166,9 +166,10 @@ pub fn collect_all_samples(
 ) -> Result<Vec<Example>, Box<dyn Error>> {
     let mut manifest_infos: Vec<(String, PathBuf, bool)> = Vec::new();
     let cwd = env::current_dir()?;
-    // Built-in samples: if there is a Cargo.toml in cwd, add it.
-    let built_in_manifest = cwd.join("Cargo.toml");
+
+    let built_in_manifest = PathBuf::from(crate::locate_manifest(use_workspace)?);
     if built_in_manifest.exists() {
+        println!("builtin: {}", built_in_manifest.display());
         manifest_infos.push(("-".to_string(), built_in_manifest, false));
     } else {
         error!("No Cargo.toml found in current directory for built-in samples.");
