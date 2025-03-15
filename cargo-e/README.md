@@ -8,6 +8,8 @@
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 
+  NOTE: At this time, the git repo and the crate.io are not in sync.  Internal dependency publication issues have prevented new releases.  Additional detail available here:
+   [Cargo_Managing_Internal_Dependencies_in_Workspaces.md](documents/)
 <img id="screenshot"
      src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/documents/media/screenshot-cargo-e.webp"
      alt="Cargo-e Screenshot" title="Cargo-e running in terminal"

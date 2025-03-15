@@ -14,7 +14,7 @@ authors = ["David Horner"]
 default-run = "cargo-e"
 include = [
     "src/**",
-    "addendum/**",
+    "../addendum/**",
     "Cargo.toml",
     "build.rs",
     "build_addendum_utils.rs",
@@ -23,7 +23,8 @@ include = [
 ]
 
 [features]
-default = ["tui", "concurrent", "funny-docs", "check-version","addendum_inline","uses_reqwest","uses_serde"]
+# turn on check-version manually. for now.
+default = ["tui", "concurrent", "funny-docs","addendum_inline","uses_reqwest","uses_serde"]
 tui = ["crossterm", "ratatui"]
 
 check-version = ["check-version-program-start"]
@@ -82,7 +83,7 @@ path = "src/main.rs"
 # features = ["uses_reqwest", "uses_serde"]
 
 [dependencies]
-e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.5" }
+e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.0" }
 anyhow = "1.0.97"
 clap = { version = "4.5.31", features = ["derive"] }
 crossterm = { version = "0.28.1", optional = true }
