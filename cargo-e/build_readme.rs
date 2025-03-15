@@ -2,6 +2,7 @@ use regex::Regex;
 use std::fs;
 use std::path::Path;
 
+// dave horner
 pub fn update_readme() {
     // Read Cargo.toml and extract the version string.
     let cargo_toml = fs::read_to_string("Cargo.toml").expect("Failed to read Cargo.toml");

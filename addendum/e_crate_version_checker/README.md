@@ -1,20 +1,17 @@
 # e_crate_version_checker
 
-`e_crate_version_checker` is a Rust library and command-line application that checks for new versions of a specified crate from [crates.io](https://crates.io) and optionally updates it using `cargo install`. The tool supports both semantic version comparisons (via the `semver` crate) and a simple numeric fallback when the corresponding feature is disabled. It also provides an interactive upgrade prompt for improved usability.
+`e_crate_version_checker` is a Rust library and command-line application that checks for new versions of a specified crate from [crates.io](https://crates.io) and optionally updates it using `cargo install`. The tool supports simple numeric version comparisons. It also provides an interactive upgrade prompt for improved usability.
 
 ## Features
 
 - **Version Checking:**  
   Query [crates.io](https://crates.io) to retrieve the latest version of a crate and compare it with the currently installed version.
 
-- **Semantic Versioning Support:**  
-  sorta uses the `semver` crate for accurate version comparison when the feature `uses_semver` is enabled.
-
 - **Interactive Update:**  
   Provides an interactive prompt that asks the user if they want to update a crate when a new version is available.
 
 - **Flexible Configuration:**  
-  Supports enabling/disabling features such as `check-version`, `uses_reqwest`, `uses_serde`, and `uses_semver` to tailor the functionality to your needs.
+  Supports enabling/disabling features such as `check-version`, `uses_reqwest`, and `uses_serde` to tailor the functionality to your needs.
 
 ## Installation
 
@@ -30,7 +27,7 @@ Make sure to enable the features you need. For example:
 ```toml
 [dependencies.e_crate_version_checker]
 version = "0.1.0"
-features = ["check-version", "uses_reqwest", "uses_serde", "uses_semver"]
+features = ["check-version", "uses_reqwest", "uses_serde"]
 ```
 
 ## Usage
