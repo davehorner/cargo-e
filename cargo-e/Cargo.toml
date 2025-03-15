@@ -15,9 +15,9 @@ default-run = "cargo-e"
 include = [
     "src/**",
     "../addendum/**",
+    "documents/**",
     "Cargo.toml",
     "build.rs",
-    "build_addendum_utils.rs",
     "build_docs.rs",
     # other files you want to include
 ]
