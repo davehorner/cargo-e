@@ -4,6 +4,7 @@ use crate::prelude::*;
 use toml::Value;
 
 use crate::e_types::{Example, TargetKind};
+use crate::e_workspace::{is_workspace_manifest,get_workspace_member_manifest_paths};
 
 /// Given an Example, attempts to locate the main file.
 ///
@@ -20,20 +21,39 @@ use crate::e_types::{Example, TargetKind};
 ///   - Returns Some(candidate) if the file exists.
 pub fn find_main_file(sample: &Example) -> Option<PathBuf> {
     let manifest_path = Path::new(&sample.manifest_path);
-    let base = manifest_path.parent()?;
 
-    if sample.extended {
-        // Check conventional locations in extended samples.
-        let candidate_src = base.join("src/main.rs");
-        if candidate_src.exists() {
-            return Some(candidate_src);
+
+    // Determine the base directory.
+    let base = if is_workspace_manifest(manifest_path) {
+        // Try to locate a workspace member manifest matching the sample name.
+        if let Some(members) = get_workspace_member_manifest_paths(manifest_path) {
+            if let Some((_, member_manifest)) =
+                members.into_iter().find(|(member_name, _)| member_name == &sample.name)
+            {
+                member_manifest.parent().map(|p| p.to_path_buf())?
+            } else {
+                // No matching member found; use the workspace manifest's parent.
+                manifest_path.parent().map(|p| p.to_path_buf())?
+            }
+        } else {
+            manifest_path.parent().map(|p| p.to_path_buf())?
         }
-        let candidate_main = base.join("main.rs");
-        if candidate_main.exists() {
-            return Some(candidate_main);
-        }
-        // If neither conventional file exists, fall through to Cargo.toml parsing.
+    } else {
+        manifest_path.parent()?.to_path_buf()
+    };
+
+    // Check conventional locations for extended samples.
+    let candidate_src = base.join("src").join("main.rs");
+    println!("DEBUG: candidate_src: {:?}", candidate_src);
+    if candidate_src.exists() {
+        return Some(candidate_src);
     }
+    let candidate_main = base.join("main.rs");
+    println!("DEBUG: candidate_src: {:?}", candidate_main);
+    if candidate_main.exists() {
+        return Some(candidate_main);
+    }
+    // If neither conventional file exists, fall through to Cargo.toml parsing.
 
     let contents = fs::read_to_string(manifest_path).ok()?;
     let value: Value = contents.parse().ok()?;
@@ -87,22 +107,18 @@ pub fn compute_vscode_args(sample: &Example) -> (String, Option<String>) {
     // Debug print
     println!("DEBUG: manifest_path: {:?}", manifest_path);
 
-    let candidate_file: Option<PathBuf> = if sample.kind == TargetKind::Binary
-        || (sample.kind == TargetKind::Example && sample.extended)
-    {
-        // Try to find the main file via Cargo.toml.
-        find_main_file(sample).or_else(|| {
-            // Fallback to "src/main.rs" in the manifest's folder.
-            let base = manifest_path.parent()?;
-            let fallback = base.join("src/main.rs");
-            if fallback.exists() {
-                Some(fallback)
-            } else {
-                None
-            }
-        })
+    let candidate_file: Option<PathBuf> = find_main_file(sample).or_else(|| {
+    if sample.kind == TargetKind::Binary || (sample.kind == TargetKind::Example && sample.extended) {
+        // Fallback to "src/main.rs" in the manifest's folder.
+        let base = manifest_path.parent()?;
+        let fallback = base.join("src/main.rs");
+        if fallback.exists() {
+            Some(fallback)
+        } else {
+            None
+        }
     } else if sample.kind == TargetKind::Example && !sample.extended {
-        // For built-in examples, assume the file is "examples/<name>.rs" relative to current directory.
+        // For built-in examples, assume the file is "examples/<name>.rs" relative to the current directory.
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let fallback = cwd.join("examples").join(format!("{}.rs", sample.name));
         if fallback.exists() {
@@ -112,7 +128,8 @@ pub fn compute_vscode_args(sample: &Example) -> (String, Option<String>) {
         }
     } else {
         None
-    };
+    }
+    });
 
     println!("DEBUG: candidate_file: {:?}", candidate_file);
 
