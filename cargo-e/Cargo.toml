@@ -1,6 +1,6 @@
 [package]
 name = "cargo-e"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "e is for Example. A command-line tool for running and exploring source, examples, and binaries from Rust projects. It will run the first example, if no options are given."
 license = "MIT OR Apache-2.0"
@@ -83,7 +83,7 @@ path = "src/main.rs"
 # features = ["uses_reqwest", "uses_serde"]
 
 [dependencies]
-e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.4" }
+e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.5" }
 anyhow = "1.0.97"
 clap = { version = "4.5.31", features = ["derive"] }
 crossterm = { version = "0.28.1", optional = true }
