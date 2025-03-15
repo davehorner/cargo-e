@@ -370,6 +370,146 @@ pub mod version {
     }
 }
 
+
+#[cfg(windows)]
+use std::{
+    env,
+    fs,
+    io::Write,
+};
+
+// #[cfg(windows)]
+// /// Spawns a helper process (a temporary batch file) that waits for the current process
+// /// to exit and then runs `cargo install --force <crate_name> --version <latest_version>`.
+// /// The batch file deletes itself afterward.
+// fn spawn_self_update(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
+//     // Get the current process ID (which we'll wait to disappear).
+//     let parent_pid = std::process::id();
+
+//     // Create a temporary file path for the batch file.
+//     let mut batch_path = env::temp_dir();
+//     // We add a random component if needed to avoid collisions.
+//     batch_path.push(format!("cargo_e_update_{}.bat", parent_pid));
+
+//     // The batch file will loop until the parent process is gone, then run the install command,
+//     // and finally delete itself.
+//     let batch_contents = format!(
+//         "@echo off\r\n\
+//          :wait_loop\r\n\
+//          tasklist /FI \"PID eq {}\" | findstr /I \"{}\" >nul\r\n\
+//          if %ERRORLEVEL%==0 (\r\n\
+//            timeout /T 1 >nul\r\n\
+//            goto wait_loop\r\n\
+//          )\r\n\
+//          echo Parent process exited. Running update...\r\n\
+//          cargo install --force {} --version {}\r\n\
+//          del \"%~f0\"\r\n",
+//         parent_pid, parent_pid, crate_name, latest_version
+//     );
+
+//     // Write the batch file.
+//     {
+//         let mut file = fs::File::create(&batch_path)?;
+//         file.write_all(batch_contents.as_bytes())?;
+//     }
+
+//     // Spawn the batch file in a detached process.
+//     // The empty string after "start" sets the window title.
+//     Command::new("cmd")
+//         .args(&["/C", "start", "", batch_path.to_str().unwrap()])
+//         .spawn()?;
+
+//     Ok(())
+// }
+
+
+
+#[cfg(not(windows))]
+pub fn update_crate(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
+    let args = build_update_args(crate_name, latest_version);
+    let status = Command::new("cargo").args(&args).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Failed to update {} to version {}.",
+            crate_name, latest_version
+        )
+        .into())
+    }
+}
+
+#[cfg(windows)]
+pub fn update_crate(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
+    // Instead of attempting to update directly (which will fail because the binary is locked),
+    // we spawn a helper process that waits for the current process to exit and then performs the update.
+    spawn_self_update(crate_name, latest_version)?;
+    Err(format!(
+        "Spawned updater for {} version {}. Please allow the {} update to complete.",
+        crate_name, latest_version, crate_name
+    )
+    .into())
+}
+
+#[cfg(windows)]
+/// Spawns a helper process (a temporary batch file) that waits for the current process to exit
+/// and then runs `cargo install --force <crate_name> --version <latest_version>`.
+/// The batch file deletes itself afterward.
+fn spawn_self_update(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
+    let parent_pid = std::process::id();
+
+    let mut batch_path = env::temp_dir();
+    // Include the PID in the file name to avoid collisions.
+    batch_path.push(format!("cargo_e_update_{}.bat", parent_pid));
+
+    // Create the batch file contents.
+    let batch_contents = format!(
+        "@echo off\r\n\
+         :wait_loop\r\n\
+         tasklist /FI \"PID eq {}\" | findstr /I \"{}\" >nul\r\n\
+         if %ERRORLEVEL%==0 (\r\n\
+           timeout /T 1 >nul\r\n\
+           goto wait_loop\r\n\
+         )\r\n\
+         echo Parent process exited. Running update...\r\n\
+         cargo install --force {} --version {}\r\n",
+        parent_pid, parent_pid, crate_name, latest_version
+    );
+
+    eprintln!("Updater batch file written to: {}", batch_path.display());
+    {
+        let mut file = fs::File::create(&batch_path)?;
+        file.write_all(batch_contents.as_bytes())?;
+    }
+
+    // Launch the batch file in a detached process.
+    // The empty string after "start" sets the window title.
+    // Command::new("cmd")
+    //     .args(&["/C", "start", "", batch_path.to_str().unwrap()])
+    //     .spawn()?;
+
+            // Quote the batch file path so that any spaces are handled.
+    let batch_path_str = format!("\"{}\"", batch_path.display());
+    // Use a non-empty window title ("Updater") for the START command.
+    Command::new("cmd")
+        .args(&["/C", "start", "Updater", &batch_path_str])
+        .spawn()?;
+
+    // Wait a few seconds to allow the spawned process to load the batch file.
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    // Attempt to delete the batch file from the parent process.
+    match fs::remove_file(&batch_path) {
+        Ok(()) => eprintln!("Batch file {} deleted.", batch_path.display()),
+        Err(e) => eprintln!(
+            "Warning: Could not delete batch file {}: {}",
+            batch_path.display(),
+            e
+        ),
+    }
+    Ok(())
+}
+
 /// --- Update Functions ---
 ///
 /// These functions help update the crate using `cargo install`.
@@ -396,36 +536,6 @@ pub fn build_update_args(crate_name: &str, latest_version: &str) -> Vec<String> 
         "--version".to_string(),
         latest_version.to_string(),
     ]
-}
-
-/// Updates the specified crate to the given version using `cargo install`.
-///
-/// # Arguments
-///
-/// * `crate_name` - The name of the crate to update.
-/// * `latest_version` - The version to update to.
-///
-/// # Returns
-///
-/// A `Result` indicating whether the update succeeded.
-#[allow(dead_code)]
-pub fn update_crate(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
-    let args = build_update_args(crate_name, latest_version);
-    // println!("[TRACE] Running cargo install with args: {:?}", args);
-    let status = Command::new("cargo").args(&args).status()?;
-    if status.success() {
-        // println!(
-        //     "[TRACE] Successfully updated {} to version {}.",
-        //     crate_name, latest_version
-        // );
-        Ok(())
-    } else {
-        Err(format!(
-            "Failed to update {} to version {}.",
-            crate_name, latest_version
-        )
-        .into())
-    }
 }
 
 pub fn show_current_version() -> &'static str {

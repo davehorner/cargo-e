@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
+
+## [0.1.5](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.4...e_crate_version_checker-v0.1.5) - 2025-03-15
+
+### Added
+
+- implement self-update functionality for Windows (spawn batch) in
+
+### Other
+
+- *(version)* remove semver dependency and update version functions
+
 ## [0.1.4](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.3...e_crate_version_checker-v0.1.4) - 2025-03-15
 
 ### Other

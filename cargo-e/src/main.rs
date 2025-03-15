@@ -203,7 +203,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => {
                 //                println!("Unrecognized option: {:?}. Exiting.", other);
-                std::process::exit(1);
+                std::process::exit(0);
             }
         }
     } else if examples.is_empty() && !cli.tui {

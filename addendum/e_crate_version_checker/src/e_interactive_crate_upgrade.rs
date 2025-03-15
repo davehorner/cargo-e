@@ -137,7 +137,7 @@ pub fn interactive_crate_upgrade(
     }
 
     // Compare versions and prompt the user accordingly.
-    println!(" want to install? [Y/n] (wait {} seconds)", wait);
+    println!(" want to install? [Yes/no] (wait {} seconds)", wait);
     std::io::Write::flush(&mut std::io::stdout())?;
 
     // let mut input = String::new();
@@ -147,8 +147,11 @@ pub fn interactive_crate_upgrade(
         if input == "y" || input.is_empty() {
             match update_crate(crate_name, &latest_version) {
                 Ok(()) => println!("Update complete."),
-                Err(e) => eprintln!("Update failed: {}", e),
+                Err(e) =>{                     
+                    eprintln!("{}", e);
+                },
             }
+            std::process::exit(0);
         } else {
             println!("Update canceled.");
         }
