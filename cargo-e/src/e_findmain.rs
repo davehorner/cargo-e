@@ -53,6 +53,17 @@ pub fn find_main_file(sample: &Example) -> Option<PathBuf> {
     if candidate_main.exists() {
         return Some(candidate_main);
     }
+    let candidate_main = base.join(format!("{}.rs",sample.name));
+    println!("DEBUG: candidate_src: {:?}", candidate_main);
+    if candidate_main.exists() {
+        return Some(candidate_main);
+    }
+    // Check conventional location src\bin samples.
+    let candidate_src = base.join("src").join("bin").join(format!("{}.rs",sample.name));
+    println!("DEBUG: candidate_src: {:?}", candidate_src);
+    if candidate_src.exists() {
+        return Some(candidate_src);
+    }
     // If neither conventional file exists, fall through to Cargo.toml parsing.
 
     let contents = fs::read_to_string(manifest_path).ok()?;
