@@ -14,7 +14,7 @@ pub struct Cli {
     #[arg(long, short = 'w')]
     pub workspace: bool,
 
-    #[arg(long = "wait", short = 'W', default_value_t = 2)]
+    #[arg(long = "wait", short = 'W', default_value_t = 5)]
     pub wait: u64,
 
     pub explicit_example: Option<String>,
