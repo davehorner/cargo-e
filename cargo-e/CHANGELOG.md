@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.9...cargo-e-v0.1.10) - 2025-03-15
+
+### Added
+
+- add interactive prompts and update run flow
+
 ## [0.1.9](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.8...cargo-e-v0.1.9) - 2025-03-15
 
 ### Added

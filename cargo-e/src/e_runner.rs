@@ -24,18 +24,44 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
 
 /// Runs the given example (or binary) target.
 #[cfg(not(feature = "equivalent"))]
-pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
+pub fn run_example(target: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
+    // Retrieve the current package name (or binary name) at compile time.
+    let current_bin = env!("CARGO_PKG_NAME");
+
+    // Avoid running our own binary if the target's name is the same.
+    // this check is for the developer running cargo run --; cargo-e is the only binary and so loops.
+    if target.kind == crate::TargetKind::Binary && target.name == current_bin {
+        return Err(format!(
+            "Skipping automatic run: {} is the same as the running binary",
+            target.name
+        )
+        .into());
+    }
+
     let mut cmd = Command::new("cargo");
 
-    if example.extended {
-        println!(
-            "Running extended example in folder: examples/{}",
-            example.name
-        );
-        cmd.arg("run")
-            .current_dir(format!("examples/{}", example.name));
-    } else {
-        cmd.args(["run", "--release", "--example", &example.name]);
+    match target.kind {
+        // For examples:
+        crate::TargetKind::Example => {
+            if target.extended {
+                println!(
+                    "Running extended example in folder: examples/{}",
+                    target.name
+                );
+                cmd.arg("run")
+                    .current_dir(format!("examples/{}", target.name));
+            } else {
+                cmd.args(["run", "--release", "--example", &target.name]);
+            }
+        }
+        // For binaries:
+        crate::TargetKind::Binary => {
+            println!("Running binary: {}", target.name);
+            cmd.args(["run", "--release", "--bin", &target.name]);
+        } // Optionally handle other target kinds.
+          // _ => { unreach able unsupported.
+          //     return Err(format!("Unsupported target kind: {:?}", target.kind).into());
+          // }
     }
 
     if !extra_args.is_empty() {
