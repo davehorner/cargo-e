@@ -1,4 +1,4 @@
-#![doc = include_str!("../../README.md")]
+#![doc = include_str!("../README.md")]
 
 // Re-export std common modules
 pub mod prelude {
@@ -99,7 +99,7 @@ macro_rules! doc_with_joke {
 #[macro_use]
 pub mod a_funny_docs;
 
-#[doc = include_str!("../../documents/guide.md")]
+#[doc = include_str!("../documents/guide.md")]
 pub mod a_guide {
     // A constant with a humorous aside
     #[doc = "A wacky constant that reminds you of the fleeting nature of existence—because constants, like our dreams, never change."]
