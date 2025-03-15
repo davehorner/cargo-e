@@ -18,7 +18,7 @@ use std::process::Command;
 
 // Include the crate's version number from Cargo.toml in the User-Agent.
 const USER_AGENT: &str = concat!(
-    "cargo-e (https://crates.io/crates/cargo-e) v",
+    "e_crate_version_checker (https://crates.io/crates/e_crate_version_checker) v",
     env!("CARGO_PKG_VERSION")
 );
 
@@ -142,6 +142,7 @@ pub mod version {
         latest_parts.len() > current_parts.len()
     }
     /// Checks for an update for the current crate and prints a message if an update is available.
+    #[allow(dead_code)]
     pub fn check_for_update() -> Result<(), Box<dyn Error>> {
         let current = env!("CARGO_PKG_VERSION");
         let crate_name = env!("CARGO_PKG_NAME");
@@ -157,6 +158,7 @@ pub mod version {
         }
         Ok(())
     }
+    #[allow(dead_code)]
     pub fn check_for_update_for(
         check_crate_name: &str,
         current_version: &str,
@@ -212,6 +214,7 @@ pub mod version {
 /// # Returns
 ///
 /// A vector of arguments that can be used with `cargo install`.
+#[allow(dead_code)]
 pub fn build_update_args(crate_name: &str, latest_version: &str) -> Vec<String> {
     // println!(
     //     "[TRACE] Building update args for {} to version {}",
@@ -236,6 +239,7 @@ pub fn build_update_args(crate_name: &str, latest_version: &str) -> Vec<String> 
 /// # Returns
 ///
 /// A `Result` indicating whether the update succeeded.
+#[allow(dead_code)]
 pub fn update_crate(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
     let args = build_update_args(crate_name, latest_version);
     // println!("[TRACE] Running cargo install with args: {:?}", args);

@@ -1,13 +1,6 @@
 use std::io::IsTerminal;
 
-#[cfg(not(feature = "addendum_inline"))]
 use crate::e_crate_update::version::get_latest_version;
-#[cfg(feature = "addendum_inline")]
-use crate::inlined_e_crate_version_checker::e_crate_update::update_crate;
-#[cfg(feature = "addendum_inline")]
-use crate::inlined_e_crate_version_checker::e_crate_update::version::get_latest_version;
-
-#[cfg(not(feature = "addendum_inline"))]
 use crate::e_crate_update::update_crate;
 use std::sync::mpsc;
 use std::thread;
@@ -137,8 +130,8 @@ pub fn interactive_crate_upgrade(
         }
     } else if latest_version != current_version {
         print!(
-            "'{}' new version available. {} -> {}",
-            crate_name, latest_version, current_version
+            "'{}' new version available. current({}) -> latest({})",
+            crate_name, current_version, latest_version
         );
     } else {
         println!("'{}' up-to-date! {}", crate_name, current_version);
