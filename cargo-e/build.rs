@@ -1,8 +1,5 @@
 // build.rs
 
-use std::env;
-use std::path::Path;
-
 // Pull in our custom build modules.
 mod build_docs;
 

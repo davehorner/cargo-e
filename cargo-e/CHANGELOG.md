@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.6...cargo-e-v0.1.7) - 2025-03-15
+
+### Other
+
+- make find_main work better with workspaces.  enable auto
+
 ## [0.1.6](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.5...cargo-e-v0.1.6) - 2025-03-14
 
 ### Added

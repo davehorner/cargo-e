@@ -37,6 +37,7 @@ pub mod e_discovery;
 pub mod e_features;
 pub mod e_target;
 pub mod e_tui;
+pub mod e_workspace;
 
 #[allow(unused_macros)]
 macro_rules! doc_with_joke {

@@ -58,7 +58,6 @@ pub mod tui_interactive {
                 }
             }
         }
-        println!("history");
 
         enable_raw_mode()?;
         let mut stdout = io::stdout();
