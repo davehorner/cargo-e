@@ -16,7 +16,6 @@
 //!
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
-// Now import from the prelude.
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
 
@@ -25,6 +24,8 @@ use cargo_e::{Cli, Example, TargetKind};
 use clap::Parser;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
+
     let mut args: Vec<String> = env::args().collect();
 
     // If the first argument after the binary name is "e", remove it.
@@ -44,67 +45,72 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         // Attempt to retrieve the version from `cargo e -v`
         let version = lookup_cargo_e_version()
-        .map(|(_, version)| version)
-        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+            .map(|(_, version)| version)
+            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
         // Use the version from `lookup_cargo_e_version` if valid,
         // otherwise fallback to the compile-time version.
         interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait)?;
     }
 
-    // let manifest_current = locate_manifest(false).unwrap_or_default();
-    // let manifest_workspace = locate_manifest(true).unwrap_or_default();
-
-    let mut manifest_infos = Vec::new();
-    let cwd = env::current_dir()?;
-    let built_in_manifest = cwd.join("Cargo.toml");
-    if built_in_manifest.exists() {
-        debug!("Cargo.toml in current directory: {}", cwd.display());
-    } else if let Ok(manifest_dir) = env::var("CARGO_MANIFEST") {
-        let manifest_path = Path::new(&manifest_dir);
-        if manifest_path.join("Cargo.toml").exists() {
-            info!("cwd CARGO_MANIFEST folder: {}", manifest_path.display());
-            env::set_current_dir(manifest_path)?;
-        } else {
-            eprintln!(
-                "error: CARGO_MANIFEST is set to '{}', but no Cargo.toml found there.",
-                manifest_dir
-            );
-            return Err("No Cargo.toml found in CARGO_MANIFEST folder.".into());
-        }
-    } else {
-        eprintln!(
-            "error: No Cargo.toml found in the current directory and CARGO_MANIFEST is not set."
-        );
-        return Err("No Cargo.toml found.".into());
-    }
+    //let manifest_current =cargo_e::locate_manifest(false).unwrap_or_default();
+    //let manifest_workspace = cargo_e::locate_manifest(true).unwrap_or_default();
+    let manifest_current = PathBuf::from(&cargo_e::locate_manifest(cli.workspace)?);
+    // println!("{}",manifest_current.display());
     let prefix = "** ".to_string();
-    manifest_infos.push((prefix, built_in_manifest, false));
+    let mut manifest_infos = Vec::new();
+    manifest_infos.push((prefix, manifest_current, false));
+
+    //let cwd = env::current_dir()?;
+    // let built_in_manifest = cwd.join("Cargo.toml");
+    // if built_in_manifest.exists() {
+    //     debug!("Cargo.toml in current directory: {}", cwd.display());
+    // } else if let Ok(manifest_dir) = env::var("CARGO_MANIFEST") {
+    //     let manifest_path = Path::new(&manifest_dir);
+    //     if manifest_path.join("Cargo.toml").exists() {
+    //         info!("cwd CARGO_MANIFEST folder: {}", manifest_path.display());
+    //         env::set_current_dir(manifest_path)?;
+    //     } else {
+    //         eprintln!(
+    //             "error: CARGO_MANIFEST is set to '{}', but no Cargo.toml found there.",
+    //             manifest_dir
+    //         );
+    //         return Err("No Cargo.toml found in CARGO_MANIFEST folder.".into());
+    //     }
+    // } else {
+    //     if(manifest_)
+    //     eprintln!(
+    //         "error: No Cargo.toml found in the current directory and CARGO_MANIFEST is not set."
+    //     );
+    //     return Err("No Cargo.toml found.".into());
+    // }
+    // let prefix = "** ".to_string();
+    // manifest_infos.push((prefix, built_in_manifest, false));
 
     // Extended samples: assume they are located in the "examples" folder relative to cwd.
-    let extended_root = cwd.join("examples");
-    if extended_root.exists() {
-        // Each subdirectory with a Cargo.toml is an extended sample.
-        for entry in fs::read_dir(&extended_root)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() && path.join("Cargo.toml").exists() {
-                // Use the directory name as the display prefix.
-                let prefix = path.file_name().unwrap().to_string_lossy().to_string();
-                let manifest_path = path.join("Cargo.toml");
-                if !manifest_path.exists() {
-                    debug!("manifest path {:?} does not exist", manifest_path);
-                    continue;
-                }
-                manifest_infos.push((prefix, manifest_path, true));
-            }
-        }
-    } else {
-        debug!(
-            "extended samples directory {:?} does not exist.",
-            extended_root
-        );
-    }
+    // let extended_root = cwd.join("examples");
+    // if extended_root.exists() {
+    //     // Each subdirectory with a Cargo.toml is an extended sample.
+    //     for entry in fs::read_dir(&extended_root)? {
+    //         let entry = entry?;
+    //         let path = entry.path();
+    //         if path.is_dir() && path.join("Cargo.toml").exists() {
+    //             // Use the directory name as the display prefix.
+    //             let prefix = path.file_name().unwrap().to_string_lossy().to_string();
+    //             let manifest_path = path.join("Cargo.toml");
+    //             if !manifest_path.exists() {
+    //                 debug!("manifest path {:?} does not exist", manifest_path);
+    //                 continue;
+    //             }
+    //             manifest_infos.push((prefix, manifest_path, true));
+    //         }
+    //     }
+    // } else {
+    //     debug!(
+    //         "extended samples directory {:?} does not exist.",
+    //         extended_root
+    //     );
+    // }
 
     // Control the maximum number of Cargo processes running concurrently.
     let num_threads = std::thread::available_parallelism()
@@ -116,14 +122,14 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .filter(|e| !e.extended && matches!(e.kind, TargetKind::Example))
         .collect();
-    if builtin_examples.is_empty() && !cli.tui {
-        info!("0 examples builtin");
-    }
+    // if builtin_examples.is_empty() && !cli.tui {
+    //     info!("0 examples builtin");
+    // }
 
     if let Some(ref ex) = cli.explicit_example {
         let ex = Example {
             name: ex.to_string(),
-            display_name: "explicit example".to_string(),
+            display_name: ex.to_string(),
             manifest_path: "Cargo.toml".to_string(),
             kind: TargetKind::Example,
             extended: false, // assume it's a standard example
@@ -166,7 +172,6 @@ fn run_equivalent_example(cli: &Cli) -> Result<(), Box<dyn Error>> {
     std::process::exit(status.code().unwrap_or(1));
 }
 
-
 /// Looks up the version of `cargo e` by running `cargo e -v`
 /// and returning a tuple containing the name and version from the first non-empty line of its output.
 /// The expected output format is "name version".
@@ -189,8 +194,7 @@ pub fn lookup_cargo_e_version() -> Option<(String, String)> {
                 .expect("USERPROFILE not set; cannot determine default CARGO_HOME");
             format!("{}\\.cargo", userprofile)
         } else {
-            let home = env::var("HOME")
-                .expect("HOME not set; cannot determine default CARGO_HOME");
+            let home = env::var("HOME").expect("HOME not set; cannot determine default CARGO_HOME");
             format!("{}/.cargo", home)
         }
     });
@@ -198,21 +202,18 @@ pub fn lookup_cargo_e_version() -> Option<(String, String)> {
     // Construct the path to the system-installed cargo-e binary.
     let mut bin_path = PathBuf::from(cargo_home);
     bin_path.push("bin");
-        #[cfg(windows)]
+    #[cfg(windows)]
     bin_path.push("cargo-e.exe");
     #[cfg(not(windows))]
     bin_path.push("cargo-e");
-    
+
     if !bin_path.exists() {
         eprintln!("System cargo-e not found at {:?}", bin_path);
         return None;
     }
-    
+
     // Run the system-installed cargo-e with the -v flag.
-    let output = Command::new(bin_path)
-        .args(&["-v"])
-        .output()
-        .ok()?;
+    let output = Command::new(bin_path).args(&["-v"]).output().ok()?;
 
     // // Run `cargo e -v`
     // let tmp = std::env::temp_dir();

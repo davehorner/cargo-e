@@ -24,15 +24,15 @@ pub fn get_workspace_member_manifest_paths(manifest_path: &Path) -> Option<Vec<(
     // Read and parse the manifest file as TOML.
     let content = fs::read_to_string(manifest_path).ok()?;
     let parsed: Value = content.parse().ok()?;
-    
+
     // Get the `[workspace]` table.
     let workspace = parsed.get("workspace")?;
     // Get the members array.
     let members = workspace.get("members")?.as_array()?;
-    
+
     // The workspace root is the directory containing the workspace Cargo.toml.
     let workspace_root = manifest_path.parent()?;
-    
+
     // For each member, construct the path: workspace_root / member / "Cargo.toml"
     // and derive a member name from the member path.
     let member_paths: Vec<(String, PathBuf)> = members
@@ -50,7 +50,7 @@ pub fn get_workspace_member_manifest_paths(manifest_path: &Path) -> Option<Vec<(
             })
         })
         .collect();
-    
+
     if member_paths.is_empty() {
         None
     } else {
@@ -69,7 +69,11 @@ mod tests {
         let mut file = NamedTempFile::new().unwrap();
         // Write a simple workspace manifest.
         writeln!(file, "[workspace]").unwrap();
-        writeln!(file, "members = [\"cargo-e\", \"addendum/e_crate_version_checker\"]").unwrap();
+        writeln!(
+            file,
+            "members = [\"cargo-e\", \"addendum/e_crate_version_checker\"]"
+        )
+        .unwrap();
         let paths = get_workspace_member_manifest_paths(file.path());
         assert!(paths.is_some());
         let paths = paths.unwrap();

@@ -30,7 +30,7 @@ Replace `<command>` with one of the available commands and provide any necessary
 ```bash
 cargo e run
 ```
-Lorem ipsum dolor sit amet, IT WILL NOT WORK.  RUN IS IMPLIED.
+Lorem ipsum dolor sit amet, **IT WILL NOT WORK.  RUN IS IMPLIED.**
 
 
 - **Listing available commands:**  
