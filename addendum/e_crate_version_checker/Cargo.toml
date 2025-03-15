@@ -2,7 +2,7 @@
 name = "e_crate_version_checker"
 description = "A tool to check for newer versions of Rust crates on crates.io and interactively update them."
 license = "MIT OR Apache-2.0"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["David Horner"]
 edition = "2021"
 publish = true
@@ -16,7 +16,7 @@ uses_serde = ["dep:serde","dep:serde_json"]
 uses_semver = ["dep:semver"]
 
 [dependencies]
-reqwest = { version = "0.11", features = ["blocking", "json"], optional=true }
+reqwest = { version = "0.12", features = ["blocking", "json"], optional=true }
 serde = { version = "1.0", features = ["derive"], optional=true }
 serde_json = { version = "1.0", optional=true}
 semver = { version = "1.0.26", optional = true }
