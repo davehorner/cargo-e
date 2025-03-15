@@ -43,8 +43,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "check-version-program-start")]
     {
-        // Attempt to retrieve the version from `cargo e -v`
-        let version = lookup_cargo_e_version()
+        // Attempt to retrieve the version from `cargo-e -v`
+        let version = local_crate_version_via_executable("cargo-e")
             .map(|(_, version)| version)
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
@@ -170,78 +170,4 @@ fn run_equivalent_example(cli: &Cli) -> Result<(), Box<dyn Error>> {
         .stderr(Stdio::inherit());
     let status = cmd.status()?;
     std::process::exit(status.code().unwrap_or(1));
-}
-
-/// Looks up the version of `cargo e` by running `cargo e -v`
-/// and returning a tuple containing the name and version from the first non-empty line of its output.
-/// The expected output format is "name version".
-///
-/// Returns `Some((name, version))` if the command executes successfully,
-/// or `None` otherwise.
-///
-/// # Example
-///
-/// ```rust,no_run
-/// let (name, version) = lookup_cargo_e_version()
-///     .expect("Could not retrieve cargo e version");
-/// println!("cargo e name: {}, version: {}", name, version);
-/// ```
-pub fn lookup_cargo_e_version() -> Option<(String, String)> {
-    // Retrieve CARGO_HOME, defaulting to "%USERPROFILE%\.cargo" if not set.
-    let cargo_home = env::var("CARGO_HOME").unwrap_or_else(|_| {
-        if cfg!(windows) {
-            let userprofile = env::var("USERPROFILE")
-                .expect("USERPROFILE not set; cannot determine default CARGO_HOME");
-            format!("{}\\.cargo", userprofile)
-        } else {
-            let home = env::var("HOME").expect("HOME not set; cannot determine default CARGO_HOME");
-            format!("{}/.cargo", home)
-        }
-    });
-
-    // Construct the path to the system-installed cargo-e binary.
-    let mut bin_path = PathBuf::from(cargo_home);
-    bin_path.push("bin");
-    #[cfg(windows)]
-    bin_path.push("cargo-e.exe");
-    #[cfg(not(windows))]
-    bin_path.push("cargo-e");
-
-    if !bin_path.exists() {
-        eprintln!("System cargo-e not found at {:?}", bin_path);
-        return None;
-    }
-
-    // Run the system-installed cargo-e with the -v flag.
-    let output = Command::new(bin_path).args(&["-v"]).output().ok()?;
-
-    // // Run `cargo e -v`
-    // let tmp = std::env::temp_dir();
-    // println!("tmp: {:?}", tmp);
-    // let output = Command::new("which")
-    // .current_dir(tmp).args(&["cargo-e","-v"]).output().ok()?;
-
-    if !output.status.success() {
-        eprintln!("cargo e -v failed");
-        return None;
-    }
-
-    // Convert the output bytes to a string.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Get the first non-empty line and trim any whitespace.
-    let first_line = stdout.lines().find(|line| !line.trim().is_empty())?.trim();
-
-    // Split the first line into parts by whitespace.
-    let parts: Vec<&str> = first_line.split_whitespace().collect();
-    if parts.len() < 2 {
-        eprintln!("Unexpected output format: {}", first_line);
-        return None;
-    }
-
-    // Assume the first part is the name and the second part is the version.
-    let name = parts[0].to_string();
-    let version = parts[1].to_string();
-
-    Some((name, version))
 }

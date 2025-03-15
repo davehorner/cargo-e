@@ -110,23 +110,21 @@ pub fn interactive_crate_upgrade(
                 crate_name, current_version, latest_version
             );
             return Ok(());
-        } else {
-            if lat_major > cur_major {
-                print!(
-                    "major update for {}: {} -> {}",
-                    crate_name, current_version, latest_version
-                );
-            } else if lat_minor > cur_minor {
-                print!(
-                    "minor update for {}: {} -> {}",
-                    crate_name, current_version, latest_version
-                );
-            } else if lat_patch > cur_patch {
-                print!(
-                    "patch update for {}: {} -> {}",
-                    crate_name, current_version, latest_version
-                );
-            }
+        } else if lat_major > cur_major {
+            print!(
+                "major update for {}: {} -> {}",
+                crate_name, current_version, latest_version
+            );
+        } else if lat_minor > cur_minor {
+            print!(
+                "minor update for {}: {} -> {}",
+                crate_name, current_version, latest_version
+            );
+        } else if lat_patch > cur_patch {
+            print!(
+                "patch update for {}: {} -> {}",
+                crate_name, current_version, latest_version
+            );
         }
     } else if latest_version != current_version {
         print!(
@@ -154,7 +152,6 @@ pub fn interactive_crate_upgrade(
         } else {
             println!("Update canceled.");
         }
-    } else {
     }
     Ok(())
 }
