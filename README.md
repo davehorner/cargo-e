@@ -234,6 +234,8 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 ## Addendum
 
+- [documents/1_Cool_Examples_With_Cargo_e.md](documents/1_Cool_Examples_With_Cargo_e.md)
+
 - HORNER EXAMPLE 1: 
   [examples/funny_examples.rs](examples/funny_example.rs)
 
