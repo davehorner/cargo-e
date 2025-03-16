@@ -147,9 +147,9 @@ pub fn interactive_crate_upgrade(
         if input == "y" || input.is_empty() {
             match update_crate(crate_name, &latest_version) {
                 Ok(()) => println!("Update complete."),
-                Err(e) =>{                     
+                Err(e) => {
                     eprintln!("{}", e);
-                },
+                }
             }
             std::process::exit(0);
         } else {

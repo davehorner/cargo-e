@@ -370,13 +370,8 @@ pub mod version {
     }
 }
 
-
 #[cfg(windows)]
-use std::{
-    env,
-    fs,
-    io::Write,
-};
+use std::{env, fs, io::Write};
 
 // #[cfg(windows)]
 // /// Spawns a helper process (a temporary batch file) that waits for the current process
@@ -421,8 +416,6 @@ use std::{
 
 //     Ok(())
 // }
-
-
 
 #[cfg(not(windows))]
 pub fn update_crate(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
@@ -488,7 +481,7 @@ fn spawn_self_update(crate_name: &str, latest_version: &str) -> Result<(), Box<d
     //     .args(&["/C", "start", "", batch_path.to_str().unwrap()])
     //     .spawn()?;
 
-            // Quote the batch file path so that any spaces are handled.
+    // Quote the batch file path so that any spaces are handled.
     let batch_path_str = format!("\"{}\"", batch_path.display());
     // Use a non-empty window title ("Updater") for the START command.
     Command::new("cmd")

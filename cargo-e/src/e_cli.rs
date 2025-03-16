@@ -14,6 +14,9 @@ pub struct Cli {
     #[arg(long, short = 'w')]
     pub workspace: bool,
 
+    #[arg(long, short = 'p', default_value_t = true)]
+    pub paging: bool,
+
     #[arg(long = "wait", short = 'W', default_value_t = 5)]
     pub wait: u64,
 
