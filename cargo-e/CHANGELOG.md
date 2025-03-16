@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.11...cargo-e-v0.1.12) - 2025-03-16
+
+### Improved
+- **Target Resolution in cargo-e:** The tool now prioritizes matching explicit targets by first checking the discovered examples and then binaries. This change ensures a smoother and more predictable user experience when specifying an explicit target.
+
+### Added
+- **e_update_readme Tool:** A new project under the addenda directory that updates version strings in README.md files by reading Cargo.toml. This tool can be leveraged by other projects to maintain consistent version information. When used with the `-p` flag, it updates the parent's README.md only if its content matches the local file.
+
+### Fixed
+- **Parent README.md Update Safety:** When the `-p` flag is provided, the tool now compares the parent's README.md with the local version before updating. If discrepancies are found, the update is aborted to avoid unintentional overwrites.
+
+
 ## [0.1.11](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.10...cargo-e-v0.1.11) - 2025-03-15
 
 ### Added

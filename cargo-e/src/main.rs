@@ -129,15 +129,24 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     if let Some(explicit) = cli.explicit_example {
-        // Run the explicitly specified target.
-        let ex = Example {
-            name: explicit.clone(),
-            display_name: explicit.clone(),
-            manifest_path: "Cargo.toml".to_string(),
-            kind: TargetKind::Example,
-            extended: false, // assume standard example for simplicity
-        };
-        cargo_e::run_example(&ex, &cli.extra)?;
+        // Search the discovered targets for one with the matching name.
+        // Try examples first.
+        if let Some(target) = examples.iter().find(|t| t.name == explicit) {
+            cargo_e::run_example(target, &cli.extra)?;
+        }
+        // If not found among examples, search for a binary with that name.
+        else if let Some(target) = examples
+            .iter()
+            .find(|t| t.kind == TargetKind::Binary && t.name == explicit)
+        {
+            cargo_e::run_example(target, &cli.extra)?;
+        } else {
+            eprintln!(
+                "Error: No target named '{}' found in examples or binaries.",
+                explicit
+            );
+            std::process::exit(1);
+        }
     } else if builtin_examples.len() == 1 {
         let example = builtin_examples[0];
         let message = format!(

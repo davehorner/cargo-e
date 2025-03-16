@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.11</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.12</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 <img id="screenshot"
@@ -228,7 +228,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.11</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.12</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 
@@ -238,5 +238,7 @@ Many developers create their own custom scripts or tools to expose examples and 
   [examples/funny_examples](examples/funny_example.rs)
 
 - HORNER EXAMPLE 2: 
-  [addendum/e_crate_version_checker](addendum/e_crate_version_checker)
+  [addendum/e_crate_version_checker](addendum/e_crate_version_checker/src/main.rs)
 
+- HORNER EXAMPLE 3: 
+  [addenda/e_update_readme](addenda/e_update_readme/src/bin/e_update_readme.rs)
