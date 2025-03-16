@@ -24,6 +24,8 @@ use e_crate_version_checker::prelude::*;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::process;
 
 use cargo_e::{prelude::*, Example};
 use cargo_e::{Cli, TargetKind};
