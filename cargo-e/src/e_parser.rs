@@ -27,3 +27,18 @@ pub fn parse_available(stderr: &str, item: &str) -> Vec<String> {
     }
     available
 }
+
+/// Reads run history from a file and returns a HashMap mapping target names to run counts.
+pub fn read_run_history(history_path: &str) -> std::collections::HashMap<String, usize> {
+    let mut history = std::collections::HashMap::new();
+    if let Ok(contents) = std::fs::read_to_string(history_path) {
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                // Increment the count for this target.
+                *history.entry(trimmed.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    history
+}

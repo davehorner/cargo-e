@@ -2,6 +2,27 @@ use crate::prelude::*;
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
 use crate::Example;
+use once_cell::sync::Lazy;
+
+// Global shared container for the currently running child process.
+static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+
+/// Registers a global Ctrl+C handler once.
+/// The handler checks GLOBAL_CHILD and kills the child process if present.
+pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+    ctrlc::set_handler(move || {
+        let mut child_lock = GLOBAL_CHILD.lock().unwrap();
+        if let Some(child) = child_lock.as_mut() {
+            eprintln!("Ctrl+C pressed, terminating running child process...");
+            let _ = child.kill();
+        } else {
+            eprintln!("Ctrl+C pressed, no child process running. Exiting nicely.");
+            exit(0);
+        }
+    })?;
+    Ok(())
+}
+
 
 /// In "equivalent" mode, behave exactly like "cargo run --example <name>"
 #[cfg(feature = "equivalent")]
@@ -24,7 +45,7 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
 
 /// Runs the given example (or binary) target.
 #[cfg(not(feature = "equivalent"))]
-pub fn run_example(target: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
+pub fn run_example(target: &Example, extra_args: &[String]) -> Result<std::process::ExitStatus, Box<dyn Error>> {
     // Retrieve the current package name (or binary name) at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
@@ -77,20 +98,42 @@ pub fn run_example(target: &Example, extra_args: &[String]) -> Result<(), Box<dy
     );
     println!("Running: {}", full_command);
 
+
+
+    // Spawn the child process.
     let child = cmd.spawn()?;
-    use std::sync::{Arc, Mutex};
-    let child_arc = Arc::new(Mutex::new(child));
-    let child_for_handler = Arc::clone(&child_arc);
+    {
+        // Update the global handle.
+        let mut global = GLOBAL_CHILD.lock().unwrap();
+        *global = Some(child);
+    }
+    // Wait for the child process to complete.
+    let status = {
+        let mut global = GLOBAL_CHILD.lock().unwrap();
+        // Take ownership of the child so we can wait on it.
+        if let Some(mut child) = global.take() {
+            child.wait()?
+        } else {
+            return Err("Child process missing".into());
+        }
+    };
 
-    ctrlc::set_handler(move || {
-        eprintln!("Ctrl+C pressed, terminating process...");
-        let mut child = child_for_handler.lock().unwrap();
-        let _ = child.kill();
-    })?;
 
-    let status = child_arc.lock().unwrap().wait()?;
+
+    // let child = cmd.spawn()?;
+    // use std::sync::{Arc, Mutex};
+    // let child_arc = Arc::new(Mutex::new(child));
+    // let child_for_handler = Arc::clone(&child_arc);
+
+    // ctrlc::set_handler(move || {
+    //     eprintln!("Ctrl+C pressed, terminating process...");
+    //     let mut child = child_for_handler.lock().unwrap();
+    //     let _ = child.kill();
+    // })?;
+
+    // let status: std::process::ExitStatus = child_arc.lock().unwrap().wait()?;
     println!("Process exited with status: {:?}", status.code());
-    Ok(())
+    Ok(status)
 }
 
 /// Helper function to spawn a cargo process.
