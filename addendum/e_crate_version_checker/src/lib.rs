@@ -9,12 +9,12 @@ pub mod e_interactive_crate_upgrade;
 
 // Create a prelude module that re-exports key items
 pub mod prelude {
+    pub use crate::e_crate_update::user_agent::{get_user_agent, set_user_agent_override};
     pub use crate::e_crate_update::version::local_crate_version_via_executable;
     pub use crate::e_crate_update::version::lookup_local_version_via_cargo;
-    pub use crate::e_crate_update::user_agent::{get_user_agent, set_user_agent_override};
-    pub use crate::register_user_crate;
     pub use crate::e_crate_update::*;
     pub use crate::e_interactive_crate_upgrade::*;
+    pub use crate::register_user_crate;
     pub use crate::LIB_VERSION;
 }
 
@@ -32,4 +32,3 @@ macro_rules! register_user_crate {
         $crate::e_crate_update::user_agent::set_user_agent_override(ua);
     }};
 }
-

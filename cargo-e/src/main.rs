@@ -22,10 +22,10 @@ use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::process;
+#[cfg(target_os = "windows")]
+use std::os::windows::process;
 
 use cargo_e::{prelude::*, Example};
 use cargo_e::{Cli, TargetKind};
@@ -649,9 +649,7 @@ fn process_input(
                 block_on(cargo_e::e_findmain::open_vscode_for_sample(target));
                 // After editing, you might want to pause briefly or simply return to the menu.
                 Ok(LoopResult::Run(
-                    <std::process::ExitStatus as process::ExitStatusExt>::from_raw(
-                        0,
-                    ),
+                    <std::process::ExitStatus as process::ExitStatusExt>::from_raw(0),
                 ))
             }
         } else {
