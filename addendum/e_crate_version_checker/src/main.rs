@@ -8,14 +8,13 @@
 //mod e_crate_info;
 mod e_crate_update;
 
-use e_crate_update::show_current_version;
 use e_crate_version_checker::e_interactive_crate_upgrade::interactive_crate_upgrade;
 use e_crate_version_checker::prelude::*;
 use std::env;
 use std::process;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Print the current User-Agent string.
-    println!("{}", show_current_version());
+    // required : register the current crate in the User-Agent string.
+    register_user_crate!();
 
     // Collect command-line arguments.
     let args: Vec<String> = env::args().collect();
