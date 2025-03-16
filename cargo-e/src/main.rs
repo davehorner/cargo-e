@@ -22,6 +22,9 @@ use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process;
+
 use cargo_e::{prelude::*, Example};
 use cargo_e::{Cli, TargetKind};
 use clap::Parser;
@@ -47,6 +50,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = cargo_e::e_runner::register_ctrlc_handler();
     #[cfg(feature = "check-version-program-start")]
     {
+        e_crate_version_checker::register_user_crate!();
         // Attempt to retrieve the version from `cargo-e -v`
         let version = local_crate_version_via_executable("cargo-e")
             .map(|(_, version)| version)
@@ -643,7 +647,7 @@ fn process_input(
                 block_on(cargo_e::e_findmain::open_vscode_for_sample(target));
                 // After editing, you might want to pause briefly or simply return to the menu.
                 Ok(LoopResult::Run(
-                    <std::process::ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw(
+                    <std::process::ExitStatus as process::ExitStatusExt>::from_raw(
                         0,
                     ),
                 ))

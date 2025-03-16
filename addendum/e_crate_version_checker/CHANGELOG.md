@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 
 
+
+## [0.1.6](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.5...e_crate_version_checker-v0.1.6) - 2025-03-16
+
+### Added
+
+- *(cli, ctrlc, run-history)* add once_cell, global Ctrl+C handler & interactive paging
+
+### Other
+
+- temp
+
 ## [0.1.5](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.4...e_crate_version_checker-v0.1.5) - 2025-03-15
 
 ### Added

@@ -13,15 +13,39 @@
 use std::error::Error;
 use std::process::Command;
 
-// Use semver for version comparisons.
-// #[cfg(feature = "uses_semver")]
-// use semver::Version;
 
-// Include the crate's version number from Cargo.toml in the User-Agent.
-const USER_AGENT: &str = concat!(
-    "e_crate_version_checker (https://crates.io/crates/e_crate_version_checker) v",
-    env!("CARGO_PKG_VERSION")
-);
+pub mod user_agent {
+    use std::sync::OnceLock;
+    static USER_AGENT_OVERRIDE: OnceLock<String> = OnceLock::new();
+
+    /// Returns the current user agent string.
+    /// If the user hasn’t registered a custom crate name, falls back to the default.
+    pub fn get_user_agent() -> String {
+        USER_AGENT_OVERRIDE
+            .get()
+            .cloned()
+            .unwrap_or_else(|| {
+                format!(
+                    "e_crate_version_checker (https://crates.io/crates/e_crate_version_checker) v{}",
+                    crate::LIB_VERSION
+                )
+            })
+    }
+    pub fn get_user_agent_checked() -> String {
+    let ua = get_user_agent();
+    if !ua.contains("[used by") {
+        panic!("User agent not overridden. Please call register_user_crate!() in your crate.");
+    }
+    ua
+}
+
+    /// Sets the user agent string to include the caller’s crate name.
+    /// This function is intended to be used via the `register_user_crate!()` macro.
+    pub fn set_user_agent_override(ua: String) {
+        let _ = USER_AGENT_OVERRIDE.set(ua);
+    }
+}
+
 
 /// --- Version Checking Functions ---
 ///
@@ -64,6 +88,7 @@ pub mod version {
     ///
     /// On success, returns the latest version as a `String`.
     pub fn get_latest_version(crate_name: &str) -> Result<String, Box<dyn Error>> {
+        
         let __url = format!("https://crates.io/api/v1/crates/{}", crate_name);
         #[cfg(all(feature = "uses_reqwest", feature = "uses_serde"))]
         {
@@ -71,7 +96,7 @@ pub mod version {
             let client = reqwest::blocking::Client::new();
             let resp = client
                 .get(&__url)
-                .header(reqwest::header::USER_AGENT, "cargo-e")
+                .header(reqwest::header::USER_AGENT, user_agent::get_user_agent_checked())
                 .send()?;
             // println!("[TRACE] Received response: {:?}", resp.status());
             let resp = resp; // json() requires a mutable reference.
@@ -438,69 +463,75 @@ pub fn update_crate(crate_name: &str, latest_version: &str) -> Result<(), Box<dy
     // we spawn a helper process that waits for the current process to exit and then performs the update.
     spawn_self_update(crate_name, latest_version)?;
     Err(format!(
-        "Spawned updater for {} version {}. Please allow the {} update to complete.",
-        crate_name, latest_version, crate_name
+        "Spawned updater for {} version {}. Please allow the {} update to complete.\nIf you have trouble, perform the update manually with `cargo install --force {}`.",
+        crate_name, latest_version, crate_name, crate_name
     )
     .into())
 }
 
 #[cfg(windows)]
-/// Spawns a helper process (a temporary batch file) that waits for the current process to exit
-/// and then runs `cargo install --force <crate_name> --version <latest_version>`.
-/// The batch file deletes itself afterward.
 fn spawn_self_update(crate_name: &str, latest_version: &str) -> Result<(), Box<dyn Error>> {
     let parent_pid = std::process::id();
 
-    let mut batch_path = env::temp_dir();
-    // Include the PID in the file name to avoid collisions.
-    batch_path.push(format!("cargo_e_update_{}.bat", parent_pid));
-
-    // Create the batch file contents.
-    let batch_contents = format!(
-        "@echo off\r\n\
-         :wait_loop\r\n\
-         tasklist /FI \"PID eq {}\" | findstr /I \"{}\" >nul\r\n\
-         if %ERRORLEVEL%==0 (\r\n\
-           timeout /T 1 >nul\r\n\
-           goto wait_loop\r\n\
-         )\r\n\
-         echo Parent process exited. Running update...\r\n\
-         cargo install --force {} --version {}\r\n",
-        parent_pid, parent_pid, crate_name, latest_version
+    // Construct the PowerShell command to wait for the parent process to exit, then run the update.
+    let ps_command = format!(
+        "while (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ Start-Sleep -Seconds 1 }}; \
+         Write-Output 'Parent process exited. Running update...'; \
+         cargo install --force {crate} --version {version}",
+        pid = parent_pid,
+        crate = crate_name,
+        version = latest_version
     );
 
-    eprintln!("Updater batch file written to: {}", batch_path.display());
-    {
-        let mut file = fs::File::create(&batch_path)?;
-        file.write_all(batch_contents.as_bytes())?;
+    // Launch PowerShell in its own window via cmd /C start.
+    let ps_result = Command::new("cmd")
+        .args(&[
+            "/C", 
+            "start", 
+            "",    // This is the window title; change as desired.
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            &ps_command,
+        ])
+        .spawn();
+
+    match ps_result {
+        Ok(_child) => Ok(()),
+        Err(e) => {
+            eprintln!("PowerShell failed to spawn: {}. Falling back to batch file method.", e);
+
+            let mut batch_path = env::temp_dir();
+            batch_path.push(format!("update_{}_{}.bat", crate_name, parent_pid));
+
+            let batch_contents = format!(
+                "@echo off\r\n\
+                 :wait_loop\r\n\
+                 tasklist /FI \"PID eq {}\" | findstr /I \"{}\" >nul\r\n\
+                 if %ERRORLEVEL%==0 (\r\n\
+                   timeout /T 1 >nul\r\n\
+                   goto wait_loop\r\n\
+                 )\r\n\
+                 echo Parent process exited. Running update...\r\n\
+                 cargo install --force {} --version {}\r\n",
+                parent_pid, parent_pid, crate_name, latest_version
+            );
+
+            eprintln!("Updater batch file written to: {}", batch_path.display());
+            {
+                let mut file = fs::File::create(&batch_path)?;
+                file.write_all(batch_contents.as_bytes())?;
+            }
+
+            let batch_path_str = format!("{}", batch_path.display());
+            // Launch the batch file in its own window via cmd /C start.
+            Command::new("cmd")
+                .args(&["/C", "start", "", &batch_path_str])
+                .spawn()?;
+
+            Ok(())
+        }
     }
-
-    // Launch the batch file in a detached process.
-    // The empty string after "start" sets the window title.
-    // Command::new("cmd")
-    //     .args(&["/C", "start", "", batch_path.to_str().unwrap()])
-    //     .spawn()?;
-
-    // Quote the batch file path so that any spaces are handled.
-    let batch_path_str = format!("\"{}\"", batch_path.display());
-    // Use a non-empty window title ("Updater") for the START command.
-    Command::new("cmd")
-        .args(&["/C", "start", "Updater", &batch_path_str])
-        .spawn()?;
-
-    // Wait a few seconds to allow the spawned process to load the batch file.
-    std::thread::sleep(std::time::Duration::from_secs(5));
-
-    // Attempt to delete the batch file from the parent process.
-    match fs::remove_file(&batch_path) {
-        Ok(()) => eprintln!("Batch file {} deleted.", batch_path.display()),
-        Err(e) => eprintln!(
-            "Warning: Could not delete batch file {}: {}",
-            batch_path.display(),
-            e
-        ),
-    }
-    Ok(())
 }
 
 /// --- Update Functions ---
@@ -529,10 +560,6 @@ pub fn build_update_args(crate_name: &str, latest_version: &str) -> Vec<String> 
         "--version".to_string(),
         latest_version.to_string(),
     ]
-}
-
-pub fn show_current_version() -> &'static str {
-    USER_AGENT
 }
 
 #[cfg(test)]
