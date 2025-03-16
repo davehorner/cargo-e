@@ -1,0 +1,9 @@
+[package]
+name = "e_update_readme"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Project for updating README.md version"
+
+[dependencies]
+regex = "1"

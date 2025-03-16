@@ -1,6 +1,6 @@
 [package]
 name = "cargo-e"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 description = "e is for Example. A command-line tool for running and exploring source, examples, and binaries from Rust projects. It will run the first example, if no options are given."
 license = "MIT OR Apache-2.0"
@@ -109,6 +109,7 @@ predicate = "0.1.0"
 predicates = "3.1.3"
 regex = "1.11.1"
 tempfile = "3.18.0"
+version-sync = "0.9.5"
 
 [build-dependencies]
 #walkdir = "2.5.0"
