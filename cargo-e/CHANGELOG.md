@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.12...cargo-e-v0.1.13) - 2025-03-16
+
+### Added
+- Enhanced interactive prompt to automatically switch between single-character input and full-line input based on the number of available targets.
+- Displayed run history counts next to target names for improved user guidance.
+- Introduced refined default argument behavior that goes beyond simply listing targets.
+
+### Improved
+- Refactored prompt logic and interactive CLI for clearer, more maintainable code.
+- Simplified dependency imports and performed minor code cleanups across modules.
+- *(cli, ctrlc, run-history)* add once_cell, global Ctrl+C handler & interactive paging
+
 ## [0.1.12](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.11...cargo-e-v0.1.12) - 2025-03-16
 
 ### Improved

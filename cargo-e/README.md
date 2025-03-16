@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.12</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.13</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 <img id="screenshot"
@@ -228,11 +228,13 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.12</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.13</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 
 ## Addendum
+
+- [documents/1_Cool_Examples_With_Cargo_e.md](documents/1_Cool_Examples_With_Cargo_e.md)
 
 - HORNER EXAMPLE 1: 
   [examples/funny_examples.rs](examples/funny_example.rs)

@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 #[cfg(feature = "tui")]
 use crossterm::{
     event::{poll, read, Event, KeyCode},
@@ -64,7 +65,6 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
         }
     }
 }
-
 
 /// Reads an entire line from the user with a timeout of `wait_secs`.
 /// Returns Ok(Some(String)) if input is received, or Ok(None) if the timeout expires.
@@ -151,8 +151,8 @@ use std::thread;
 /// Returns Ok(Some(String)) if a line is read before the timeout,
 /// Ok(None) if the timeout expires, or an error.
 pub fn read_line_with_timeout(wait_secs: u64) -> io::Result<Option<String>> {
-   let timeout = Duration::from_secs(wait_secs);
-   let (tx, rx) = mpsc::channel();
+    let timeout = Duration::from_secs(wait_secs);
+    let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let stdin = io::stdin();
         let mut line = String::new();
@@ -166,20 +166,22 @@ pub fn read_line_with_timeout(wait_secs: u64) -> io::Result<Option<String>> {
     }
 }
 
-
 /// Prompts the user for a full line of input using crossterm events with a timeout.
 /// This works cross-platform and avoids leftover input from a lingering blocking thread.
 pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let timeout = Duration::from_secs(wait_secs);
     // Enable raw mode temporarily.
+    #[cfg(feature = "tui")]
     enable_raw_mode()?;
     let start = std::time::Instant::now();
     let mut input = String::new();
 
     // Print prompt (caller should print a prompt before calling if desired)
+    #[cfg(feature = "tui")]
     loop {
         let elapsed = start.elapsed();
         if elapsed >= timeout {
+            #[cfg(feature = "tui")]
             disable_raw_mode()?;
             return Ok(None);
         }
@@ -198,7 +200,7 @@ pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn s
                     KeyCode::Backspace => {
                         input.pop();
                         // Optionally update the display.
-                        print!("\r{}{}", " ".repeat(input.len() + 1), "\r");
+                        print!("\r{}\r", " ".repeat(input.len() + 1));
                         print!("{}", input);
                         io::Write::flush(&mut io::stdout())?;
                     }
@@ -207,16 +209,17 @@ pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn s
             }
         }
     }
+    #[cfg(feature = "tui")]
     disable_raw_mode()?;
     Ok(Some(input))
 }
 
 /// Prompts the user for a full line of input using crossterm events (raw mode) with a timeout.
-/// 
+///
 /// - `wait_secs`: seconds to wait for input.
 /// - `quick_exit`: a slice of characters that, if pressed, immediately cause the function to return that key (as a string).
 /// - `allowed_chars`: an optional slice of allowed characters (case-insensitive). If provided, only these characters are accepted.
-/// 
+///
 /// In this example, we use numeric digits as allowed characters.
 pub fn prompt_line_with_poll_opts(
     wait_secs: u64,
@@ -224,10 +227,12 @@ pub fn prompt_line_with_poll_opts(
     allowed_chars: Option<&[char]>,
 ) -> Result<Option<String>, Box<dyn Error>> {
     let timeout = Duration::from_secs(wait_secs);
+    #[cfg(feature = "tui")]
     enable_raw_mode()?;
     let start = std::time::Instant::now();
     let mut input = String::new();
 
+    #[cfg(feature = "tui")]
     loop {
         let elapsed = start.elapsed();
         if elapsed >= timeout {
@@ -243,7 +248,8 @@ pub fn prompt_line_with_poll_opts(
                         // Check quick exit keys (case-insensitive)
                         if quick_exit.iter().any(|&qe| qe.eq_ignore_ascii_case(&c)) {
                             disable_raw_mode()?;
-                            return Ok(Some(c.to_string()));
+                            input.push(c);
+                            return Ok(Some(input.to_string()));
                         }
                         // If allowed_chars is provided, only accept those.
                         if let Some(allowed) = allowed_chars {
@@ -267,6 +273,7 @@ pub fn prompt_line_with_poll_opts(
             }
         }
     }
+    #[cfg(feature = "tui")]
     disable_raw_mode()?;
     println!();
     Ok(Some(input.trim().to_string()))

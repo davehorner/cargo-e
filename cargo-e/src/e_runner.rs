@@ -23,10 +23,12 @@ pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-
 /// In "equivalent" mode, behave exactly like "cargo run --example <name>"
 #[cfg(feature = "equivalent")]
-pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<dyn Error>> {
+pub fn run_example(
+    example: &Example,
+    extra_args: &[String],
+) -> Result<std::process::ExitStatus, Box<dyn Error>> {
     // In "equivalent" mode, behave exactly like "cargo run --example <name>"
     let mut cmd = Command::new("cargo");
     cmd.args(["run", "--example", &example.name]);
@@ -45,7 +47,10 @@ pub fn run_example(example: &Example, extra_args: &[String]) -> Result<(), Box<d
 
 /// Runs the given example (or binary) target.
 #[cfg(not(feature = "equivalent"))]
-pub fn run_example(target: &Example, extra_args: &[String]) -> Result<std::process::ExitStatus, Box<dyn Error>> {
+pub fn run_example(
+    target: &Example,
+    extra_args: &[String],
+) -> Result<std::process::ExitStatus, Box<dyn Error>> {
     // Retrieve the current package name (or binary name) at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
@@ -98,8 +103,6 @@ pub fn run_example(target: &Example, extra_args: &[String]) -> Result<std::proce
     );
     println!("Running: {}", full_command);
 
-
-
     // Spawn the child process.
     let child = cmd.spawn()?;
     {
@@ -117,8 +120,6 @@ pub fn run_example(target: &Example, extra_args: &[String]) -> Result<std::proce
             return Err("Child process missing".into());
         }
     };
-
-
 
     // let child = cmd.spawn()?;
     // use std::sync::{Arc, Mutex};
