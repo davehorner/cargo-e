@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.13...cargo-e-v0.1.14) - 2025-03-16
+
+### Other
+
+- updated the following local packages: e_crate_version_checker
+
 ## [0.1.13](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.12...cargo-e-v0.1.13) - 2025-03-16
 
 ### Added
