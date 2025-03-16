@@ -1,7 +1,7 @@
 /// Represents the kind of target that can be run by `cargo-e`.
 ///
 /// This differentiates between Rust examples and binaries.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub enum TargetKind {
     Example,
     Binary,
@@ -33,7 +33,7 @@ pub enum TargetKind {
 /// assert_eq!(example.name, "demo");
 /// assert!(example.extended);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Example {
     pub name: String,
     pub display_name: String,
