@@ -111,13 +111,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 explicit
             );
 
-        // no exact match found: perform a partial search over the unique examples.
-        let query = explicit.to_lowercase();
-        let fuzzy_matches: Vec<Example> = unique_examples
-            .iter()
-            .filter(|t| t.name.to_lowercase().contains(&query))
-            .cloned()
-            .collect();
+            // no exact match found: perform a partial search over the unique examples.
+            let query = explicit.to_lowercase();
+            let fuzzy_matches: Vec<Example> = unique_examples
+                .iter()
+                .filter(|t| t.name.to_lowercase().contains(&query))
+                .cloned()
+                .collect();
             if fuzzy_matches.is_empty() {
                 std::process::exit(1);
             } else {
@@ -464,7 +464,7 @@ fn select_and_run_target_loop(
         } else {
             "other"
         };
-            combined.push((label, target));
+        combined.push((label, target));
     }
 
     combined.sort_by(|(a, ex_a), (b, ex_b)| {
@@ -694,7 +694,8 @@ fn process_input(
             let _ = append_run_history(&target.name.clone());
             println!(
                 "Exitcode {:?}  Waiting for {} seconds...",
-                status.code(), cli.wait
+                status.code(),
+                cli.wait
             );
             std::thread::sleep(std::time::Duration::from_secs(cli.wait));
 
@@ -715,7 +716,8 @@ fn cli_loop(
     builtin_binaries: &[&Example],
 ) -> Result<(), Box<dyn Error>> {
     loop {
-        match select_and_run_target_loop(cli, unique_examples, builtin_examples, builtin_binaries)? {
+        match select_and_run_target_loop(cli, unique_examples, builtin_examples, builtin_binaries)?
+        {
             LoopResult::Quit => {
                 println!("quitting.");
                 break;
