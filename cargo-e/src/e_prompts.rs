@@ -43,8 +43,7 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
     // Otherwise, use normal line input.
     #[cfg(not(feature = "tui"))]
     {
-        use std::error::Error;
-        use std::io::{self, BufRead, IsTerminal, Write};
+        use std::io::{self, BufRead, Write};
         use std::sync::mpsc;
         use std::thread;
         print!("Enter choice: ");
@@ -169,49 +168,50 @@ pub fn read_line_with_timeout(wait_secs: u64) -> io::Result<Option<String>> {
 /// Prompts the user for a full line of input using crossterm events with a timeout.
 /// This works cross-platform and avoids leftover input from a lingering blocking thread.
 pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let timeout = Duration::from_secs(wait_secs);
-    // Enable raw mode temporarily.
     #[cfg(feature = "tui")]
-    enable_raw_mode()?;
-    let start = std::time::Instant::now();
-    let mut input = String::new();
-
-    // Print prompt (caller should print a prompt before calling if desired)
-    #[cfg(feature = "tui")]
-    loop {
-        let elapsed = start.elapsed();
-        if elapsed >= timeout {
-            #[cfg(feature = "tui")]
-            disable_raw_mode()?;
-            return Ok(None);
-        }
-        // Poll for an event for the remaining time.
-        let remaining = timeout - elapsed;
-        if poll(remaining)? {
-            if let Event::Key(crossterm::event::KeyEvent { code, .. }) = read()? {
-                match code {
-                    KeyCode::Enter => break,
-                    KeyCode::Char(c) => {
-                        input.push(c);
-                        // Optionally echo the character (if desired).
-                        print!("{}", c);
-                        io::Write::flush(&mut io::stdout())?;
+    {
+        enable_raw_mode()?;
+        let timeout = Duration::from_secs(wait_secs);
+        let start = std::time::Instant::now();
+        let mut input = String::new();
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed >= timeout {
+                #[cfg(feature = "tui")]
+                disable_raw_mode()?;
+                return Ok(None);
+            }
+            // Poll for an event for the remaining time.
+            let remaining = timeout - elapsed;
+            if poll(remaining)? {
+                if let Event::Key(crossterm::event::KeyEvent { code, .. }) = read()? {
+                    match code {
+                        KeyCode::Enter => break,
+                        KeyCode::Char(c) => {
+                            input.push(c);
+                            // Optionally echo the character (if desired).
+                            print!("{}", c);
+                            io::Write::flush(&mut io::stdout())?;
+                        }
+                        KeyCode::Backspace => {
+                            input.pop();
+                            // Optionally update the display.
+                            print!("\r{}\r", " ".repeat(input.len() + 1));
+                            print!("{}", input);
+                            io::Write::flush(&mut io::stdout())?;
+                        }
+                        _ => {} // Ignore other keys.
                     }
-                    KeyCode::Backspace => {
-                        input.pop();
-                        // Optionally update the display.
-                        print!("\r{}\r", " ".repeat(input.len() + 1));
-                        print!("{}", input);
-                        io::Write::flush(&mut io::stdout())?;
-                    }
-                    _ => {} // Ignore other keys.
                 }
             }
         }
+        disable_raw_mode()?;
+        Ok(Some(input))
     }
-    #[cfg(feature = "tui")]
-    disable_raw_mode()?;
-    Ok(Some(input))
+    #[cfg(not(feature = "tui"))]
+    {
+        return Ok(read_line_with_timeout(wait_secs).unwrap_or_default());
+    }
 }
 
 /// Prompts the user for a full line of input using crossterm events (raw mode) with a timeout.
@@ -226,55 +226,60 @@ pub fn prompt_line_with_poll_opts(
     quick_exit: &[char],
     allowed_chars: Option<&[char]>,
 ) -> Result<Option<String>, Box<dyn Error>> {
-    let timeout = Duration::from_secs(wait_secs);
     #[cfg(feature = "tui")]
-    enable_raw_mode()?;
-    let start = std::time::Instant::now();
-    let mut input = String::new();
+    {
+        let timeout = Duration::from_secs(wait_secs);
+        enable_raw_mode()?;
+        let start = std::time::Instant::now();
+        let mut input = String::new();
 
-    #[cfg(feature = "tui")]
-    loop {
-        let elapsed = start.elapsed();
-        if elapsed >= timeout {
-            disable_raw_mode()?;
-            return Ok(None);
-        }
-        let remaining = timeout - elapsed;
-        if poll(remaining)? {
-            if let Event::Key(crossterm::event::KeyEvent { code, .. }) = read()? {
-                match code {
-                    KeyCode::Enter => break, // End input on Enter.
-                    KeyCode::Char(c) => {
-                        // Check quick exit keys (case-insensitive)
-                        if quick_exit.iter().any(|&qe| qe.eq_ignore_ascii_case(&c)) {
-                            disable_raw_mode()?;
-                            input.push(c);
-                            return Ok(Some(input.to_string()));
-                        }
-                        // If allowed_chars is provided, only accept those.
-                        if let Some(allowed) = allowed_chars {
-                            if !allowed.iter().any(|&a| a.eq_ignore_ascii_case(&c)) {
-                                // Ignore characters that aren't allowed.
-                                continue;
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed >= timeout {
+                disable_raw_mode()?;
+                return Ok(None);
+            }
+            let remaining = timeout - elapsed;
+            if poll(remaining)? {
+                if let Event::Key(crossterm::event::KeyEvent { code, .. }) = read()? {
+                    match code {
+                        KeyCode::Enter => break, // End input on Enter.
+                        KeyCode::Char(c) => {
+                            // Check quick exit keys (case-insensitive)
+                            if quick_exit.iter().any(|&qe| qe.eq_ignore_ascii_case(&c)) {
+                                disable_raw_mode()?;
+                                input.push(c);
+                                return Ok(Some(input.to_string()));
                             }
+                            // If allowed_chars is provided, only accept those.
+                            if let Some(allowed) = allowed_chars {
+                                if !allowed.iter().any(|&a| a.eq_ignore_ascii_case(&c)) {
+                                    // Ignore characters that aren't allowed.
+                                    continue;
+                                }
+                            }
+                            input.push(c);
+                            print!("{}", c);
+                            io::Write::flush(&mut io::stdout())?;
                         }
-                        input.push(c);
-                        print!("{}", c);
-                        io::Write::flush(&mut io::stdout())?;
+                        KeyCode::Backspace => {
+                            input.pop();
+                            // Clear and reprint the input (a simple approach).
+                            print!("\r{}{}\r", " ".repeat(input.len() + 2), input);
+                            io::Write::flush(&mut io::stdout())?;
+                        }
+                        _ => {} // Ignore other keys.
                     }
-                    KeyCode::Backspace => {
-                        input.pop();
-                        // Clear and reprint the input (a simple approach).
-                        print!("\r{}{}\r", " ".repeat(input.len() + 2), input);
-                        io::Write::flush(&mut io::stdout())?;
-                    }
-                    _ => {} // Ignore other keys.
                 }
             }
         }
+        disable_raw_mode()?;
+        println!();
+        Ok(Some(input.trim().to_string()))
     }
-    #[cfg(feature = "tui")]
-    disable_raw_mode()?;
-    println!();
-    Ok(Some(input.trim().to_string()))
+
+    #[cfg(not(feature = "tui"))]
+    {
+        return Ok(read_line_with_timeout(wait_secs).unwrap_or_default());
+    }
 }

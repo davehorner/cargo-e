@@ -191,13 +191,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if builtin_examples.len() + builtin_binaries.len() > 1 {
-            cli_loop(&cli, &examples, &builtin_examples, &builtin_binaries)?;
-            //select_and_run_target(&cli, &examples, &builtin_examples, &builtin_binaries)?;
-        } else {
-            eprintln!("Available: {:#?}", examples);
-            std::process::exit(1);
-        }
+        cli_loop(&cli, &examples, &builtin_examples, &builtin_binaries)?;
+        // if builtin_examples.len() + builtin_binaries.len() > 1 {
+        //     //select_and_run_target(&cli, &examples, &builtin_examples, &builtin_binaries)?;
+        // } else {
+        //     eprintln!("Available: {:#?}", examples);
+        //     std::process::exit(1);
+        // }
     }
     Ok(())
 }
@@ -424,7 +424,7 @@ enum LoopResult {
 /// The selection function: displays targets, waits for input, and returns a LoopResult.
 fn select_and_run_target_loop(
     cli: &Cli,
-    _examples: &[Example],
+    extended_targets: &[Example],
     builtin_examples: &[&Example],
     builtin_binaries: &[&Example],
 ) -> Result<LoopResult, Box<dyn Error>> {
@@ -434,6 +434,9 @@ fn select_and_run_target_loop(
     );
     // Build a combined list: examples first, then binaries.
     let mut combined: Vec<(&str, &Example)> = Vec::new();
+    for ex in extended_targets {
+        combined.push(("exx", ex));
+    }
     for ex in builtin_examples {
         combined.push(("ex.", ex));
     }

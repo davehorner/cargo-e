@@ -37,9 +37,12 @@ features = ["check-version", "uses_reqwest", "uses_serde"]
 You can use the version checking functions directly in your Rust code. For example:
 
 ```rust
-use e_crate_version_checker::e_crate_update::version::{get_latest_version, is_newer_version_available, check_for_update};
+use e_crate_version_checker::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // required : register the current crate in the User-Agent string.
+    register_user_crate!();
+
     let crate_name = "cargo-e";
     let latest = get_latest_version(crate_name)?;
     println!("Latest version: {}", latest);

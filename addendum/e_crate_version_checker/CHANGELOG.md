@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 
 
 
+## [0.1.7](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.6...e_crate_version_checker-v0.1.7) - 2025-03-17
+
+### Other
+
+- extended samples are now showing.
+
 ## [0.1.6](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.5...e_crate_version_checker-v0.1.6) - 2025-03-16
 
 ### Added
