@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.15</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.16</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 <img id="screenshot"
@@ -51,8 +51,8 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 **`cargo-e`** makes it easy to run and explore sample code from your Rust projects. Whether you are working with built-in examples, extended samples, or binaries, `cargo-e` provides a unified interface to quickly launch your code, inspect its structure, and integrate with editors/tools.
 
 ## Features
-
 - **runs the default example if there is only one example defined.**
+- **partial search for matching:** If an explicit name isn’t found, a case-insensitive partial search is performed to list matching targets for user selection. one command for binaries and examples.
 - **seamless sample execution:** Run built-in examples and extended samples (located in the `examples` directory) with a simple command. Improved discoverability of examples and binaries, even across workspaces.
 - **interactive terminal UI (TUI):** Optionally launch a feature-rich, interactive interface for browsing and selecting targets. (-t option)
 - **[vscode](https://github.com/microsoft/vscode) integration:** Jump directly into your source `code` and navigate to the `fn main` entry point automatically. ('e' key in TUI)
@@ -228,7 +228,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.15</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.16</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 

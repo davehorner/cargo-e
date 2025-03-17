@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.15...cargo-e-v0.1.16) - 2025-03-17
+
+### Added
+
+- *(cli)* add partial search fallback for explicit example matching
+
 ## [0.1.15](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.14...cargo-e-v0.1.15) - 2025-03-17
 
 ### Other
