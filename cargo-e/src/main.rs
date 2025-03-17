@@ -93,7 +93,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|e| !e.extended && e.kind == cargo_e::TargetKind::Binary)
         .collect();
 
-    if let Some(explicit) = cli.explicit_example {
+    if let Some(explicit) = cli.explicit_example.clone() {
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
@@ -110,6 +110,20 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "error: 0 named '{}' found in examples or binaries.",
                 explicit
             );
+
+        // no exact match found: perform a partial search over the unique examples.
+        let query = explicit.to_lowercase();
+        let fuzzy_matches: Vec<Example> = unique_examples
+            .iter()
+            .filter(|t| t.name.to_lowercase().contains(&query))
+            .cloned()
+            .collect();
+            if fuzzy_matches.is_empty() {
+                std::process::exit(1);
+            } else {
+                println!("partial search results for '{}':", explicit);
+                cli_loop(&cli, &fuzzy_matches, &[], &[])?;
+            }
             std::process::exit(1);
         }
     } else if builtin_examples.len() == 1 {
@@ -191,7 +205,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        cli_loop(&cli, &examples, &builtin_examples, &builtin_binaries)?;
+        cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
         // if builtin_examples.len() + builtin_binaries.len() > 1 {
         //     //select_and_run_target(&cli, &examples, &builtin_examples, &builtin_binaries)?;
         // } else {
@@ -424,7 +438,7 @@ enum LoopResult {
 /// The selection function: displays targets, waits for input, and returns a LoopResult.
 fn select_and_run_target_loop(
     cli: &Cli,
-    extended_targets: &[Example],
+    unique_targets: &[Example],
     builtin_examples: &[&Example],
     builtin_binaries: &[&Example],
 ) -> Result<LoopResult, Box<dyn Error>> {
@@ -434,15 +448,25 @@ fn select_and_run_target_loop(
     );
     // Build a combined list: examples first, then binaries.
     let mut combined: Vec<(&str, &Example)> = Vec::new();
-    for ex in extended_targets {
-        combined.push(("exx", ex));
+    for target in unique_targets {
+        let label = if target.kind == cargo_e::TargetKind::Example {
+            if target.extended {
+                "exx"
+            } else {
+                "ex."
+            }
+        } else if target.kind == cargo_e::TargetKind::Binary {
+            if target.extended {
+                "binx"
+            } else {
+                "bin"
+            }
+        } else {
+            "other"
+        };
+            combined.push((label, target));
     }
-    for ex in builtin_examples {
-        combined.push(("ex.", ex));
-    }
-    for bin in builtin_binaries {
-        combined.push(("bin", bin));
-    }
+
     combined.sort_by(|(a, ex_a), (b, ex_b)| {
         if a == b {
             ex_a.name.cmp(&ex_b.name)
@@ -668,6 +692,12 @@ fn process_input(
             println!("running {} \"{}\"...", target_type, target.name);
             let status = cargo_e::run_example(target, &cli.extra)?;
             let _ = append_run_history(&target.name.clone());
+            println!(
+                "Exitcode {:?}  Waiting for {} seconds...",
+                status.code(), cli.wait
+            );
+            std::thread::sleep(std::time::Duration::from_secs(cli.wait));
+
             Ok(LoopResult::Run(status))
         }
     } else {
@@ -680,12 +710,12 @@ fn process_input(
 /// If the user quits (input "q"), it exits.
 fn cli_loop(
     cli: &Cli,
-    examples: &[Example],
+    unique_examples: &[Example],
     builtin_examples: &[&Example],
     builtin_binaries: &[&Example],
 ) -> Result<(), Box<dyn Error>> {
     loop {
-        match select_and_run_target_loop(cli, examples, builtin_examples, builtin_binaries)? {
+        match select_and_run_target_loop(cli, unique_examples, builtin_examples, builtin_binaries)? {
             LoopResult::Quit => {
                 println!("quitting.");
                 break;
