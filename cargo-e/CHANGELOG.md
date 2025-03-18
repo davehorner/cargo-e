@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.17...cargo-e-v0.1.18) - 2025-03-18
+
+### Added
+
+- add workaround for Cargo workspace misinterpretation and update documentation
+
 ## [0.1.17](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.16...cargo-e-v0.1.17) - 2025-03-18
 
 ### Added
