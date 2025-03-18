@@ -1,27 +1,63 @@
-use crate::prelude::*;
+use crate::{e_workspace, prelude::*};
 use crate::{Example, TargetKind};
-
-/// Runs `cargo run --bin` with the given manifest path and without specifying a binary name,
-/// so that Cargo prints an error with a list of available binary targets.
-/// Then parses that list to return a vector of Example instances, using the provided prefix.
-pub fn collect_binaries(
-    prefix: &str,
-    manifest_path: &PathBuf,
-    extended: bool,
-) -> Result<Vec<Example>, Box<dyn Error>> {
-    // Run `cargo run --bin --manifest-path <manifest_path>`.
-    // Note: Cargo will return a non-zero exit code, but we only care about its stderr.
+use std::process::Output;
+/// Helper function that runs a Cargo command with a given manifest path.
+/// If it detects the workspace error, it temporarily patches the manifest (by
+/// appending an empty `[workspace]` table), re-runs the command, and then restores
+/// the original file.
+fn run_cargo_with_opt_out(args: &[&str], manifest_path: &Path) -> Result<Output, Box<dyn Error>> {
+    // Run the initial command.
     let output = Command::new("cargo")
-        .arg("run")
-        .arg("--bin")
+        .args(args)
         .arg("--manifest-path")
         .arg(manifest_path)
         .output()?;
 
     let stderr_str = String::from_utf8_lossy(&output.stderr);
+    let workspace_error_marker = "current package believes it's in a workspace when it's not:";
+
+    // If we detect the workspace error, patch the manifest.
+    if stderr_str.contains(workspace_error_marker) {
+        // Backup the original manifest.
+        let original = fs::read_to_string(manifest_path)?;
+
+        // Only patch if the manifest doesn't already opt out.
+        if !original.contains("[workspace]") {
+            // Append an empty [workspace] table.
+            let patched = format!("{}\n[workspace]\n", original);
+            fs::write(manifest_path, &patched)?;
+
+            // Re-run the command with the patched manifest.
+            let patched_output = Command::new("cargo")
+                .args(args)
+                .arg("--manifest-path")
+                .arg(manifest_path)
+                .output()?;
+
+            // Restore the original manifest.
+            fs::write(manifest_path, original)?;
+
+            return Ok(patched_output);
+        }
+    }
+
+    Ok(output)
+}
+
+/// Runs `cargo run --bin` (without specifying a binary name) so that Cargo prints an error with
+/// a list of available binary targets. Then parses that list to return a vector of Example instances,
+/// using the provided prefix.
+pub fn collect_binaries(
+    prefix: &str,
+    manifest_path: &Path,
+    extended: bool,
+) -> Result<Vec<Example>, Box<dyn Error>> {
+    // Run the Cargo command using our helper.
+    let output = run_cargo_with_opt_out(&["run", "--bin"], manifest_path)?;
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+
     let bin_names = crate::parse_available(&stderr_str, "binaries");
 
-    // Map each binary name into an Example instance.
     let binaries = bin_names
         .into_iter()
         .map(|name| {
@@ -48,20 +84,15 @@ pub fn collect_binaries(
     Ok(binaries)
 }
 
-/// Runs `cargo run --example --manifest-path <manifest_path>` to trigger Cargo to
-/// list available examples. Then it parses the stderr output using our generic parser.
+/// Runs `cargo run --example` so that Cargo lists available examples,
+/// then parses the stderr output to return a vector of Example instances.
 pub fn collect_examples(
     prefix: &str,
-    manifest_path: &PathBuf,
+    manifest_path: &Path,
     extended: bool,
 ) -> Result<Vec<Example>, Box<dyn Error>> {
-    let output = Command::new("cargo")
-        .arg("run")
-        .arg("--example")
-        .arg("--manifest-path")
-        .arg(manifest_path)
-        .output()?;
-
+    // Run the Cargo command using our helper.
+    let output = run_cargo_with_opt_out(&["run", "--example"], manifest_path)?;
     let stderr_str = String::from_utf8_lossy(&output.stderr);
     debug!("DEBUG: stderr (examples) = {:?}", stderr_str);
 
@@ -71,7 +102,6 @@ pub fn collect_examples(
     let examples = names
         .into_iter()
         .map(|name| {
-            // If the prefix starts with '$', we assume this came from a workspace member.
             let display_name = if prefix.starts_with('$') {
                 format!("{} > example > {}", prefix, name)
             } else if extended {
@@ -155,62 +185,83 @@ pub fn collect_samples(
     Ok(all_samples)
 }
 
-/// This function collects sample targets (examples and binaries) from both the current directory
-/// and, if the --workspace flag is used, from each workspace member. The built–in samples (from
-/// the current directory) are tagged with a "builtin" prefix, while workspace member samples are
-/// tagged with "$member" so that the display name becomes "$member > example > sample_name" or
-/// "$member > binary > sample_name".
-pub fn collect_all_samples(
+pub fn collect_all_targets(
     use_workspace: bool,
     max_concurrency: usize,
-) -> Result<Vec<Example>, Box<dyn Error>> {
+) -> Result<Vec<Example>, Box<dyn std::error::Error>> {
+    use std::path::PathBuf;
     let mut manifest_infos: Vec<(String, PathBuf, bool)> = Vec::new();
-    let cwd = env::current_dir()?;
 
-    let built_in_manifest = PathBuf::from(crate::locate_manifest(use_workspace)?);
-    if built_in_manifest.exists() {
-        println!("builtin: {}", built_in_manifest.display());
-        manifest_infos.push(("-".to_string(), built_in_manifest, false));
-    } else {
-        error!("No Cargo.toml found in current directory for built-in samples.");
-    }
+    // Locate the package manifest in the current directory.
+    let bi = PathBuf::from(crate::locate_manifest(false)?);
+    // We're in workspace mode if the flag is set or if the current Cargo.toml is a workspace manifest.
+    let in_workspace = use_workspace || e_workspace::is_workspace_manifest(bi.as_path());
 
-    // If workspace flag is used, locate the workspace root and then collect all member manifests.
-    if use_workspace {
-        let ws_manifest = crate::locate_manifest(true)?;
-        println!("Workspace root manifest: {}", ws_manifest);
-        let ws_members = crate::collect_workspace_members(&ws_manifest)?;
-        for (member_name, manifest_path) in ws_members {
-            // The prefix for workspace samples is formatted as "$member_name"
-            manifest_infos.push((format!("${}", member_name), manifest_path, false));
-        }
-    }
-
-    // Also, extended samples: assume they live in an "examples" folder relative to cwd.
-    let extended_root = cwd.join("examples");
-    if extended_root.exists() {
-        for entry in fs::read_dir(&extended_root)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() && path.join("Cargo.toml").exists() {
-                // Use the directory name as the prefix.
-                let prefix = path.file_name().unwrap().to_string_lossy().to_string();
-                let manifest_path = path.join("Cargo.toml");
-                manifest_infos.push((prefix, manifest_path, true));
-            }
-        }
-    } else {
-        error!(
-            "extended samples directory {:?} does not exist.",
-            extended_root
+    if in_workspace {
+        // Use an explicit workspace manifest if requested; otherwise, assume the current Cargo.toml is the workspace manifest.
+        let ws = if use_workspace {
+            PathBuf::from(crate::locate_manifest(true)?)
+        } else {
+            bi.clone()
+        };
+        // Get workspace members (each member's Cargo.toml) using your helper.
+        let ws_members =
+            e_workspace::get_workspace_member_manifest_paths(ws.as_path()).unwrap_or_default();
+        // Build a numbered list of member names (using just the member directory name).
+        let member_displays: Vec<String> = ws_members
+            .iter()
+            .enumerate()
+            .map(|(i, (member, _))| format!("{}. {}", i + 1, member))
+            .collect();
+        // Print the workspace line: "<workspace_root>/<package>/Cargo.toml [1. member, 2. member, ...]"
+        println!(
+            "workspace: {} [{}]",
+            format_workspace(&ws, &bi),
+            member_displays.join(", ")
         );
+        // Always print the package line.
+        println!("package: {}", format_package(&bi));
+        manifest_infos.push(("-".to_string(), bi.clone(), false));
+        for (member, member_manifest) in ws_members {
+            manifest_infos.push((format!("${}", member), member_manifest, false));
+        }
+    } else {
+        // Not in workspace mode: simply print the package manifest.
+        println!("package: {}", format_package(&bi));
+        manifest_infos.push(("-".to_string(), bi.clone(), false));
     }
 
-    debug!("DEBUG: manifest infos: {:?}", manifest_infos);
-
-    // Now, use either concurrent or sequential collection.
-    // Here we assume a function similar to our earlier collect_samples_concurrently.
-    // We reuse our previously defined collect_samples function, which now accepts a Vec<(String, PathBuf, bool)>.
     let samples = collect_samples(manifest_infos, max_concurrency)?;
     Ok(samples)
+}
+
+// Formats the package manifest as "<package>/Cargo.toml"
+fn format_package(manifest: &Path) -> String {
+    let pkg = manifest
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let file = manifest.file_name().unwrap().to_string_lossy();
+    format!("{}/{}", pkg, file)
+}
+
+// Formats the workspace manifest as "<workspace_root>/<package>/Cargo.toml"
+fn format_workspace(ws_manifest: &Path, bi: &Path) -> String {
+    let ws_root = ws_manifest.parent().expect("No workspace root");
+    let ws_name = ws_root
+        .file_name()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let bi_pkg = bi
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    format!(
+        "{}/{}/{}",
+        ws_name,
+        bi_pkg,
+        ws_manifest.file_name().unwrap().to_string_lossy()
+    )
 }

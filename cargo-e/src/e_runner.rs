@@ -3,6 +3,7 @@ use crate::prelude::*;
 // use ctrlc;
 use crate::Example;
 use once_cell::sync::Lazy;
+use std::process::ExitStatus;
 
 // Global shared container for the currently running child process.
 static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -47,15 +48,14 @@ pub fn run_example(
 
 /// Runs the given example (or binary) target.
 #[cfg(not(feature = "equivalent"))]
-pub fn run_example(
-    target: &Example,
-    extra_args: &[String],
-) -> Result<std::process::ExitStatus, Box<dyn Error>> {
+/// Runs an example or binary target, applying a temporary manifest patch if a workspace error is detected.
+/// This function uses the same idea as in the collection helpers: if the workspace error is found,
+/// we patch the manifest, run the command, and then restore the manifest.
+pub fn run_example(target: &Example, extra_args: &[String]) -> Result<ExitStatus, Box<dyn Error>> {
     // Retrieve the current package name (or binary name) at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
     // Avoid running our own binary if the target's name is the same.
-    // this check is for the developer running cargo run --; cargo-e is the only binary and so loops.
     if target.kind == crate::TargetKind::Binary && target.name == current_bin {
         return Err(format!(
             "Skipping automatic run: {} is the same as the running binary",
@@ -65,29 +65,30 @@ pub fn run_example(
     }
 
     let mut cmd = Command::new("cargo");
+    // Determine which manifest file is used.
+    let manifest_path: PathBuf;
 
     match target.kind {
-        // For examples:
         crate::TargetKind::Example => {
             if target.extended {
                 println!(
                     "Running extended example in folder: examples/{}",
                     target.name
                 );
+                // For extended examples, assume the manifest is inside the example folder.
+                manifest_path = PathBuf::from(format!("examples/{}/Cargo.toml", target.name));
                 cmd.arg("run")
                     .current_dir(format!("examples/{}", target.name));
             } else {
+                manifest_path = PathBuf::from(crate::locate_manifest(false)?);
                 cmd.args(["run", "--release", "--example", &target.name]);
             }
         }
-        // For binaries:
         crate::TargetKind::Binary => {
             println!("Running binary: {}", target.name);
+            manifest_path = PathBuf::from(crate::locate_manifest(false)?);
             cmd.args(["run", "--release", "--bin", &target.name]);
-        } // Optionally handle other target kinds.
-          // _ => { unreach able unsupported.
-          //     return Err(format!("Unsupported target kind: {:?}", target.kind).into());
-          // }
+        }
     }
 
     if !extra_args.is_empty() {
@@ -103,17 +104,18 @@ pub fn run_example(
     );
     println!("Running: {}", full_command);
 
-    // Spawn the child process.
+    // Before spawning, check if the manifest triggers the workspace error.
+    // If so, patch it temporarily.
+    let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&manifest_path)?;
+
+    // Spawn the process.
     let child = cmd.spawn()?;
     {
-        // Update the global handle.
         let mut global = GLOBAL_CHILD.lock().unwrap();
         *global = Some(child);
     }
-    // Wait for the child process to complete.
     let status = {
         let mut global = GLOBAL_CHILD.lock().unwrap();
-        // Take ownership of the child so we can wait on it.
         if let Some(mut child) = global.take() {
             child.wait()?
         } else {
@@ -121,22 +123,14 @@ pub fn run_example(
         }
     };
 
-    // let child = cmd.spawn()?;
-    // use std::sync::{Arc, Mutex};
-    // let child_arc = Arc::new(Mutex::new(child));
-    // let child_for_handler = Arc::clone(&child_arc);
+    // Restore the manifest if we patched it.
+    if let Some(original) = maybe_backup {
+        fs::write(&manifest_path, original)?;
+    }
 
-    // ctrlc::set_handler(move || {
-    //     eprintln!("Ctrl+C pressed, terminating process...");
-    //     let mut child = child_for_handler.lock().unwrap();
-    //     let _ = child.kill();
-    // })?;
-
-    // let status: std::process::ExitStatus = child_arc.lock().unwrap().wait()?;
     println!("Process exited with status: {:?}", status.code());
     Ok(status)
 }
-
 /// Helper function to spawn a cargo process.
 /// On Windows, this sets the CREATE_NEW_PROCESS_GROUP flag.
 pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {

@@ -1,8 +1,10 @@
 #[cfg(feature = "tui")]
 pub mod tui_interactive {
+    use crate::e_manifest::maybe_patch_manifest_for_run;
     use crate::prelude::*;
     use crate::{e_bacon, e_findmain, Cli, Example, TargetKind};
     use crossterm::event::KeyEventKind;
+    use crossterm::event::{poll, read};
     use crossterm::{
         event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
         execute,
@@ -21,7 +23,6 @@ pub mod tui_interactive {
     };
     use std::{collections::HashSet, thread, time::Duration};
 
-    use crossterm::event::{poll, read};
     /// Flushes the input event queue, ignoring any stray Enter key events.
     pub fn flush_input() -> Result<(), Box<dyn std::error::Error>> {
         while poll(Duration::from_millis(0))? {
@@ -421,6 +422,10 @@ pub mod tui_interactive {
             None
         };
 
+        // Before spawning, patch the manifest if needed.
+        let manifest_path_obj = Path::new(&manifest_path);
+        let backup = maybe_patch_manifest_for_run(manifest_path_obj)?;
+
         // Build the command.
         let mut cmd = Command::new("cargo");
         cmd.args(&args);
@@ -469,6 +474,10 @@ pub mod tui_interactive {
                     }
                 }
             }
+        }
+        // Restore the manifest if it was patched.
+        if let Some(original) = backup {
+            fs::write(manifest_path_obj, original)?;
         }
         // Wrap the child process so that we can share it with our Ctrl+C handler.
         // let child_arc = Arc::new(Mutex::new(child));

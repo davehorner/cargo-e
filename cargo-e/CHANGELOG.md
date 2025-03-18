@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.16...cargo-e-v0.1.17) - 2025-03-18
+
+### Added
+
+- **Auto-resolve workspace errors:** When a Cargo package is mistakenly treated as part of a workspace, commands (like `cargo run`) now automatically detect the error and temporarily patch the manifest (by appending an empty `[workspace]` table) before executing the command. The original manifest is restored afterward. This behavior has been implemented for both CLI and TUI modes.
+
+### Changed
+
+- Updated target collection and run routines to use the new manifest patching mechanism, ensuring a smoother user experience without manual intervention.
+
+
 ## [0.1.16](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.15...cargo-e-v0.1.16) - 2025-03-17
 
 ### Added

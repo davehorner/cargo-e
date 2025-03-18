@@ -54,3 +54,30 @@ pub fn collect_workspace_members(
     }
     Ok(members)
 }
+
+/// Checks whether the manifest at `manifest_path` would trigger the workspace error.
+/// If so, it patches the file by appending an empty `[workspace]` table, returning the original content.
+/// Otherwise, returns None.
+pub(crate) fn maybe_patch_manifest_for_run(
+    manifest_path: &Path,
+) -> Result<Option<String>, Box<dyn Error>> {
+    // Run a lightweight command (cargo metadata) to see if the manifest is affected.
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--manifest-path"])
+        .arg(manifest_path)
+        .output()?;
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+    let workspace_error_marker = "current package believes it's in a workspace when it's not:";
+
+    if stderr_str.contains(workspace_error_marker) {
+        // Read the original manifest content.
+        let original = fs::read_to_string(manifest_path)?;
+        // If not already opting out, patch it.
+        if !original.contains("[workspace]") {
+            let patched = format!("{}\n[workspace]\n", original);
+            fs::write(manifest_path, &patched)?;
+            return Ok(Some(original));
+        }
+    }
+    Ok(None)
+}

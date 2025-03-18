@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.16</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.17</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 <img id="screenshot"
@@ -125,7 +125,26 @@ If there is only one example, it will run that example, did I mention that alrea
   ```bash
   cargo e --workspace
   ```
+
+- **Partial Searches**
   
+  ```bash
+  cargo e wgpu
+  builtin: rust/nannou/Cargo.toml
+  0 built-in examples (213 alternatives: 208 examples, 5 binaries).
+  error: 0 named 'wgpu' found in examples or binaries.
+  partial search results for 'wgpu':
+    1: [ex.] wgpu_compute_shader
+    2: [ex.] wgpu_image
+    3: [ex.] wgpu_image_sequence
+    4: [ex.] wgpu_instancing
+    5: [ex.] wgpu_teapot
+    6: [ex.] wgpu_teapot_camera
+    7: [ex.] wgpu_triangle
+    8: [ex.] wgpu_triangle_raw_frame
+  * == # to run, tui, e<#> edit, 'q' to quit (waiting 5 seconds)
+  ```
+
 ## Features and Configuration
 
 `cargo-e` leverages Cargo's feature flags to provide fine-grained control over the included components and dependencies. Using conditional compilation whenever possible, the dependency tree remains lean by including only what is necessary.
@@ -143,6 +162,17 @@ If there is only one example, it will run that example, did I mention that alrea
   ```bash
   cargo build --no-default-features --features tui
   ```
+## Want to stop the version check prompts and queries?
+By default, cargo-e bundles the [e_crate_version_checker](addendum/e_crate_version_checker) crate through the "check-version" feature. This means that when you run cargo-e, it performs a version check on startup and prompts you if a newer version is available. This helps keep you informed about the latest and greatest, but it also serves as a safeguard to prevent legacy builds from being used inadvertently. It may feel intrusive or annoying for some.
+
+If you prefer to avoid that automatic version check, additional output, delay, and process, you can disable the default features during installation and then re-enable only the ones you want (like "tui", "concurrent", "funny-docs", "uses_reqwest", and "uses_serde"). Use the following command:
+
+```bash
+cargo install cargo-e --no-default-features --features "tui concurrent funny-docs uses_reqwest uses_serde"
+```
+This command installs cargo-e without the "check-version" feature, ensuring that no version check or upgrade prompt occurs at runtime. The funny-docs are a joke to be filled in.  The joke is that a user would actually open `rust docs --open` and read the funny or find a guide worth reading.  It is the default docs.  Did you read the guide?
+
+Note: Disabling the version check means you forgo a mechanism designed to ensure that you’re not using less desirable builds.
 
 ## Prior Art and Alternative Approaches
 
@@ -228,7 +258,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.16</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.17</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 
