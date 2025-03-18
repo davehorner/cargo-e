@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.17</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.18</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 <img id="screenshot"
@@ -174,6 +174,12 @@ This command installs cargo-e without the "check-version" feature, ensuring that
 
 Note: Disabling the version check means you forgo a mechanism designed to ensure that you’re not using less desirable builds.
 
+## Work Arounds for Cargo
+
+- **workspace package believes it's in a workspace when it's not**
+  - [auto-resolve-workspace-errors.md](documents/auto-resolve-workspace-errors.md)
+
+
 ## Prior Art and Alternative Approaches
 
 Several tools and techniques have been developed to ease the exploration and execution of example code in Rust projects:
@@ -258,7 +264,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.17</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.18</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation!
 </p>
 
