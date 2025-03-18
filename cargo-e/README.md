@@ -128,7 +128,7 @@ If there is only one example, it will run that example, did I mention that alrea
 
 - **Partial Searches**
   
-  ```
+  ```bash
   cargo e wgpu
   builtin: rust/nannou/Cargo.toml
   0 built-in examples (213 alternatives: 208 examples, 5 binaries).
@@ -167,7 +167,7 @@ By default, cargo-e bundles the [e_crate_version_checker](addendum/e_crate_versi
 
 If you prefer to avoid that automatic version check, additional output, delay, and process, you can disable the default features during installation and then re-enable only the ones you want (like "tui", "concurrent", "funny-docs", "uses_reqwest", and "uses_serde"). Use the following command:
 
-```
+```bash
 cargo install cargo-e --no-default-features --features "tui concurrent funny-docs uses_reqwest uses_serde"
 ```
 This command installs cargo-e without the "check-version" feature, ensuring that no version check or upgrade prompt occurs at runtime. The funny-docs are a joke to be filled in.  The joke is that a user would actually open `rust docs --open` and read the funny or find a guide worth reading.  It is the default docs.  Did you read the guide?
