@@ -67,7 +67,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    let examples = cargo_e::e_collect::collect_all_samples(cli.workspace, num_threads)?;
+    let examples = cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads)?;
     use std::collections::HashSet;
 
     // After collecting all samples, deduplicate them.
