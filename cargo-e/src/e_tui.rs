@@ -48,9 +48,9 @@ pub mod tui_interactive {
             return Ok(());
         }
         exs.sort();
-
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let history_path = format!("{}/run_history.txt", manifest_dir);
+        // Determine the directory containing the Cargo.toml at runtime.
+        let manifest_dir = crate::e_manifest::find_manifest_dir()?;
+        let history_path = manifest_dir.join("run_history.txt");
         let mut run_history: HashSet<String> = HashSet::new();
         if let Ok(contents) = fs::read_to_string(&history_path) {
             for line in contents.lines() {
@@ -239,6 +239,9 @@ pub mod tui_interactive {
                                         &mut run_history,
                                         &mut terminal,
                                         cli.wait,
+                                        cli.print_exit_code,
+                                        cli.print_program_name,
+                                        cli.print_instruction,
                                     )?;
                                 }
                             }
@@ -319,6 +322,9 @@ pub mod tui_interactive {
                                             &mut run_history,
                                             &mut terminal,
                                             cli.wait,
+                                            cli.print_exit_code,
+                                            cli.print_program_name,
+                                            cli.print_instruction
                                         )?;
                                     }
                                 }
@@ -367,10 +373,13 @@ pub mod tui_interactive {
     pub fn run_piece(
         examples: &[Example],
         index: usize,
-        history_path: &str,
+        history_path: &Path,
         run_history: &mut HashSet<String>,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
         wait_secs: u64,
+        print_exit_code: bool,
+        print_program_name: bool,
+        print_instruction:bool,     
     ) -> Result<(), Box<dyn Error>> {
         let target = &examples[index];
         // Leave TUI mode before running the target.
@@ -386,14 +395,18 @@ pub mod tui_interactive {
 
         let args: Vec<&str> = if target.kind == TargetKind::Example {
             if target.extended {
-                println!("Running extended example with manifest: {}", manifest_path);
+                if print_program_name {
+                    println!("Running extended example with manifest: {}", manifest_path);
+                }
                 // For workspace extended examples, assume the current directory is set correctly.
                 vec!["run", "--manifest-path", &manifest_path]
             } else {
-                println!(
+                if print_program_name {
+                    println!(
                     "Running example: cargo run --release --example {}",
                     target.name
-                );
+                    );
+                }
                 vec![
                     "run",
                     "--manifest-path",
@@ -404,7 +417,9 @@ pub mod tui_interactive {
                 ]
             }
         } else {
-            println!("Running binary: cargo run --release --bin {}", target.name);
+            if print_program_name {
+                println!("Running binary: cargo run --release --bin {}", target.name);
+            }
             vec![
                 "run",
                 "--manifest-path",
@@ -435,7 +450,9 @@ pub mod tui_interactive {
 
         // Spawn the cargo process.
         let mut child = crate::e_runner::spawn_cargo_process(&args)?;
-        println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
+        if print_instruction {
+            println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
+        }
         let mut update_history = true;
         let status_code: i32;
         let mut detached = false;
@@ -445,7 +462,8 @@ pub mod tui_interactive {
             // Check if the child process has finished.
             if let Some(status) = child.try_wait()? {
                 status_code = status.code().unwrap_or(1);
-                println!("Process exited with status: {}", status_code);
+                
+                //println!("Process exited with status: {}", status_code);
                 break;
             }
             // Poll for input events with a 100ms timeout.
@@ -454,7 +472,9 @@ pub mod tui_interactive {
                     if key_event.code == KeyCode::Char('c')
                         && key_event.modifiers.contains(event::KeyModifiers::CONTROL)
                     {
-                        println!("Ctrl+C detected in event loop, killing process...");
+                        if print_instruction {
+                            println!("Ctrl+C detected in event loop, killing process...");                            
+                        }
                         child.kill()?;
                         update_history = false; // do not update history if cancelled
                                                 // Optionally, you can also wait for the child after killing.
@@ -463,7 +483,9 @@ pub mod tui_interactive {
                         break;
                     } else if key_event.code == KeyCode::Char('d') && key_event.modifiers.is_empty()
                     {
-                        println!("'d' pressed; detaching process. Process will continue running.");
+                        if print_instruction {
+                            println!("'d' pressed; detaching process. Process will continue running.");
+                        }
                         detached = true;
                         update_history = false;
                         // Do not kill or wait on the child.
@@ -501,10 +523,12 @@ pub mod tui_interactive {
                 let history_data = run_history.iter().cloned().collect::<Vec<_>>().join("\n");
                 fs::write(history_path, history_data)?;
             }
-            println!(
-                "Exitcode {}  Waiting for {} seconds...",
-                status_code, wait_secs
-            );
+            if !print_exit_code {
+                println!(
+                    "Exitcode {}  Waiting for {} seconds...",
+                    status_code, wait_secs
+                );
+            }
             std::thread::sleep(Duration::from_secs(wait_secs));
         }
 

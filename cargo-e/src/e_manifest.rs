@@ -58,6 +58,7 @@ pub fn collect_workspace_members(
 /// Checks whether the manifest at `manifest_path` would trigger the workspace error.
 /// If so, it patches the file by appending an empty `[workspace]` table, returning the original content.
 /// Otherwise, returns None.
+#[allow(dead_code)]
 pub(crate) fn maybe_patch_manifest_for_run(
     manifest_path: &Path,
 ) -> Result<Option<String>, Box<dyn Error>> {
@@ -80,4 +81,22 @@ pub(crate) fn maybe_patch_manifest_for_run(
         }
     }
     Ok(None)
+}
+
+/// Search upward from the current directory for Cargo.toml.
+pub fn find_manifest_dir() -> std::io::Result<PathBuf> {
+    let mut dir = std::env::current_dir()?;
+    loop {
+        if dir.join("Cargo.toml").exists() {
+            return Ok(dir);
+        }
+        // Stop if we cannot go any higher.
+        if !dir.pop() {
+            break;
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "Could not locate Cargo.toml in the current or parent directories.",
+    ))
 }
