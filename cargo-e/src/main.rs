@@ -97,6 +97,11 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
+            #[cfg(feature = "tui")]
+            if cli.tui {
+                cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
+                std::process::exit(0);
+            }
             cargo_e::run_example(target, &cli.extra)?;
         }
         // If not found among examples, search for a binary with that name.
@@ -104,6 +109,11 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             .iter()
             .find(|t| t.kind == TargetKind::Binary && t.name == explicit)
         {
+            #[cfg(feature = "tui")]
+            if cli.tui {
+                cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
+                std::process::exit(0);
+            }
             cargo_e::run_example(target, &cli.extra)?;
         } else {
             eprintln!(
@@ -122,17 +132,28 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             } else {
                 println!("partial search results for '{}':", explicit);
+                #[cfg(feature = "tui")]
+                if cli.tui {
+                    cargo_e::e_tui::tui_interactive::launch_tui(&cli, &fuzzy_matches)?;
+                    std::process::exit(0);
+                }
                 cli_loop(&cli, &fuzzy_matches, &[], &[])?;
             }
             std::process::exit(1);
         }
     } else if builtin_examples.len() == 1 {
+        #[cfg(feature = "tui")]
+        if cli.tui {
+            cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
+            std::process::exit(0);
+        }
+
         let example = builtin_examples[0];
         let message = format!(
             "{} example found. run? (Yes / no / edit / tui)     waiting {} seconds.",
             example.name, cli.wait
         );
-        match cargo_e::e_prompts::prompt(&message, cli.wait)? {
+        match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
             Some('y') => {
                 println!("running {}...", example.name);
                 cargo_e::run_example(example, &cli.extra)?;
@@ -163,6 +184,11 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Only one example exists: run it.
     } else if builtin_examples.is_empty() && builtin_binaries.len() == 1 {
         provide_notice_of_no_examples(&cli, &unique_examples)?;
+        #[cfg(feature = "tui")]
+        if cli.tui {
+            cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
+            std::process::exit(0);
+        }
         // No examples, but one binary exists.
         let binary = builtin_binaries[0];
         // Prompt the user for what to do.
@@ -197,14 +223,11 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         provide_notice_of_no_examples(&cli, &unique_examples)?;
+        #[cfg(feature = "tui")]
         if cli.tui {
-            #[cfg(feature = "tui")]
-            {
-                cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
-                std::process::exit(0);
-            }
+            cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
+            std::process::exit(0);
         }
-
         cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
         // if builtin_examples.len() + builtin_binaries.len() > 1 {
         //     //select_and_run_target(&cli, &examples, &builtin_examples, &builtin_binaries)?;
@@ -227,14 +250,20 @@ fn provide_notice_of_no_examples(cli: &Cli, examples: &[Example]) -> Result<(), 
         .count();
 
     println!(
-        "0 built-in examples ({} alternatives: {} examples, {} binaries).\n\
-        == press q, t, wait for 3 seconds, or other key to continue.",
+        "0 built-in examples ({} alternatives: {} examples, {} binaries).",
         examples.len(),
         ex_count,
         bin_count
     );
+
+    if cli.wait != 0 {
+        println!(
+            "== press q, t, wait for {} seconds, or other key to continue.",
+            cli.wait
+        );
+    }
     if let Some(line) =
-        cargo_e::e_prompts::prompt_line_with_poll_opts(3, &[' ', 'c', 't', 'q'], None)?
+        cargo_e::e_prompts::prompt_line_with_poll_opts(cli.wait, &[' ', 'c', 't', 'q'], None)?
     {
         let trimmed = line.trim();
         // Continue if input is empty or "c"; otherwise, quit.
@@ -477,8 +506,8 @@ fn select_and_run_target_loop(
     // Determine the required padding width based on the number of targets
     let pad_width = combined.len().to_string().len();
     // Load run history from file.
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let history_path = format!("{}/run_history.txt", manifest_dir);
+    let manifest_dir = cargo_e::e_manifest::find_manifest_dir()?;
+    let history_path = manifest_dir.join("run_history.txt");
     let run_history = cargo_e::e_parser::read_run_history(&history_path);
 
     // Print the list.
@@ -548,7 +577,7 @@ fn select_and_run_target_loop(
                 allowed_chars.push('e');
                 allowed_chars.push('E');
                 if let Some(line) = cargo_e::e_prompts::prompt_line_with_poll_opts(
-                    cli.wait,
+                    cli.wait.max(3),
                     &quick_exit_keys,
                     Some(&allowed_chars),
                 )? {
@@ -610,7 +639,7 @@ fn select_and_run_target_loop(
         let quick_exit_keys = ['q', 't', ' '];
         let allowed_digits: Vec<char> = ('0'..='9').collect();
         cargo_e::e_prompts::prompt_line_with_poll_opts(
-            cli.wait,
+            cli.wait.max(3),
             &quick_exit_keys,
             Some(&allowed_digits),
         )?
@@ -620,7 +649,11 @@ fn select_and_run_target_loop(
         allowed.extend(['e']);
         let mut quick_exit_keys: Vec<char> = vec!['q', 't', ' '];
         quick_exit_keys.extend('0'..='9');
-        cargo_e::e_prompts::prompt_line_with_poll_opts(cli.wait, &quick_exit_keys, Some(&allowed))?
+        cargo_e::e_prompts::prompt_line_with_poll_opts(
+            cli.wait.max(3),
+            &quick_exit_keys,
+            Some(&allowed),
+        )?
     }
     .unwrap_or_default();
     println!("{}", &final_input);
@@ -628,8 +661,9 @@ fn select_and_run_target_loop(
 }
 pub fn append_run_history(target_name: &str) -> io::Result<()> {
     use std::io::Write;
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let history_path = format!("{}/run_history.txt", manifest_dir);
+    let manifest_dir = cargo_e::e_manifest::find_manifest_dir()?;
+    let history_path = manifest_dir.join("run_history.txt");
+
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -656,9 +690,7 @@ fn process_input(
         }
         #[cfg(not(feature = "tui"))]
         {
-            Ok(LoopResult::Run(
-                <std::process::ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw(0),
-            ))
+            Ok(LoopResult::Quit)
         }
     } else if trimmed.to_lowercase().starts_with("e") {
         // Handle the "edit" command: e<num>
@@ -689,14 +721,18 @@ fn process_input(
             Ok(LoopResult::Quit)
         } else {
             let (target_type, target) = combined[index - 1];
-            println!("running {} \"{}\"...", target_type, target.name);
+            if cli.print_program_name {
+                println!("running {} \"{}\"...", target_type, target.name);
+            }
             let status = cargo_e::run_example(target, &cli.extra)?;
             let _ = append_run_history(&target.name.clone());
-            println!(
-                "Exitcode {:?}  Waiting for {} seconds...",
-                status.code(),
-                cli.wait
-            );
+            if cli.print_exit_code {
+                println!(
+                    "Exitcode {:?}  Waiting for {} seconds...",
+                    status.code(),
+                    cli.wait
+                );
+            }
             std::thread::sleep(std::time::Duration::from_secs(cli.wait));
 
             Ok(LoopResult::Run(status))

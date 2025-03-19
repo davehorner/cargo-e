@@ -15,7 +15,7 @@ fn main() {
 
     let args = CargoCommandBuilder::new()
         .with_target(&target)
-        .with_extra_args(&vec!["--flag".to_string(), "value".to_string()])
+        .with_extra_args(&["--flag".to_string(), "value".to_string()])
         .build();
 
     println!("Built Cargo command: {:?}", args);

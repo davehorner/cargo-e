@@ -5,24 +5,70 @@ use clap::Parser;
 #[command(disable_version_flag = true)]
 pub struct Cli {
     /// Print version and feature flags in JSON format.
-    #[arg(long, short = 'v')]
+    #[arg(
+        long,
+        short = 'v',
+        help = "Print version and feature flags in JSON format."
+    )]
     pub version: bool,
 
-    #[arg(long, short = 't')]
+    #[arg(
+        long,
+        short = 't',
+        help = "Launch the text-based user interface (TUI)."
+    )]
     pub tui: bool,
 
-    #[arg(long, short = 'w')]
+    #[arg(long, short = 'w', help = "Operate on the entire workspace.")]
     pub workspace: bool,
 
-    #[arg(long, short = 'p', default_value_t = true)]
+    /// Print the exit code of the process when run.
+    #[arg(
+        long = "pX",
+        default_value_t = false,
+        value_parser = clap::value_parser!(bool),
+        help = "Print the exit code of the process when run. (default: false)"
+    )]
+    pub print_exit_code: bool,
+
+    /// Print the program name before execution.
+    #[arg(
+        long = "pN",
+        default_value_t = false,
+        value_parser = clap::value_parser!(bool),
+        help = "Print the program name before execution. (default: false)"
+    )]
+    pub print_program_name: bool,
+
+    /// Print the program name before execution.
+    #[arg(
+        long = "pI",
+        default_value_t = true,
+        value_parser = clap::value_parser!(bool),
+        help = "Print the user instruction. (default: true)"
+    )]
+    pub print_instruction: bool,
+
+    #[arg(
+        long,
+        short = 'p',
+        default_value_t = true,
+        help = "Enable or disable paging (default: enabled)."
+    )]
     pub paging: bool,
 
-    #[arg(long = "wait", short = 'W', default_value_t = 5)]
+    #[arg(
+        long = "wait",
+        short = 'W',
+        default_value_t = 5,
+        help = "Set wait time in seconds (default: 5)."
+    )]
     pub wait: u64,
 
+    #[arg(help = "Specify an explicit example to run.")]
     pub explicit_example: Option<String>,
 
-    #[arg(last = true)]
+    #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,
 }
 

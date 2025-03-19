@@ -3,7 +3,6 @@ use crate::prelude::*;
 // use ctrlc;
 use crate::Example;
 use once_cell::sync::Lazy;
-use std::process::ExitStatus;
 
 // Global shared container for the currently running child process.
 static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -51,7 +50,10 @@ pub fn run_example(
 /// Runs an example or binary target, applying a temporary manifest patch if a workspace error is detected.
 /// This function uses the same idea as in the collection helpers: if the workspace error is found,
 /// we patch the manifest, run the command, and then restore the manifest.
-pub fn run_example(target: &Example, extra_args: &[String]) -> Result<ExitStatus, Box<dyn Error>> {
+pub fn run_example(
+    target: &Example,
+    extra_args: &[String],
+) -> Result<std::process::ExitStatus, Box<dyn Error>> {
     // Retrieve the current package name (or binary name) at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
@@ -128,7 +130,7 @@ pub fn run_example(target: &Example, extra_args: &[String]) -> Result<ExitStatus
         fs::write(&manifest_path, original)?;
     }
 
-    println!("Process exited with status: {:?}", status.code());
+    //    println!("Process exited with status: {:?}", status.code());
     Ok(status)
 }
 /// Helper function to spawn a cargo process.
