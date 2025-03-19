@@ -130,7 +130,7 @@ pub fn run_example(
         fs::write(&manifest_path, original)?;
     }
 
-//    println!("Process exited with status: {:?}", status.code());
+    //    println!("Process exited with status: {:?}", status.code());
     Ok(status)
 }
 /// Helper function to spawn a cargo process.

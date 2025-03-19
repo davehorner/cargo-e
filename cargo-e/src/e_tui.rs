@@ -324,7 +324,7 @@ pub mod tui_interactive {
                                             cli.wait,
                                             cli.print_exit_code,
                                             cli.print_program_name,
-                                            cli.print_instruction
+                                            cli.print_instruction,
                                         )?;
                                     }
                                 }
@@ -379,7 +379,7 @@ pub mod tui_interactive {
         wait_secs: u64,
         print_exit_code: bool,
         print_program_name: bool,
-        print_instruction:bool,     
+        print_instruction: bool,
     ) -> Result<(), Box<dyn Error>> {
         let target = &examples[index];
         // Leave TUI mode before running the target.
@@ -403,8 +403,8 @@ pub mod tui_interactive {
             } else {
                 if print_program_name {
                     println!(
-                    "Running example: cargo run --release --example {}",
-                    target.name
+                        "Running example: cargo run --release --example {}",
+                        target.name
                     );
                 }
                 vec![
@@ -462,7 +462,7 @@ pub mod tui_interactive {
             // Check if the child process has finished.
             if let Some(status) = child.try_wait()? {
                 status_code = status.code().unwrap_or(1);
-                
+
                 //println!("Process exited with status: {}", status_code);
                 break;
             }
@@ -473,7 +473,7 @@ pub mod tui_interactive {
                         && key_event.modifiers.contains(event::KeyModifiers::CONTROL)
                     {
                         if print_instruction {
-                            println!("Ctrl+C detected in event loop, killing process...");                            
+                            println!("Ctrl+C detected in event loop, killing process...");
                         }
                         child.kill()?;
                         update_history = false; // do not update history if cancelled
@@ -484,7 +484,9 @@ pub mod tui_interactive {
                     } else if key_event.code == KeyCode::Char('d') && key_event.modifiers.is_empty()
                     {
                         if print_instruction {
-                            println!("'d' pressed; detaching process. Process will continue running.");
+                            println!(
+                                "'d' pressed; detaching process. Process will continue running."
+                            );
                         }
                         detached = true;
                         update_history = false;

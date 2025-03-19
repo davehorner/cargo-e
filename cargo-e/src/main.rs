@@ -137,7 +137,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cargo_e::e_tui::tui_interactive::launch_tui(&cli, &fuzzy_matches)?;
                     std::process::exit(0);
                 }
-               cli_loop(&cli, &fuzzy_matches, &[], &[])?;
+                cli_loop(&cli, &fuzzy_matches, &[], &[])?;
             }
             std::process::exit(1);
         }
@@ -690,9 +690,7 @@ fn process_input(
         }
         #[cfg(not(feature = "tui"))]
         {
-            Ok(LoopResult::Run(
-                <std::process::ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw(0),
-            ))
+            Ok(LoopResult::Quit)
         }
     } else if trimmed.to_lowercase().starts_with("e") {
         // Handle the "edit" command: e<num>

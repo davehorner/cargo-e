@@ -5,10 +5,18 @@ use clap::Parser;
 #[command(disable_version_flag = true)]
 pub struct Cli {
     /// Print version and feature flags in JSON format.
-    #[arg(long, short = 'v', help = "Print version and feature flags in JSON format.")]
+    #[arg(
+        long,
+        short = 'v',
+        help = "Print version and feature flags in JSON format."
+    )]
     pub version: bool,
 
-    #[arg(long, short = 't', help = "Launch the text-based user interface (TUI).")]
+    #[arg(
+        long,
+        short = 't',
+        help = "Launch the text-based user interface (TUI)."
+    )]
     pub tui: bool,
 
     #[arg(long, short = 'w', help = "Operate on the entire workspace.")]
@@ -40,11 +48,21 @@ pub struct Cli {
         help = "Print the user instruction. (default: true)"
     )]
     pub print_instruction: bool,
-    
-    #[arg(long, short = 'p', default_value_t = true, help = "Enable or disable paging (default: enabled).")]
+
+    #[arg(
+        long,
+        short = 'p',
+        default_value_t = true,
+        help = "Enable or disable paging (default: enabled)."
+    )]
     pub paging: bool,
 
-    #[arg(long = "wait", short = 'W', default_value_t = 5, help = "Set wait time in seconds (default: 5).")]
+    #[arg(
+        long = "wait",
+        short = 'W',
+        default_value_t = 5,
+        help = "Set wait time in seconds (default: 5)."
+    )]
     pub wait: u64,
 
     #[arg(help = "Specify an explicit example to run.")]
