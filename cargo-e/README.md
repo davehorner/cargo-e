@@ -257,7 +257,10 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 - Built with the power of the Rust ecosystem and libraries like [clap](https://crates.io/crates/clap), [crossterm](https://crates.io/crates/crossterm) (optional), and [ratatui](https://crates.io/crates/ratatui) (optional).
 - Special thanks to the Rust community and all contributors for their continued support.
-  
+
+[![cargo-e_walkthru](https://github.com/davehorner/cargo-e_walkthrus/blob/main/cargo-e_walkthru_nu-ansi-term.gif?raw=true)](https://github.com/davehorner/cargo-e_walkthrus/tree/main)
+
+
 <a href="https://crates.io/crates/cargo-e" rel="nofollow noopener noreferrer">
   <img src="https://img.shields.io/crates/v/cargo-e.svg" alt="Crates.io">
 </a>
