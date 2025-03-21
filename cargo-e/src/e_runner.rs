@@ -3,6 +3,8 @@ use crate::prelude::*;
 // use ctrlc;
 use crate::Example;
 use once_cell::sync::Lazy;
+use std::path::Path;
+use std::process::Command;
 
 // Global shared container for the currently running child process.
 static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -151,4 +153,23 @@ pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
         let child = Command::new("cargo").args(args).spawn()?;
         Ok(child)
     }
+}
+
+
+/// Runs `glow -p` in the folder of the appropriate manifest.
+/// If `workspace` is true, it will use the workspace manifest.
+pub fn run_glow(workspace: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Locate the manifest based on the workspace flag.
+    let manifest_str = crate::locate_manifest(workspace)?;
+    let manifest_path = Path::new(&manifest_str);
+    // Use the parent directory of the manifest as the working directory.
+    let folder = manifest_path.parent().unwrap_or(manifest_path);
+    println!("Running 'glow -p' in folder: {}", folder.display());
+    
+    // Spawn the glow process.
+    Command::new("glow")
+        .arg("-p")
+        .current_dir(folder)
+        .spawn()?;
+    Ok(())
 }
