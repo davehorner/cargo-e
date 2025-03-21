@@ -53,7 +53,7 @@ pub mod tui_interactive {
             exit_hover: bool,
         ) {
 
-        
+        // println!("Drawing UI...");
             // Use the layout API from ratatui.
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -152,22 +152,30 @@ pub mod tui_interactive {
             }
         }
 
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            EnterAlternateScreen,
-            EnableMouseCapture,
-            Clear(ClearType::All)
-        )?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
+        //  enable_raw_mode()?;
+        //  let mut stdout = io::stdout();
+        //  execute!(
+        //      stdout,
+        //      EnterAlternateScreen,
+        //      EnableMouseCapture,
+        //      Clear(ClearType::All)
+        //  )?;
+        // let backend = CrosstermBackend::new(stdout);
+        // let mut terminal = Terminal::new(backend)?;
+    'tui_loop: loop {
 
+        let mut  terminal = ratatui::init();
         let mut list_state = ratatui::widgets::ListState::default();
         list_state.select(Some(0));
         let mut exit_hover = false;
+        let mut run_glow = false;
 
         'main_loop: loop {
+
+            if run_glow {
+                // Exit TUI mode to run `glow -p`
+                break 'main_loop;
+            }
             terminal.draw(|f| {
                 let area = f.area();
                 ui::draw_ui(f, area, examples, &run_history, &mut list_state, exit_hover);
@@ -180,7 +188,7 @@ pub mod tui_interactive {
                             continue;
                         }
                         match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => break 'main_loop,
+                            KeyCode::Char('q') | KeyCode::Esc => break 'tui_loop,
                             KeyCode::Down => {
                                 let i = match list_state.selected() {
                                     Some(i) if i >= exs.len() - 1 => i,
@@ -223,49 +231,64 @@ pub mod tui_interactive {
                             }
                             KeyCode::Char('r') => {
                                 // Exit TUI mode to run `glow -p`
-                                disable_raw_mode()?;
-                                let mut stdout = io::stdout();
-                                execute!(
-                                    stdout,
-                                    LeaveAlternateScreen,
-                                    DisableMouseCapture,
-                                    Clear(ClearType::All)
-                                )?;
-                                terminal.show_cursor()?;
+                                // disable_raw_mode()?;
+                                // execute!(
+                                //     stdout,
+                                //     LeaveAlternateScreen,
+                                //     DisableMouseCapture,
+                                //     Clear(ClearType::All)
+                                // )?;
+                                // terminal.show_cursor()?;
+                                
+                                    reinit_terminal(&mut terminal)?;
+                                terminal.clear()?;
+                                drop(terminal);
+        run_glow=true;
+                break 'main_loop;
+       // ratatui::restore();
+        // disable_raw_mode()?;
+        // disable_raw_mode()?;
+        // execute!(
+        //     terminal.backend_mut(),
+        //     LeaveAlternateScreen,
+        //     crossterm::event::DisableMouseCapture,
+        //     Clear(ClearType::All)
+        // )?;
+        // terminal.show_cursor()?;
                                 if let Err(e) = e_runner::run_glow(cli.workspace) {
                                     eprintln!("Failed to run glow: {}", e);
                                     thread::sleep(Duration::from_secs(5));
                                 }
-                                    // (b) Send the ANSI reset sequence and flush.
-                                    use std::io::Write;                
-    print!("\x1bc");
-    io::stdout().flush()?;
-        crossterm::terminal::disable_raw_mode().unwrap();
-                                // Reinitialize terminal by recreating the instance.
-                                enable_raw_mode()?;
-                                let mut new_stdout = io::stdout(); // declare as mutable
-                                execute!(
-                                    new_stdout,
-                                    EnterAlternateScreen,
-                                    EnableMouseCapture,
-                                    Clear(ClearType::All)
-                                )?;
-                                let new_terminal = Terminal::new(CrosstermBackend::new(new_stdout))?;
-                                mem::replace(&mut terminal, new_terminal);
-                                // Force an immediate redraw.
+ //       terminal = ratatui::init();
+        // thread::sleep(Duration::from_millis(50));
+        // disable_raw_mode()?;
+        // enable_raw_mode()?;
+        // let mut stdout = io::stdout();
+        // execute!(
+        //     stdout,
+        //     EnterAlternateScreen,
+        //     EnableMouseCapture,
+        //     Clear(ClearType::All)
+        // )?;
+        // let new_terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+        // mem::replace(&mut terminal, new_terminal);
+                                    // reinit_terminal(&mut terminal)?;
+                                // enable_raw_mode()?;
+                                // let mut new_stdout = io::stdout(); // declare as mutable
+                                // execute!(
+                                //     new_stdout,
+                                //     EnterAlternateScreen,
+                                //     EnableMouseCapture,
+                                //     Clear(ClearType::All)
+                                // )?;
+                                // let new_terminal = Terminal::new(CrosstermBackend::new(new_stdout))?;
+                                // mem::replace(&mut terminal, new_terminal);
+                                // // Force an immediate redraw.
                                 terminal.draw(|f| {
                                     let area = f.area();
                                     ui::draw_ui(f, area, examples, &run_history, &mut list_state, exit_hover);
                                 })?;
-                                                    terminal.draw(|frame| {
-            let area = frame.size();
-            frame.render_widget(
-                ratatui::widgets::Paragraph::new(format!("Counter: {}", 0))
-                    .style(ratatui::style::Style::default().fg(ratatui::style::Color::White)),
-                area,
-            );
-        })?;
-
+                                terminal.flush()?;
                             }
                             KeyCode::Char('e') => {
                                 if let Some(selected) = list_state.selected() {
@@ -390,15 +413,35 @@ pub mod tui_interactive {
             }
         }
 
-        disable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            LeaveAlternateScreen,
-            DisableMouseCapture,
-            Clear(ClearType::All)
-        )?;
-        terminal.show_cursor()?;
+
+        if run_glow {
+            ratatui::restore();
+            println!("Exiting TUI mode to run `glow -p`...");
+            if let Err(e) = e_runner::run_glow(cli.workspace) {
+                eprintln!("Failed to run glow: {}", e);
+                thread::sleep(Duration::from_secs(5));
+            }
+            // terminal = ratatui::init();
+            // terminal.clear()?;
+            // terminal.draw(|f| {
+            //       let area = f.area();
+            //       ui::draw_ui(f, area, examples, &run_history, &mut list_state, exit_hover);
+            // })?;
+            // terminal.flush()?;
+            continue 'tui_loop; // "goto"-like behavior
+        }
+       // break 'tui_loop; // Exit outer loop if not run_glow
+    }
+
+        // disable_raw_mode()?;
+        // let mut stdout = io::stdout();
+        // execute!(
+        //     stdout,
+        //     LeaveAlternateScreen,
+        //     DisableMouseCapture,
+        //     Clear(ClearType::All)
+        // )?;
+        // terminal.show_cursor()?;
         Ok(())
     }
 
