@@ -58,6 +58,14 @@ pub struct Cli {
     pub paging: bool,
 
     #[arg(
+        long,
+        short = 'r',
+        default_value_t = false,
+        help = "Relative numbers (default: enabled)."
+    )]
+    pub relative_numbers: bool,
+
+    #[arg(
         long = "wait",
         short = 'W',
         default_value_t = 5,

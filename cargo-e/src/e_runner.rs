@@ -91,6 +91,30 @@ pub fn run_example(
             manifest_path = PathBuf::from(crate::locate_manifest(false)?);
             cmd.args(["run", "--release", "--bin", &target.name]);
         }
+        crate::TargetKind::ExtendedBinary => {
+            println!("Running extended binary: {}", target.name);
+            manifest_path = PathBuf::from(crate::locate_manifest(false)?);
+            cmd.args([
+                "run",
+                "--release",
+                "--manifest-path",
+                &target.manifest_path,
+                "--bin",
+                &target.name,
+            ]);
+        }
+        crate::TargetKind::ExtendedExample => {
+            println!("Running extended example: {}", target.name);
+            manifest_path = PathBuf::from(crate::locate_manifest(false)?);
+            cmd.args([
+                "run",
+                "--release",
+                "--manifest-path",
+                &target.manifest_path,
+                "--example",
+                &target.name,
+            ]);
+        }
     }
 
     if !extra_args.is_empty() {

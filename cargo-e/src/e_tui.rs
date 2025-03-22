@@ -238,10 +238,7 @@ pub mod tui_interactive {
                                         &history_path,
                                         &mut run_history,
                                         &mut terminal,
-                                        cli.wait,
-                                        cli.print_exit_code,
-                                        cli.print_program_name,
-                                        cli.print_instruction,
+                                        cli,
                                     )?;
                                 }
                             }
@@ -321,10 +318,7 @@ pub mod tui_interactive {
                                             &history_path,
                                             &mut run_history,
                                             &mut terminal,
-                                            cli.wait,
-                                            cli.print_exit_code,
-                                            cli.print_program_name,
-                                            cli.print_instruction,
+                                            cli,
                                         )?;
                                     }
                                 }
@@ -376,10 +370,7 @@ pub mod tui_interactive {
         history_path: &Path,
         run_history: &mut HashSet<String>,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-        wait_secs: u64,
-        print_exit_code: bool,
-        print_program_name: bool,
-        print_instruction: bool,
+        cli: &Cli,
     ) -> Result<(), Box<dyn Error>> {
         let target = &examples[index];
         // Leave TUI mode before running the target.
@@ -395,13 +386,13 @@ pub mod tui_interactive {
 
         let args: Vec<&str> = if target.kind == TargetKind::Example {
             if target.extended {
-                if print_program_name {
+                if cli.print_program_name {
                     println!("Running extended example with manifest: {}", manifest_path);
                 }
                 // For workspace extended examples, assume the current directory is set correctly.
                 vec!["run", "--manifest-path", &manifest_path]
             } else {
-                if print_program_name {
+                if cli.print_program_name {
                     println!(
                         "Running example: cargo run --release --example {}",
                         target.name
@@ -417,7 +408,7 @@ pub mod tui_interactive {
                 ]
             }
         } else {
-            if print_program_name {
+            if cli.print_program_name {
                 println!("Running binary: cargo run --release --bin {}", target.name);
             }
             vec![
@@ -450,7 +441,7 @@ pub mod tui_interactive {
 
         // Spawn the cargo process.
         let mut child = crate::e_runner::spawn_cargo_process(&args)?;
-        if print_instruction {
+        if cli.print_instruction {
             println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
         }
         let mut update_history = true;
@@ -472,7 +463,7 @@ pub mod tui_interactive {
                     if key_event.code == KeyCode::Char('c')
                         && key_event.modifiers.contains(event::KeyModifiers::CONTROL)
                     {
-                        if print_instruction {
+                        if cli.print_instruction {
                             println!("Ctrl+C detected in event loop, killing process...");
                         }
                         child.kill()?;
@@ -483,7 +474,7 @@ pub mod tui_interactive {
                         break;
                     } else if key_event.code == KeyCode::Char('d') && key_event.modifiers.is_empty()
                     {
-                        if print_instruction {
+                        if cli.print_instruction {
                             println!(
                                 "'d' pressed; detaching process. Process will continue running."
                             );
@@ -525,13 +516,12 @@ pub mod tui_interactive {
                 let history_data = run_history.iter().cloned().collect::<Vec<_>>().join("\n");
                 fs::write(history_path, history_data)?;
             }
-            if !print_exit_code {
-                println!(
-                    "Exitcode {}  Waiting for {} seconds...",
-                    status_code, wait_secs
-                );
-            }
-            std::thread::sleep(Duration::from_secs(wait_secs));
+            let message = if cli.print_exit_code {
+                format!("Exitcode {:?}. Press any key to continue...", status_code)
+            } else {
+                "".to_string()
+            };
+            let _ = crate::e_prompts::prompt(&message, cli.wait)?;
         }
 
         // Flush stray input events.

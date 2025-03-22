@@ -5,6 +5,8 @@
 pub enum TargetKind {
     Example,
     Binary,
+    ExtendedExample,
+    ExtendedBinary,
 }
 
 /// Represents an example or binary that can be executed using `cargo-e`.
