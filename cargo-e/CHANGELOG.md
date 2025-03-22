@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.20...cargo-e-v0.1.21) - 2025-03-22
+
+### Added
+
+- *(cli)* add relative numbering option and support for extended targets in e_collect.rs and e_runner.rs
+
 ## [0.1.20](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.19...cargo-e-v0.1.20) - 2025-03-22
 
 ### Added

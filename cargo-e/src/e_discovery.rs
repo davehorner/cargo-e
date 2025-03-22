@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 /// This function scans for a Cargo.toml and then looks for example files or subproject directories.
 pub fn discover_targets(current_dir: &Path) -> Result<Vec<CargoTarget>> {
     let mut targets = Vec::new();
-
+    let parent = current_dir.parent().expect("expected cwd to have a parent");
     // Check if a Cargo.toml exists in the current directory.
     let manifest_path = current_dir.join("Cargo.toml");
     if manifest_path.exists() {
@@ -56,7 +56,11 @@ pub fn discover_targets(current_dir: &Path) -> Result<Vec<CargoTarget>> {
                     if let Some(name) = path.file_name() {
                         targets.push(CargoTarget {
                             name: name.to_string_lossy().to_string(),
-                            display_name: name.to_string_lossy().to_string(),
+                            display_name: format!(
+                                "parent{} {}",
+                                parent.display(),
+                                name.to_string_lossy()
+                            ),
                             manifest_path: sub_manifest.to_string_lossy().to_string(),
                             kind: TargetKind::Example,
                             extended: true,

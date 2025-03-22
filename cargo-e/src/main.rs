@@ -469,7 +469,7 @@ fn run_equivalent_example(cli: &Cli) -> Result<(), Box<dyn Error>> {
 /// The result returned by the selection loop.
 enum LoopResult {
     Quit,
-    Run(std::process::ExitStatus),
+    Run(std::process::ExitStatus, usize), // second value is the current offset/page index
 }
 
 /// The selection function: displays targets, waits for input, and returns a LoopResult.
@@ -478,7 +478,9 @@ fn select_and_run_target_loop(
     unique_targets: &[Example],
     builtin_examples: &[&Example],
     builtin_binaries: &[&Example],
+    start_offset: usize, // new parameter for starting page offset
 ) -> Result<LoopResult, Box<dyn Error>> {
+    let current_offset = start_offset;
     let prompt_loop = format!(
         "== # to run, tui, e<#> edit, 'q' to quit (waiting {} seconds) ",
         cli.wait
@@ -486,20 +488,12 @@ fn select_and_run_target_loop(
     // Build a combined list: examples first, then binaries.
     let mut combined: Vec<(&str, &Example)> = Vec::new();
     for target in unique_targets {
-        let label = if target.kind == cargo_e::TargetKind::Example {
-            if target.extended {
-                "exx"
-            } else {
-                "ex."
-            }
-        } else if target.kind == cargo_e::TargetKind::Binary {
-            if target.extended {
-                "binx"
-            } else {
-                "bin"
-            }
-        } else {
-            "other"
+        let label = match target.kind {
+            cargo_e::TargetKind::Example => "ex.",
+            cargo_e::TargetKind::ExtendedExample => "exx",
+            cargo_e::TargetKind::Binary => "bin",
+            cargo_e::TargetKind::ExtendedBinary => "binx",
+            //_ => "other",
         };
         combined.push((label, target));
     }
@@ -520,24 +514,40 @@ fn select_and_run_target_loop(
 
     // Print the list.
     if cli.paging {
-        // Reserve two lines for the prompt/status.
-        #[cfg(not(feature = "tui"))]
-        let rows = 10;
-
-        #[cfg(feature = "tui")]
-        let (_cols, rows) = size()?;
-
-        // Reserve two lines for prompt/status.
-        let page_lines = if rows > 3 {
-            (rows - 2) as usize
-        } else {
-            rows as usize
-        };
         //println!("Available:");
         let total = combined.len();
-        let mut current_index = 0;
+        let mut current_index = current_offset;
         while current_index < total {
-            let end_index = usize::min(current_index + page_lines, total);
+            // Reserve two lines for the prompt/status.
+            let rows = {
+                #[cfg(feature = "tui")]
+                {
+                    let (_, term_rows) = size()?; // get terminal size
+                    std::cmp::min(term_rows, 9) // choose the lesser of terminal rows and 9
+                }
+                #[cfg(not(feature = "tui"))]
+                {
+                    9
+                }
+            };
+            let page_lines = {
+                #[cfg(feature = "tui")]
+                {
+                    let (_, term_rows) = size()?;
+                    // If the terminal has fewer than 9 rows, subtract 2 for the prompt/input,
+                    // but ensure that we display at least one line.
+                    if term_rows < 9 {
+                        std::cmp::max((term_rows.saturating_sub(2)) as usize, 1)
+                    } else {
+                        9
+                    }
+                }
+                #[cfg(not(feature = "tui"))]
+                {
+                    9
+                }
+            };
+            let end_index = usize::min(current_index + page_lines as usize, total);
             for (i, (target_type, target)) in combined[current_index..end_index].iter().enumerate()
             {
                 // let base_line = format!(
@@ -546,11 +556,17 @@ fn select_and_run_target_loop(
                 //     target_type,
                 //     target.name
                 // );
+                // Use relative numbering if enabled (reset per page), otherwise absolute numbering.
+                let line_number = if cli.relative_numbers {
+                    i + 1
+                } else {
+                    current_index + i + 1
+                };
                 let base_line = format!(
                     "  {:>width$}: [{}] {}",
-                    current_index + i + 1,
+                    line_number,
                     target_type,
-                    target.name,
+                    target.display_name,
                     width = pad_width
                 );
                 let styled_line = if let Some(count) = run_history.get(&target.name) {
@@ -580,7 +596,11 @@ fn select_and_run_target_loop(
             if end_index < total {
                 println!("{}", &prompt_loop);
                 io::Write::flush(&mut io::stdout())?;
-                let quick_exit_keys = ['q', 't', ' '];
+                let mut quick_exit_keys = vec!['q', 't', ' '];
+                if cli.relative_numbers {
+                    // If relative numbering is enabled, add all digits as additional quick exit keys.
+                    quick_exit_keys.extend('0'..='9');
+                }
                 let mut allowed_chars: Vec<char> = ('0'..='9').collect();
                 allowed_chars.push('e');
                 allowed_chars.push('E');
@@ -593,7 +613,8 @@ fn select_and_run_target_loop(
                         // Early selection.
                         let selection = line;
                         // current_index = total; // break out of paging loop.
-                        return process_input(&selection, &combined, cli);
+                        println!("{} currindex", current_index);
+                        return process_input(&selection, &combined, cli, current_index);
                     }
                 }
                 current_index = end_index;
@@ -665,7 +686,7 @@ fn select_and_run_target_loop(
     }
     .unwrap_or_default();
     println!("{}", &final_input);
-    process_input(&final_input, &combined, cli)
+    process_input(&final_input, &combined, cli, 0)
 }
 pub fn append_run_history(target_name: &str) -> io::Result<()> {
     use std::io::Write;
@@ -684,6 +705,7 @@ fn process_input(
     input: &str,
     combined: &[(&str, &Example)],
     cli: &Cli,
+    offset: usize, // offset for the current page
 ) -> Result<LoopResult, Box<dyn Error>> {
     let trimmed = input.trim();
     if trimmed.eq_ignore_ascii_case("q") {
@@ -703,12 +725,17 @@ fn process_input(
     } else if trimmed.to_lowercase().starts_with("e") {
         // Handle the "edit" command: e<num>
         let num_str = trimmed[1..].trim();
-        if let Ok(index) = num_str.parse::<usize>() {
-            if index == 0 || index > combined.len() {
+        if let Ok(rel_index) = num_str.parse::<usize>() {
+            let abs_index = if cli.relative_numbers {
+                offset + rel_index - 1
+            } else {
+                rel_index - 1
+            };
+            if abs_index > combined.len() {
                 eprintln!("error: Invalid target number for edit: {}", trimmed);
                 Ok(LoopResult::Quit)
             } else {
-                let (target_type, target) = combined[index - 1];
+                let (target_type, target) = combined[abs_index];
                 println!("editing {} \"{}\"...", target_type, target.name);
                 // Call the appropriate function to open the target for editing.
                 // For example, if using VSCode:
@@ -717,30 +744,37 @@ fn process_input(
                 // After editing, you might want to pause briefly or simply return to the menu.
                 Ok(LoopResult::Run(
                     <std::process::ExitStatus as process::ExitStatusExt>::from_raw(0),
+                    offset,
                 ))
             }
         } else {
             eprintln!("error: Invalid edit command: {}", trimmed);
             Ok(LoopResult::Quit)
         }
-    } else if let Ok(index) = trimmed.parse::<usize>() {
-        if index == 0 || index > combined.len() {
+    } else if let Ok(rel_index) = trimmed.parse::<usize>() {
+        let abs_index = if cli.relative_numbers {
+            offset + rel_index - 1
+        } else {
+            rel_index - 1
+        };
+        if abs_index > combined.len() {
             eprintln!("invalid number: {}", trimmed);
             Ok(LoopResult::Quit)
         } else {
-            let (target_type, target) = combined[index - 1];
+            let (target_type, target) = combined[abs_index];
             if cli.print_program_name {
                 println!("running {} \"{}\"...", target_type, target.name);
             }
             let status = cargo_e::run_example(target, &cli.extra)?;
             let _ = append_run_history(&target.name.clone());
-            if cli.print_exit_code {
-                let message = format!("Exitcode {:?}. Press any key to continue...", status.code());
-                let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
-            }
-            std::thread::sleep(std::time::Duration::from_secs(cli.wait));
+            let message = if cli.print_exit_code {
+                format!("Exitcode {:?}. Press any key to continue...", status.code())
+            } else {
+                "".to_string()
+            };
+            let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
 
-            Ok(LoopResult::Run(status))
+            Ok(LoopResult::Run(status, offset))
         }
     } else {
         Ok(LoopResult::Quit)
@@ -756,21 +790,28 @@ fn cli_loop(
     builtin_examples: &[&Example],
     builtin_binaries: &[&Example],
 ) -> Result<(), Box<dyn Error>> {
+    let mut current_offset = 0; // persist the current page offset
     loop {
-        match select_and_run_target_loop(cli, unique_examples, builtin_examples, builtin_binaries)?
-        {
+        match select_and_run_target_loop(
+            cli,
+            unique_examples,
+            builtin_examples,
+            builtin_binaries,
+            current_offset,
+        )? {
             LoopResult::Quit => {
                 println!("quitting.");
                 break;
             }
-            LoopResult::Run(status) => {
-                // Here, we treat exit code 130 as "interrupted".
+            LoopResult::Run(status, new_offset) => {
+                // Update the offset so the next iteration starts at the same page
+                current_offset = new_offset;
                 if status.code() == Some(130) {
                     println!("interrupted (Ctrl+C). returning to menu.");
                     continue;
                 } else {
                     println!("finished with status: {:?}", status.code());
-                    continue; //break;
+                    continue;
                 }
             }
         }

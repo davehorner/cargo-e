@@ -49,7 +49,7 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
     // Otherwise, use normal line input.
     #[cfg(not(feature = "tui"))]
     {
-        use std::io::{self, BufRead, Write};
+        use std::io::{self, BufRead};
         use std::sync::mpsc;
         use std::thread;
 

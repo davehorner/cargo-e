@@ -62,20 +62,30 @@ pub fn collect_binaries(
         .into_iter()
         .map(|name| {
             let display_name = if prefix.starts_with('$') {
-                format!("{} > binary > {}", prefix, name)
+                format!(
+                    "{} > binary > {} {}",
+                    prefix,
+                    name,
+                    manifest_path.to_string_lossy().into_owned()
+                )
             } else if extended {
                 format!("{} {}", prefix, name)
             } else if prefix.starts_with("builtin") {
                 format!("builtin binary: {}", name)
             } else {
-                name.clone()
+                format!("{} {}", prefix, name)
+                // name.clone()
             };
 
             Example {
                 name: name.clone(),
                 display_name,
                 manifest_path: manifest_path.to_string_lossy().to_string(),
-                kind: TargetKind::Binary,
+                kind: if extended {
+                    TargetKind::ExtendedBinary
+                } else {
+                    TargetKind::Binary
+                },
                 extended,
             }
         })
@@ -109,14 +119,19 @@ pub fn collect_examples(
             } else if prefix.starts_with("builtin") {
                 format!("builtin example: {}", name)
             } else {
-                name.clone()
+                format!("{} {}", prefix, name)
+                // name.clone()
             };
 
             Example {
                 name: name.clone(),
                 display_name,
                 manifest_path: manifest_path.to_string_lossy().to_string(),
-                kind: TargetKind::Example,
+                kind: if extended {
+                    TargetKind::ExtendedExample
+                } else {
+                    TargetKind::Example
+                },
                 extended,
             }
         })
@@ -127,6 +142,7 @@ pub fn collect_examples(
 
 // --- Concurrent or sequential collection ---
 pub fn collect_samples(
+    workspace_mode: bool,
     manifest_infos: Vec<(String, PathBuf, bool)>,
     __max_concurrency: usize,
 ) -> Result<Vec<Example>, Box<dyn Error>> {
@@ -151,6 +167,46 @@ pub fn collect_samples(
                 if let Ok(mut bins) = collect_binaries(&prefix_clone, &manifest_clone, extended) {
                     results.append(&mut bins);
                 }
+                let etargets =
+                    crate::e_discovery::discover_targets(manifest_clone.parent().unwrap()).unwrap();
+                for target in etargets {
+                    // Check if the target is extended and that its name is not already present in results.
+                    if target.extended && !results.iter().any(|r| r.name == target.name) {
+                        let manifest_path = Path::new(&target.manifest_path);
+                        let new_prefix = format!("examples/{}", &prefix_clone);
+                        // Collect extended examples.
+                        if let Ok(ex_ext) = collect_examples(&new_prefix, manifest_path, true) {
+                            for ex in ex_ext {
+                                if !results.iter().any(|r| r.name == ex.name) {
+                                    results.push(ex);
+                                }
+                            }
+                        }
+
+                        // Collect extended binaries.
+                        if let Ok(bins_ext) = collect_binaries(&new_prefix, manifest_path, true) {
+                            for bin in bins_ext {
+                                if !results.iter().any(|r| r.name == bin.name) {
+                                    results.push(bin);
+                                }
+                            }
+                        }
+                        // Derive the subproject directory from the extended target's manifest path.
+
+                        // // Convert CargoTarget to Example by mapping the fields appropriately.
+                        // let example = Example {
+                        //     name: target.name,
+                        //     display_name: target.display_name,
+                        //     manifest_path: target.manifest_path,
+                        //     kind: TargetKind::Extended, // Ensure this field is compatible with Example's type.
+                        //     extended: target.extended,
+                        // };
+                        // results.push(example);
+                    }
+                }
+                // for e in etargets {
+                //    println!("{} found", e.name);
+                // }
                 tx.send(results).expect("Failed to send results");
             });
         }
@@ -178,11 +234,59 @@ pub fn collect_samples(
             if let Ok(mut bins) = collect_binaries(&prefix, &manifest_path, extended) {
                 all_samples.append(&mut bins);
             }
+            let manifest_path = Path::new(&manifest_path);
+            let new_prefix = format!("examples/{}", &prefix);
+            // Collect extended examples.
+            if let Ok(ex_ext) = collect_examples(&new_prefix, manifest_path, true) {
+                for ex in ex_ext {
+                    if !all_samples.iter().any(|r| r.name == ex.name) {
+                        all_samples.push(ex);
+                    }
+                }
+            }
+
+            // Collect extended binaries.
+            if let Ok(bins_ext) = collect_binaries(&new_prefix, manifest_path, true) {
+                for bin in bins_ext {
+                    if !all_samples.iter().any(|r| r.name == bin.name) {
+                        all_samples.push(bin);
+                    }
+                }
+            }
         }
         let duration_seq = start_seq.elapsed();
         debug!("timing: Sequential processing took {:?}", duration_seq);
     }
-    Ok(all_samples)
+    let mut target_map: std::collections::HashMap<String, crate::Example> =
+        std::collections::HashMap::new();
+
+    // Group targets by name and choose one based on workspace_mode:
+    for target in all_samples {
+        target_map
+            .entry(target.name.clone())
+            .and_modify(|existing| {
+                if workspace_mode {
+                    // In workspace mode, extended targets override builtins.
+                    if target.extended && !existing.extended {
+                        *existing = target.clone();
+                    }
+                } else {
+                    // In normal mode, builtin targets (non-extended) override extended.
+                    if !target.extended && existing.extended {
+                        *existing = target.clone();
+                    }
+                }
+            })
+            .or_insert(target.clone());
+    }
+
+    let mut combined = Vec::new();
+    for target in target_map.into_values() {
+        combined.push(target);
+    }
+
+    Ok(combined)
+    // Ok(all_samples)
 }
 
 pub fn collect_all_targets(
@@ -223,7 +327,7 @@ pub fn collect_all_targets(
         println!("package: {}", format_package(&bi));
         manifest_infos.push(("-".to_string(), bi.clone(), false));
         for (member, member_manifest) in ws_members {
-            manifest_infos.push((format!("${}", member), member_manifest, false));
+            manifest_infos.push((format!("${}", member), member_manifest, true));
         }
     } else {
         // Not in workspace mode: simply print the package manifest.
@@ -231,7 +335,7 @@ pub fn collect_all_targets(
         manifest_infos.push(("-".to_string(), bi.clone(), false));
     }
 
-    let samples = collect_samples(manifest_infos, max_concurrency)?;
+    let samples = collect_samples(use_workspace, manifest_infos, max_concurrency)?;
     Ok(samples)
 }
 
