@@ -116,10 +116,10 @@ pub mod tui_interactive {
     /// Reinitializes the terminal by enabling raw mode, entering the alternate screen,
     /// enabling mouse capture, clearing the screen, and recreating the Terminal instance.
     pub fn reinit_terminal(
-        terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+        terminal: &mut Terminal<CrosstermBackend<io::Stderr>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         enable_raw_mode()?;
-        let mut stdout = io::stdout();
+        let mut stdout = io::stderr();
         execute!(
             stdout,
             EnterAlternateScreen,
@@ -163,12 +163,16 @@ pub mod tui_interactive {
         // let backend = CrosstermBackend::new(stdout);
         // let mut terminal = Terminal::new(backend)?;
     'tui_loop: loop {
-
-        let mut  terminal = ratatui::init();
+print!("\x1B[2J");
+use std::io::{self, Write};
+io::stdout().flush().ok();
+        let mut terminal = Terminal::new(CrosstermBackend::new(io::BufWriter::new(std::io::stderr())))?;
+        // let mut  terminal = ratatui::init();
         let mut list_state = ratatui::widgets::ListState::default();
         list_state.select(Some(0));
         let mut exit_hover = false;
         let mut run_glow = false;
+        let mut terminal_area = terminal.size()?;
 
         'main_loop: loop {
 
@@ -226,7 +230,7 @@ pub mod tui_interactive {
                                     } else {
                                         println!("Bacon launched for sample: {}", sample.name);
                                     }
-                                    reinit_terminal(&mut terminal)?;
+                                    // reinit_terminal(&mut terminal)?;
                                 }
                             }
                             KeyCode::Char('r') => {
@@ -240,9 +244,9 @@ pub mod tui_interactive {
                                 // )?;
                                 // terminal.show_cursor()?;
                                 
-                                    reinit_terminal(&mut terminal)?;
-                                terminal.clear()?;
-                                drop(terminal);
+                                    // reinit_terminal(&mut terminal)?;
+                                // terminal.clear()?;
+                                // drop(terminal);
         run_glow=true;
                 break 'main_loop;
        // ratatui::restore();
@@ -304,7 +308,7 @@ pub mod tui_interactive {
                                     println!("Opening VSCode for path: {}", sample.manifest_path);
                                     futures::executor::block_on(e_findmain::open_vscode_for_sample(sample));
                                     thread::sleep(Duration::from_secs(5));
-                                    reinit_terminal(&mut terminal)?;
+                                    // reinit_terminal(&mut terminal)?;
                                 }
                             }
                             KeyCode::Enter => {
@@ -415,19 +419,37 @@ pub mod tui_interactive {
 
 
         if run_glow {
-            ratatui::restore();
-            println!("Exiting TUI mode to run `glow -p`...");
+            // ratatui::restore();
             if let Err(e) = e_runner::run_glow(cli.workspace) {
                 eprintln!("Failed to run glow: {}", e);
+                    #[cfg(target_os = "windows")]
+    {
+        eprintln!("install glow using Chocolatey: choco install glow");
+    }
+    #[cfg(target_os = "macos")]
+    {
+        eprintln!("install glow using Homebrew: brew install glow");
+    }
                 thread::sleep(Duration::from_secs(5));
+
             }
+            // use std::io::{stderr, stdout};
+        // let new_terminal = Terminal::new(CrosstermBackend::new(stderr()))?;
+        // mem::replace(terminal, new_terminal);
             // terminal = ratatui::init();
-            // terminal.clear()?;
-            // terminal.draw(|f| {
-            //       let area = f.area();
-            //       ui::draw_ui(f, area, examples, &run_history, &mut list_state, exit_hover);
-            // })?;
-            // terminal.flush()?;
+            terminal = Terminal::new(CrosstermBackend::new(io::BufWriter::new(std::io::stderr())))?;
+
+            terminal.clear()?;
+            let rect_area = Rect::new(0, 0, terminal_area.width-1, terminal_area.height-1);
+            terminal.resize(rect_area).ok();
+            terminal.autoresize().ok();
+            terminal.size().ok();
+            terminal.draw(|f| {
+                   let area = f.area();
+                    f.render_widget(ratatui::widgets::Clear, area);
+                   ui::draw_ui(f, area, examples, &run_history, &mut list_state, exit_hover);
+             })?;
+             terminal.flush()?;
             continue 'tui_loop; // "goto"-like behavior
         }
        // break 'tui_loop; // Exit outer loop if not run_glow
@@ -451,7 +473,7 @@ pub mod tui_interactive {
         index: usize,
         history_path: &std::path::Path,
         run_history: &mut HashSet<String>,
-        terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+        terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stderr>>>,
         wait_secs: u64,
         print_exit_code: bool,
         print_program_name: bool,
@@ -570,14 +592,14 @@ pub mod tui_interactive {
         }
         thread::sleep(Duration::from_millis(50));
         enable_raw_mode()?;
-        let mut stdout = io::stdout();
+        let mut stdout = io::stderr();
         execute!(
             stdout,
             EnterAlternateScreen,
             EnableMouseCapture,
             Clear(ClearType::All)
         )?;
-        let new_terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+        let new_terminal = Terminal::new(CrosstermBackend::new(io::BufWriter::new(stdout)))?;
         mem::replace(terminal, new_terminal);
         Ok(())
     }
