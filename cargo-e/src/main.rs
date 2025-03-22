@@ -727,11 +727,8 @@ fn process_input(
             let status = cargo_e::run_example(target, &cli.extra)?;
             let _ = append_run_history(&target.name.clone());
             if cli.print_exit_code {
-                println!(
-                    "Exitcode {:?}  Waiting for {} seconds...",
-                    status.code(),
-                    cli.wait
-                );
+                let message = format!("Exitcode {:?}. Press any key to continue...", status.code());
+                let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
             }
             std::thread::sleep(std::time::Duration::from_secs(cli.wait));
 

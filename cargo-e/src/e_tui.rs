@@ -525,13 +525,12 @@ pub mod tui_interactive {
                 let history_data = run_history.iter().cloned().collect::<Vec<_>>().join("\n");
                 fs::write(history_path, history_data)?;
             }
-            if !print_exit_code {
-                println!(
-                    "Exitcode {}  Waiting for {} seconds...",
-                    status_code, wait_secs
-                );
-            }
-            std::thread::sleep(Duration::from_secs(wait_secs));
+            let message = if print_exit_code {
+                format!("Exitcode {:?}. Press any key to continue...", status_code)
+            } else {
+                "".to_string()
+            };
+            let _ = crate::e_prompts::prompt(&message, wait_secs)?;
         }
 
         // Flush stray input events.

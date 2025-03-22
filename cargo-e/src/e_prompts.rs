@@ -11,7 +11,9 @@ use std::time::Duration;
 /// for a key press. Returns `Ok(Some(c))` if a key is pressed, or `Ok(None)`
 /// if the timeout expires.
 pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Error>> {
-    println!("{}", message);
+    if !message.trim().is_empty() {
+        println!("{}", message);
+    }
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
         println!("Non-interactive mode detected; skipping prompt.");
@@ -22,6 +24,10 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
     #[cfg(feature = "tui")]
     {
         let timeout = Duration::from_secs(wait_secs);
+        // Clear any pending events.
+        while poll(Duration::from_millis(0))? {
+            let _ = read()?;
+        }
         enable_raw_mode()?;
         let result = if poll(timeout)? {
             if let Event::Key(key_event) = read()? {
