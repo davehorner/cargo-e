@@ -52,8 +52,6 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
         use std::io::{self, BufRead, Write};
         use std::sync::mpsc;
         use std::thread;
-        print!("Enter choice: ");
-        io::stdout().flush()?;
 
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
@@ -74,7 +72,9 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
 /// Reads an entire line from the user with a timeout of `wait_secs`.
 /// Returns Ok(Some(String)) if input is received, or Ok(None) if the timeout expires.
 pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<dyn Error>> {
-    println!("{}", message);
+    if !message.trim().is_empty() {
+        println!("{}", message);
+    }
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
         println!("Non-interactive mode detected; skipping prompt.");
@@ -86,8 +86,6 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
         use std::io::{self, BufRead, Write};
         use std::sync::mpsc;
         use std::thread;
-        print!("Enter choice: ");
-        io::stdout().flush()?;
 
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
