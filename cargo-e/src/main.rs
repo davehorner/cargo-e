@@ -154,12 +154,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             example.name, cli.wait
         );
         match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
-            Some('y') => {
+            Some('y') | Some(' ') | Some('\n') => {
                 println!("running {}...", example.name);
                 cargo_e::run_example(example, &cli.extra)?;
             }
             Some('n') => {
-                println!("exiting without running.");
+                //println!("exiting without running.");
+                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
                 std::process::exit(0);
             }
             Some('e') => {
@@ -170,6 +171,12 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(feature = "tui")]
                 {
                     cargo_e::e_tui::tui_interactive::launch_tui(&cli, &examples)?;
+                }
+                #[cfg(not(feature = "tui"))]
+                {
+                    println!("tui not enabled.");
+                    cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
+                    std::process::exit(0);
                 }
             }
             Some(other) => {
@@ -202,7 +209,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cargo_e::run_example(binary, &cli.extra)?;
             }
             Some('n') => {
-                println!("exiting without running.");
+                //println!("exiting without running.");
+                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
                 std::process::exit(0);
             }
             Some('e') => {
@@ -727,11 +735,8 @@ fn process_input(
             let status = cargo_e::run_example(target, &cli.extra)?;
             let _ = append_run_history(&target.name.clone());
             if cli.print_exit_code {
-                println!(
-                    "Exitcode {:?}  Waiting for {} seconds...",
-                    status.code(),
-                    cli.wait
-                );
+                let message = format!("Exitcode {:?}. Press any key to continue...", status.code());
+                let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
             }
             std::thread::sleep(std::time::Duration::from_secs(cli.wait));
 
