@@ -480,13 +480,16 @@ io::stdout().flush().ok();
         print_instruction: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let target = &examples[index];
-        disable_raw_mode()?;
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            crossterm::event::DisableMouseCapture
-        )?;
-        terminal.show_cursor()?;
+        // disable_raw_mode()?;
+        // execute!(
+        //     terminal.backend_mut(),
+        //     LeaveAlternateScreen,
+        //     crossterm::event::DisableMouseCapture
+        // )?;
+        // terminal.show_cursor()?;
+    print!("\x1B[2J\x1B[H");
+use std::io::{self, Write};
+io::stdout().flush().ok();
 
         let manifest_path = target.manifest_path.clone();
         let args: Vec<&str> = if target.kind == TargetKind::Example {
