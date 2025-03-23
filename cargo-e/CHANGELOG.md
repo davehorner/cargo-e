@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.22...cargo-e-v0.1.23) - 2025-03-23
+
+### Other
+
+- improve input handling in prompt_line_with_poll_opts and
+
 ## [0.1.22](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.21...cargo-e-v0.1.22) - 2025-03-23
 
 ### Added
