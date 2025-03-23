@@ -20,7 +20,6 @@ impl RawModeGuard {
 
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
-        // Ignore errors here because there's not much we can do on failure.
         #[cfg(feature = "tui")]
         let _ = crossterm::terminal::disable_raw_mode();
     }
@@ -260,7 +259,11 @@ pub fn prompt_line_with_poll_opts(
             }
             let remaining = timeout - elapsed;
             if poll(remaining)? {
-                if let Event::Key(crossterm::event::KeyEvent { code, .. }) = read()? {
+                if let Event::Key(crossterm::event::KeyEvent { code, kind, .. }) = read()? {
+                    // Only process key press events
+                    if kind != crossterm::event::KeyEventKind::Press {
+                        continue;
+                    }
                     match code {
                         KeyCode::Enter => break, // End input on Enter.
                         KeyCode::Char(c) => {
@@ -277,14 +280,22 @@ pub fn prompt_line_with_poll_opts(
                                 }
                             }
                             input.push(c);
-                            print!("{}", c);
+                            use crossterm::{
+                                cursor::MoveToColumn,
+                                execute,
+                                terminal::{Clear, ClearType},
+                            };
+                            execute!(io::stdout(), Clear(ClearType::CurrentLine), MoveToColumn(0))?;
+                            print!("{}", input);
                             io::Write::flush(&mut io::stdout())?;
                         }
                         KeyCode::Backspace => {
-                            input.pop();
-                            // Clear and reprint the input (a simple approach).
-                            print!("\r{}{}\r", " ".repeat(input.len() + 2), input);
-                            io::Write::flush(&mut io::stdout())?;
+                            if !input.is_empty() {
+                                input.pop();
+                                // Move cursor back one, overwrite with space, and move back again.
+                                print!("\x08 \x08");
+                                io::Write::flush(&mut io::stdout())?;
+                            }
                         }
                         _ => {} // Ignore other keys.
                     }
