@@ -117,6 +117,18 @@ pub fn run_example(
         }
     }
 
+    // --- Add required-features support ---
+    // This call will search the provided manifest, and if it's a workspace,
+    // it will search workspace members for the target.
+    if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
+        manifest_path.as_path(),
+        &target.kind,
+        &target.name,
+    ) {
+        cmd.args(&["--features", &features]);
+    }
+    // --- End required-features support ---
+
     if !extra_args.is_empty() {
         cmd.arg("--").args(extra_args);
     }

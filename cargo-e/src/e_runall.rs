@@ -101,6 +101,18 @@ pub fn run_all_examples(cli: &Cli, filtered_targets: &[Example]) -> Result<()> {
         if needs_manifest {
             command.args(&["--manifest-path", &target.manifest_path]);
         }
+
+        // --- Inject required-features support using our helper ---
+        if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
+            std::path::Path::new(&target.manifest_path),
+            &target.kind,
+            &target.name,
+        ) {
+            command.args(&["--features", &features]);
+        }
+        // --- End required-features support ---
+
+        // Append any extra CLI arguments.
         command.args(&cli.extra);
 
         // Spawn the child process.

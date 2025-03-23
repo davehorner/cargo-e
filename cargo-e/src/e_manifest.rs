@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
 
+use crate::TargetKind;
+
 /// Locate the Cargo.toml by invoking `cargo locate-project --message-format plain`.
 /// If `workspace` is true, the `--workspace` flag is added so that the manifest
 /// for the workspace root is returned.
@@ -99,4 +101,64 @@ pub fn find_manifest_dir() -> std::io::Result<PathBuf> {
         std::io::ErrorKind::NotFound,
         "Could not locate Cargo.toml in the current or parent directories.",
     ))
+}
+
+/// Returns a comma‑separated list of required features for a given target,
+/// based on its manifest, target kind, and name. If the target is not found
+/// in the given manifest and the manifest is a workspace, its members are searched.
+pub fn get_required_features_from_manifest(
+    manifest_path: &Path,
+    kind: &TargetKind,
+    target_name: &str,
+) -> Option<String> {
+    // Read and parse the manifest file.
+    let content = fs::read_to_string(manifest_path).ok()?;
+    let value: Value = content.parse().ok()?;
+
+    // Map the TargetKind to the corresponding section in the manifest.
+    let section = match kind {
+        TargetKind::Example | TargetKind::ExtendedExample => "example",
+        TargetKind::Binary | TargetKind::ExtendedBinary => "bin",
+    };
+
+    // Look for the target in the specified section.
+    if let Some(targets) = value.get(section).and_then(|v| v.as_array()) {
+        for entry in targets {
+            if let Some(name) = entry.get("name").and_then(|v| v.as_str()) {
+                if name == target_name {
+                    if let Some(req_feats) =
+                        entry.get("required-features").and_then(|v| v.as_array())
+                    {
+                        let feats = req_feats
+                            .iter()
+                            .filter_map(|f| f.as_str())
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        if !feats.is_empty() {
+                            return Some(feats);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If not found and the manifest has a [workspace] table, check each workspace member.
+    if value.get("workspace").is_some() {
+        // Convert the manifest_path to a &str.
+        if let Some(manifest_str) = manifest_path.to_str() {
+            if let Ok(members) = collect_workspace_members(manifest_str) {
+                for (_, member_manifest_path) in members {
+                    if let Some(feats) = get_required_features_from_manifest(
+                        &member_manifest_path,
+                        kind,
+                        target_name,
+                    ) {
+                        return Some(feats);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
