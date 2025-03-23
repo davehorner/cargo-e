@@ -384,13 +384,17 @@ pub mod tui_interactive {
 
         let manifest_path = target.manifest_path.clone();
 
-        let args: Vec<&str> = if target.kind == TargetKind::Example {
+        let mut args: Vec<String> = if target.kind == TargetKind::Example {
             if target.extended {
                 if cli.print_program_name {
                     println!("Running extended example with manifest: {}", manifest_path);
                 }
                 // For workspace extended examples, assume the current directory is set correctly.
-                vec!["run", "--manifest-path", &manifest_path]
+                vec![
+                    "run".to_string(),
+                    "--manifest-path".to_string(),
+                    manifest_path.to_owned(),
+                ]
             } else {
                 if cli.print_program_name {
                     println!(
@@ -399,12 +403,12 @@ pub mod tui_interactive {
                     );
                 }
                 vec![
-                    "run",
-                    "--manifest-path",
-                    &manifest_path,
-                    "--release",
-                    "--example",
-                    &target.name,
+                    "run".to_string(),
+                    "--manifest-path".to_string(),
+                    manifest_path.to_owned(),
+                    "--release".to_string(),
+                    "--example".to_string(),
+                    format!("{}", target.name),
                 ]
             }
         } else {
@@ -412,14 +416,24 @@ pub mod tui_interactive {
                 println!("Running binary: cargo run --release --bin {}", target.name);
             }
             vec![
-                "run",
-                "--manifest-path",
-                &manifest_path,
-                "--release",
-                "--bin",
-                &target.name,
+                "run".to_string(),
+                "--manifest-path".to_string(),
+                manifest_path.to_owned(),
+                "--release".to_string(),
+                "--bin".to_string(),
+                format!("{}", target.name),
             ]
         };
+
+        // Determine required features based on the target kind and name.
+        if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
+            Path::new(&manifest_path),
+            &target.kind,
+            &target.name,
+        ) {
+            args.push("--features".to_string());
+            args.push(features);
+        }
 
         // If the target is extended, we want to run it from its directory.
         let current_dir = if target.extended {
@@ -439,8 +453,8 @@ pub mod tui_interactive {
             cmd.current_dir(dir);
         }
 
-        // Spawn the cargo process.
-        let mut child = crate::e_runner::spawn_cargo_process(&args)?;
+        let args_ref: Vec<&str> = args.iter().map(|s| &**s).collect();
+        let mut child = crate::e_runner::spawn_cargo_process(&args_ref)?;
         if cli.print_instruction {
             println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
         }
