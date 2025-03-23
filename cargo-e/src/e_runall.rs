@@ -104,10 +104,13 @@ pub fn run_all_examples(cli: &Cli, filtered_targets: &[Example]) -> Result<()> {
         command.args(&cli.extra);
 
         // Spawn the child process.
-        let mut child = command
+        let child = command
             .spawn()
             .with_context(|| format!("Failed to spawn cargo run for target {}", target.name))?;
-
+        {
+            let mut global = crate::e_runner::GLOBAL_CHILD.lock().unwrap();
+            *global = Some(child);
+        }
         // Let the target run for the specified duration.
         let run_duration = Duration::from_secs(cli.wait);
         thread::sleep(run_duration);
@@ -116,48 +119,55 @@ pub fn run_all_examples(cli: &Cli, filtered_targets: &[Example]) -> Result<()> {
 
         // Decide on the run duration per target and use it accordingly:
         // Determine behavior based on the run_all flag:
-        let output = match cli.run_all {
-            RunAll::Timeout(timeout_secs) => {
-                let message = format!(
-                    "Press any key to continue (timeout in {} seconds)...",
-                    timeout_secs
-                );
-                let key = prompt(&message, timeout_secs)?;
-                if let Some('q') = key {
-                    println!("User requested quit.");
-                    // Terminate the process and break out of the loop.
-                    child.kill().ok();
-                    break;
+        let output = {
+            let mut global = crate::e_runner::GLOBAL_CHILD.lock().unwrap();
+            if let Some(mut child) = global.take() {
+                match cli.run_all {
+                    RunAll::Timeout(timeout_secs) => {
+                        let message = format!(
+                            "Press any key to continue (timeout in {} seconds)...",
+                            timeout_secs
+                        );
+                        let key = prompt(&message, timeout_secs)?;
+                        if let Some('q') = key {
+                            println!("User requested quit.");
+                            // Terminate the process and break out of the loop.
+                            child.kill().ok();
+                            break;
+                        }
+                        child.kill().ok();
+                        child.wait_with_output().with_context(|| {
+                            format!("Failed to wait on cargo run for target {}", target.name)
+                        })?
+                    }
+                    RunAll::Forever => {
+                        let key = prompt(&"", 0)?;
+                        if let Some('q') = key {
+                            println!("User requested quit.");
+                            // Terminate the process and break out of the loop.
+                            child.kill().ok();
+                            break;
+                        } // Run until natural termination.
+                        child.wait_with_output().with_context(|| {
+                            format!("Failed to wait on cargo run for target {}", target.name)
+                        })?
+                    }
+                    RunAll::NotSpecified => {
+                        let key = prompt(&"", cli.wait)?;
+                        if let Some('q') = key {
+                            println!("User requested quit.");
+                            // Terminate the process and break out of the loop.
+                            child.kill().ok();
+                            break;
+                        }
+                        child.kill().ok();
+                        child.wait_with_output().with_context(|| {
+                            format!("Failed to wait on cargo run for target {}", target.name)
+                        })?
+                    }
                 }
-                child.kill().ok();
-                child.wait_with_output().with_context(|| {
-                    format!("Failed to wait on cargo run for target {}", target.name)
-                })?
-            }
-            RunAll::Forever => {
-                let key = prompt(&"", 0)?;
-                if let Some('q') = key {
-                    println!("User requested quit.");
-                    // Terminate the process and break out of the loop.
-                    child.kill().ok();
-                    break;
-                } // Run until natural termination.
-                child.wait_with_output().with_context(|| {
-                    format!("Failed to wait on cargo run for target {}", target.name)
-                })?
-            }
-            RunAll::NotSpecified => {
-                let key = prompt(&"", cli.wait)?;
-                if let Some('q') = key {
-                    println!("User requested quit.");
-                    // Terminate the process and break out of the loop.
-                    child.kill().ok();
-                    break;
-                }
-                child.kill().ok();
-                child.wait_with_output().with_context(|| {
-                    format!("Failed to wait on cargo run for target {}", target.name)
-                })?
+            } else {
+                return Err(anyhow::anyhow!("No child process found"));
             }
         };
 

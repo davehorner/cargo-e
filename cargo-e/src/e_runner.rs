@@ -5,7 +5,7 @@ use crate::Example;
 use once_cell::sync::Lazy;
 
 // Global shared container for the currently running child process.
-static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 /// Registers a global Ctrl+C handler once.
 /// The handler checks GLOBAL_CHILD and kills the child process if present.
