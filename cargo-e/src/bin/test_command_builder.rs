@@ -1,4 +1,4 @@
-use cargo_e::e_command_builder::{CargoCommandBuilder, CargoTarget, TargetKind, TargetOrigin};
+use cargo_e::e_command_builder::{CargoCommandBuilder, CargoTarget, CargoTargetKind, TargetOrigin};
 use std::path::PathBuf;
 
 fn main() {
@@ -6,7 +6,7 @@ fn main() {
         name: "my_example".to_string(),
         display_name: "My Example".to_string(),
         manifest_path: "Cargo.toml".to_string(),
-        kind: TargetKind::Example,
+        kind: CargoTargetKind::Example,
         extended: true,
         origin: Some(TargetOrigin::SingleFile(PathBuf::from(
             "examples/my_example.rs",

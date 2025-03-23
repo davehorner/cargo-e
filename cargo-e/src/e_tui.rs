@@ -47,7 +47,7 @@ pub mod tui_interactive {
             println!("No examples found!");
             return Ok(());
         }
-        exs.sort();
+        exs.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         // Determine the directory containing the Cargo.toml at runtime.
         let manifest_dir = crate::e_manifest::find_manifest_dir()?;
         let history_path = manifest_dir.join("run_history.txt");
@@ -112,7 +112,7 @@ pub mod tui_interactive {
                 //     }
                 //     item
                 // }).collect();
-                let items: Vec<ListItem> = examples
+                let items: Vec<ListItem> = exs
                     .iter()
                     .map(|ex| {
                         let display_text = ex.display_name.clone();
@@ -201,7 +201,7 @@ pub mod tui_interactive {
                                         crossterm::terminal::LeaveAlternateScreen
                                     )?;
                                     // When 'e' is pressed, attempt to open the sample in VSCode.
-                                    let sample = &examples[selected];
+                                    let sample = &exs[selected];
                                     println!("Opening VSCode for path: {}", sample.manifest_path);
                                     // Here we block on the asynchronous open_vscode call.
                                     // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
@@ -233,7 +233,7 @@ pub mod tui_interactive {
                             KeyCode::Enter => {
                                 if let Some(selected) = list_state.selected() {
                                     run_piece(
-                                        examples,
+                                        &exs,
                                         selected,
                                         &history_path,
                                         &mut run_history,

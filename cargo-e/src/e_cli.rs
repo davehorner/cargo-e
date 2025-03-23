@@ -4,6 +4,36 @@ use clap::Parser;
 #[command(author,version, about = "cargo-e is for Example.", long_about = None)]
 #[command(disable_version_flag = true)]
 pub struct Cli {
+    /// Run all examples for a given number of seconds.
+    ///
+    /// If provided with a value (e.g. `--run-all 10`), each target will run for 10 seconds.
+    /// If provided without a value (i.e. just `--run-all`), it means run forever.
+    /// If not provided at all, then the default wait time is used.
+    #[arg(
+        long,
+        num_args = 0..=1,
+        default_value_t = RunAll::NotSpecified,
+        default_missing_value ="",
+        value_parser,
+        help = "Run all optionally specifying run time (in seconds) per target. \
+                If the flag is present without a value, run forever."
+    )]
+    pub run_all: RunAll,
+
+    #[arg(long, help = "Build and run in release mode.")]
+    pub release: bool,
+    #[arg(long, help = "Suppress cargo output when running the sample.")]
+    pub quiet: bool,
+    // /// Comma-separated list of package names.
+    // #[clap(long, value_delimiter = ',', help = "Optional list of package names to run examples for. If omitted, defaults to ALL_PACKAGES.")]
+    // pub specified_packages: Vec<String>,
+    /// Pre-build examples before running.
+    #[clap(
+        long,
+        help = "If enabled, pre-build the examples before executing them."
+    )]
+    pub pre_build: bool,
+
     /// Print version and feature flags in JSON format.
     #[arg(
         long,
@@ -148,4 +178,50 @@ pub fn get_feature_flags() -> Vec<&'static str> {
         flags.push("!equivalent");
     }
     flags
+}
+
+use std::str::FromStr;
+
+/// Represents the state of the `--run-all` flag.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RunAll {
+    /// The flag was not specified.
+    NotSpecified,
+    /// The flag was specified without a value—indicating “run forever.”
+    Forever,
+    /// The flag was specified with a timeout value.
+    Timeout(u64),
+}
+
+impl Default for RunAll {
+    fn default() -> Self {
+        RunAll::NotSpecified
+    }
+}
+
+impl FromStr for RunAll {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // An empty string means the flag was provided without a value → run forever.
+        if s.is_empty() {
+            Ok(RunAll::Forever)
+        } else if s.eq_ignore_ascii_case("not_specified") {
+            Ok(RunAll::NotSpecified)
+        } else {
+            // Otherwise, try parsing a u64 value.
+            s.parse::<u64>()
+                .map(RunAll::Timeout)
+                .map_err(|e| e.to_string())
+        }
+    }
+}
+
+impl std::fmt::Display for RunAll {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunAll::NotSpecified => write!(f, "not_specified"),
+            RunAll::Forever => write!(f, "forever"),
+            RunAll::Timeout(secs) => write!(f, "{}", secs),
+        }
+    }
 }

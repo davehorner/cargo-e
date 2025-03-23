@@ -11,7 +11,7 @@ pub enum TargetOrigin {
 }
 
 #[derive(Debug, Clone)]
-pub enum TargetKind {
+pub enum CargoTargetKind {
     Example,
     Binary,
     Test,
@@ -23,7 +23,7 @@ pub struct CargoTarget {
     pub name: String,
     pub display_name: String,
     pub manifest_path: String,
-    pub kind: TargetKind,
+    pub kind: CargoTargetKind,
     pub extended: bool,
     pub origin: Option<TargetOrigin>, // Captures where the target was discovered.
 }
@@ -46,21 +46,21 @@ impl CargoCommandBuilder {
     /// Configures the command based on the provided CargoTarget.
     pub fn with_target(mut self, target: &CargoTarget) -> Self {
         match target.kind {
-            TargetKind::Example => {
+            CargoTargetKind::Example => {
                 self.args.push("run".into());
                 self.args.push("--example".into());
                 self.args.push(target.name.clone());
             }
-            TargetKind::Binary => {
+            CargoTargetKind::Binary => {
                 self.args.push("run".into());
                 self.args.push("--bin".into());
                 self.args.push(target.name.clone());
             }
-            TargetKind::Test => {
+            CargoTargetKind::Test => {
                 self.args.push("test".into());
                 self.args.push(target.name.clone());
             }
-            TargetKind::Manifest => {
+            CargoTargetKind::Manifest => {
                 // For a manifest target, you might simply want to open or browse it.
                 // Adjust the behavior as needed.
                 self.args.push("manifest".into());
@@ -117,7 +117,7 @@ mod tests {
             name: "my_example".to_string(),
             display_name: "My Example".to_string(),
             manifest_path: "Cargo.toml".to_string(),
-            kind: TargetKind::Example,
+            kind: CargoTargetKind::Example,
             extended: true,
             origin: Some(TargetOrigin::SingleFile(PathBuf::from(
                 "examples/my_example.rs",

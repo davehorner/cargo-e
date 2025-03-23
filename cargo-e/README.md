@@ -4,8 +4,8 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.21</span>.
-  If this does not match the version displayed above, then you're not reading the latest documentation!
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.22</span>.
+  If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
      src="https://raw.githubusercontent.com/davehorner/cargo-e/refs/heads/develop/documents/media/screenshot-cargo-e.webp"
@@ -144,6 +144,30 @@ If there is only one example, it will run that example, did I mention that alrea
     8: [ex.] wgpu_triangle_raw_frame
   * == # to run, tui, e<#> edit, 'q' to quit (waiting 5 seconds)
   ```
+- **Run All**
+  
+  Execute all discovered examples or binaries in your project in a single run.  Use a partial search to run only those matching targets.
+  ```bash
+  cargo e --run-all --quiet --release [partial_search_term]
+  ```
+  `--run-all` by itself (without a numeric value) 
+
+     will set the run mode to "forever"—meaning each target is allowed to run until it terminates naturally.
+
+  `--run-all 10`
+    
+     means that each target will be run for 10 seconds. After 10 seconds, Cargo-e will prompt for a key press; if no key is pressed (or if a non-quit key is pressed), the running process will be killed, and the next target is started.
+
+- **Other flags**
+
+  `--release`
+    When specified, Cargo-e passes the --release flag to the underlying Cargo command so that the samples are built and run in release mode. This can significantly improve performance.
+
+  `--quiet`
+    When specified, Cargo-e passes the --quiet flag and automatically adjusts the environment (by appending -Awarnings to RUSTFLAGS) so that compilation output and warnings are suppressed during the run. This creates a cleaner output, focusing solely on the sample's runtime behavior.
+
+  `--help`
+    Displays detailed help information. Use the -h option for additional details on all available flags.
 
 ## Features and Configuration
 
@@ -267,8 +291,8 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.1.21</span>.
-  If this does not match the version displayed above, then you're not reading the latest documentation!
+  You are reading documentation version <span id="doc-version" style="color: white;">0.1.22</span>.
+  If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 
 ## Addendum

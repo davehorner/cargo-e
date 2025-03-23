@@ -1,16 +1,35 @@
 #![allow(unused_variables)]
+use anyhow::Result;
 #[cfg(feature = "tui")]
-use crossterm::{
-    event::{poll, read, Event, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode},
-};
+use crossterm::event::{poll, read, Event, KeyCode};
 use std::error::Error;
 use std::time::Duration;
+
+/// A RAII guard that enables raw mode and disables it when dropped.
+#[allow(dead_code)]
+struct RawModeGuard;
+
+impl RawModeGuard {
+    #[allow(dead_code)]
+    fn new() -> Result<Self> {
+        #[cfg(feature = "tui")]
+        crossterm::terminal::enable_raw_mode()?;
+        Ok(Self)
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        // Ignore errors here because there's not much we can do on failure.
+        #[cfg(feature = "tui")]
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
+}
 
 /// Prompts the user with the given message and waits up to `wait_secs` seconds
 /// for a key press. Returns `Ok(Some(c))` if a key is pressed, or `Ok(None)`
 /// if the timeout expires.
-pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Error>> {
+pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
     if !message.trim().is_empty() {
         println!("{}", message);
     }
@@ -28,7 +47,8 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
         while poll(Duration::from_millis(0))? {
             let _ = read()?;
         }
-        enable_raw_mode()?;
+        // Enable raw mode and ensure it will be disabled when the guard is dropped.
+        let _raw_guard = RawModeGuard::new()?;
         let result = if poll(timeout)? {
             if let Event::Key(key_event) = read()? {
                 if let KeyCode::Char(c) = key_event.code {
@@ -42,7 +62,6 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>, Box<dyn Err
         } else {
             None
         };
-        disable_raw_mode()?;
         Ok(result)
     }
 
@@ -83,7 +102,7 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
 
     #[cfg(not(feature = "tui"))]
     {
-        use std::io::{self, BufRead, Write};
+        use std::io::{self, BufRead};
         use std::sync::mpsc;
         use std::thread;
 
@@ -105,18 +124,16 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
     #[cfg(feature = "tui")]
     {
         // In TUI raw mode, we collect key events until Enter is pressed.
-        use crossterm::{
-            event::{poll, read, Event, KeyCode},
-            terminal::{disable_raw_mode, enable_raw_mode},
-        };
+        use crossterm::event::{poll, read, Event, KeyCode};
         use std::io::{self, Write};
-        enable_raw_mode()?;
+        // Enable raw mode and ensure it will be disabled when the guard is dropped.
+        #[cfg(feature = "tui")]
+        let _raw_guard = RawModeGuard::new()?;
         let mut input = String::new();
         let start = std::time::Instant::now();
         loop {
             let elapsed = start.elapsed().as_secs();
             if elapsed >= wait_secs {
-                disable_raw_mode()?;
                 return Ok(None);
             }
             let remaining = Duration::from_secs(wait_secs - elapsed);
@@ -141,7 +158,6 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
             }
         }
         println!();
-        disable_raw_mode()?;
         Ok(Some(input.trim().to_string()))
     }
 }
@@ -174,15 +190,15 @@ pub fn read_line_with_timeout(wait_secs: u64) -> io::Result<Option<String>> {
 pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn std::error::Error>> {
     #[cfg(feature = "tui")]
     {
-        enable_raw_mode()?;
+        // Enable raw mode and ensure it will be disabled when the guard is dropped.
+        #[cfg(feature = "tui")]
+        let _raw_guard = RawModeGuard::new()?;
         let timeout = Duration::from_secs(wait_secs);
         let start = std::time::Instant::now();
         let mut input = String::new();
         loop {
             let elapsed = start.elapsed();
             if elapsed >= timeout {
-                #[cfg(feature = "tui")]
-                disable_raw_mode()?;
                 return Ok(None);
             }
             // Poll for an event for the remaining time.
@@ -209,7 +225,6 @@ pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn s
                 }
             }
         }
-        disable_raw_mode()?;
         Ok(Some(input))
     }
     #[cfg(not(feature = "tui"))]
@@ -233,14 +248,14 @@ pub fn prompt_line_with_poll_opts(
     #[cfg(feature = "tui")]
     {
         let timeout = Duration::from_secs(wait_secs);
-        enable_raw_mode()?;
+        #[cfg(feature = "tui")]
+        let _raw_guard = RawModeGuard::new()?;
         let start = std::time::Instant::now();
         let mut input = String::new();
 
         loop {
             let elapsed = start.elapsed();
             if elapsed >= timeout {
-                disable_raw_mode()?;
                 return Ok(None);
             }
             let remaining = timeout - elapsed;
@@ -251,7 +266,6 @@ pub fn prompt_line_with_poll_opts(
                         KeyCode::Char(c) => {
                             // Check quick exit keys (case-insensitive)
                             if quick_exit.iter().any(|&qe| qe.eq_ignore_ascii_case(&c)) {
-                                disable_raw_mode()?;
                                 input.push(c);
                                 return Ok(Some(input.to_string()));
                             }
@@ -277,7 +291,6 @@ pub fn prompt_line_with_poll_opts(
                 }
             }
         }
-        disable_raw_mode()?;
         println!();
         Ok(Some(input.trim().to_string()))
     }
