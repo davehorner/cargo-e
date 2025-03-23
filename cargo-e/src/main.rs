@@ -17,6 +17,7 @@
 //!
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
+use cargo_e::e_cli::RunAll;
 #[cfg(feature = "tui")]
 use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
@@ -131,7 +132,18 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             if fuzzy_matches.is_empty() {
                 std::process::exit(1);
             } else {
-                println!("partial search results for '{}':", explicit);
+                println!(
+                    "partial search results {} for '{}':",
+                    fuzzy_matches.len(),
+                    explicit
+                );
+                if cli.run_all != RunAll::NotSpecified {
+                    cargo_e::e_prompts::prompt(&"", 2).ok();
+                    // Pass in your default packages, which are now generic.
+                    cargo_e::e_runall::run_all_examples(&cli, &fuzzy_matches)?;
+                    return Ok(());
+                }
+
                 #[cfg(feature = "tui")]
                 if cli.tui {
                     cargo_e::e_tui::tui_interactive::launch_tui(&cli, &fuzzy_matches)?;
@@ -141,7 +153,14 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             std::process::exit(1);
         }
-    } else if builtin_examples.len() == 1 {
+    }
+
+    if cli.run_all != RunAll::NotSpecified {
+        cargo_e::e_runall::run_all_examples(&cli, &unique_examples)?;
+        return Ok(());
+    }
+
+    if builtin_examples.len() == 1 {
         #[cfg(feature = "tui")]
         if cli.tui {
             cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
@@ -231,6 +250,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         provide_notice_of_no_examples(&cli, &unique_examples)?;
+
         #[cfg(feature = "tui")]
         if cli.tui {
             cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
@@ -613,7 +633,7 @@ fn select_and_run_target_loop(
                         // Early selection.
                         let selection = line;
                         // current_index = total; // break out of paging loop.
-                        println!("{} currindex", current_index);
+                        // println!("{} currindex", current_index);
                         return process_input(&selection, &combined, cli, current_index);
                     }
                 }

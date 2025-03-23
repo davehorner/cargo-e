@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.21...cargo-e-v0.1.22) - 2025-03-23
+
+### Added
+
+- *(cli)* add new --run-all flag for configurable run duration
+
 ## [0.1.21](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.20...cargo-e-v0.1.21) - 2025-03-22
 
 ### Added
