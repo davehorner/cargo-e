@@ -1,12 +1,15 @@
-use cargo_e::e_command_builder::{CargoCommandBuilder, CargoTarget, CargoTargetKind, TargetOrigin};
+use cargo_e::{
+    e_command_builder::CargoCommandBuilder,
+    e_target::{CargoTarget, TargetKind, TargetOrigin},
+};
 use std::path::PathBuf;
 
 fn main() {
     let target = CargoTarget {
         name: "my_example".to_string(),
         display_name: "My Example".to_string(),
-        manifest_path: "Cargo.toml".to_string(),
-        kind: CargoTargetKind::Example,
+        manifest_path: "Cargo.toml".into(),
+        kind: TargetKind::Example,
         extended: true,
         origin: Some(TargetOrigin::SingleFile(PathBuf::from(
             "examples/my_example.rs",

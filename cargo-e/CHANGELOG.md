@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.24...cargo-e-v0.2.0) - 2025-03-26
+
+### Added
+
+- [**breaking**] dioxus and tauri target detection, custom Cargo.toml discovery
+
 ## [0.1.24](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.1.23...cargo-e-v0.1.24) - 2025-03-23
 
 ### Added
