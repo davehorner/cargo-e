@@ -1,9 +1,10 @@
 // src/e_bacon.rs
 
-use crate::e_types::Example;
 use std::error::Error;
 use std::path::Path;
 use std::process::Command;
+
+use crate::e_target::CargoTarget;
 
 // src/e_bacon.rs
 
@@ -17,7 +18,7 @@ use std::process::Command;
 ///
 /// On Windows, if the environment variable DEBUG_BACON is set, it uses `/K` and echoes
 /// the folder parameter so that you can inspect it; otherwise it uses normal detached flags.
-pub fn run_bacon(sample: &Example, _extra_args: &[String]) -> Result<(), Box<dyn Error>> {
+pub fn run_bacon(sample: &CargoTarget, _extra_args: &[String]) -> Result<(), Box<dyn Error>> {
     println!("Running bacon for sample: {}", sample.name);
 
     // Determine the project directory from the sample's manifest_path.
