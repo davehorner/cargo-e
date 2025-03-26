@@ -18,6 +18,9 @@
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
 use cargo_e::e_cli::RunAll;
+use cargo_e::e_runner;
+use cargo_e::e_target::CargoTarget;
+use cargo_e::e_target::TargetKind;
 #[cfg(feature = "tui")]
 use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
@@ -28,8 +31,8 @@ use std::os::unix::process;
 #[cfg(target_os = "windows")]
 use std::os::windows::process;
 
-use cargo_e::{prelude::*, Example};
-use cargo_e::{Cli, TargetKind};
+use cargo_e::prelude::*;
+use cargo_e::Cli;
 use clap::Parser;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,7 +64,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Use the version from `lookup_cargo_e_version` if valid,
         // otherwise fallback to the compile-time version.
-        interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait)?;
+        let _ = interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait);
     }
 
     // Control the maximum number of Cargo processes running concurrently.
@@ -73,7 +76,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // After collecting all samples, deduplicate them.
     let mut seen = HashSet::new();
-    let unique_examples: Vec<cargo_e::Example> = examples
+    let unique_examples: Vec<CargoTarget> = examples
         .clone()
         .into_iter()
         .filter(|e| {
@@ -84,14 +87,14 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    let builtin_examples: Vec<&cargo_e::Example> = unique_examples
+    let builtin_examples: Vec<&CargoTarget> = unique_examples
         .iter()
-        .filter(|e| !e.extended && matches!(e.kind, cargo_e::TargetKind::Example))
+        .filter(|e| !e.extended && matches!(e.kind, TargetKind::Example))
         .collect();
 
-    let builtin_binaries: Vec<&cargo_e::Example> = unique_examples
+    let builtin_binaries: Vec<&CargoTarget> = unique_examples
         .iter()
-        .filter(|e| !e.extended && e.kind == cargo_e::TargetKind::Binary)
+        .filter(|e| !e.extended && e.kind == TargetKind::Binary)
         .collect();
 
     if let Some(explicit) = cli.explicit_example.clone() {
@@ -103,7 +106,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
                 std::process::exit(0);
             }
-            cargo_e::run_example(target, &cli.extra)?;
+            cargo_e::e_runner::run_example(&cli, target)?;
         }
         // If not found among examples, search for a binary with that name.
         else if let Some(target) = examples
@@ -115,7 +118,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
                 std::process::exit(0);
             }
-            cargo_e::run_example(target, &cli.extra)?;
+            cargo_e::e_runner::run_example(&cli, target)?;
         } else {
             eprintln!(
                 "error: 0 named '{}' found in examples or binaries.",
@@ -124,7 +127,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // no exact match found: perform a partial search over the unique examples.
             let query = explicit.to_lowercase();
-            let fuzzy_matches: Vec<Example> = unique_examples
+            let fuzzy_matches: Vec<CargoTarget> = unique_examples
                 .iter()
                 .filter(|t| t.name.to_lowercase().contains(&query))
                 .cloned()
@@ -175,7 +178,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
             Some('y') | Some(' ') | Some('\n') => {
                 println!("running {}...", example.name);
-                cargo_e::run_example(example, &cli.extra)?;
+                cargo_e::e_runner::run_example(&cli, &example)?;
             }
             Some('n') => {
                 //println!("exiting without running.");
@@ -184,7 +187,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some('e') => {
                 use futures::executor::block_on;
-                block_on(cargo_e::e_findmain::open_vscode_for_sample(example));
+                block_on(cargo_e::e_findmain::open_vscode_for_sample(&example));
             }
             Some('t') => {
                 #[cfg(feature = "tui")]
@@ -203,7 +206,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
             None => {
-                cargo_e::run_example(builtin_examples[0], &cli.extra)?;
+                cargo_e::e_runner::run_example(&cli, builtin_examples[0])?;
                 std::process::exit(0);
             }
         }
@@ -225,7 +228,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         match cargo_e::e_prompts::prompt(&message, cli.wait)? {
             Some('y') => {
                 // Run the binary.
-                cargo_e::run_example(binary, &cli.extra)?;
+                cargo_e::e_runner::run_example(&cli, binary)?;
             }
             Some('n') => {
                 //println!("exiting without running.");
@@ -267,14 +270,17 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn provide_notice_of_no_examples(cli: &Cli, examples: &[Example]) -> Result<(), Box<dyn Error>> {
+fn provide_notice_of_no_examples(
+    cli: &Cli,
+    examples: &[CargoTarget],
+) -> Result<(), Box<dyn Error>> {
     let ex_count = examples
         .iter()
-        .filter(|e| matches!(e.kind, cargo_e::TargetKind::Example))
+        .filter(|e| matches!(e.kind, TargetKind::Example))
         .count();
     let bin_count = examples
         .iter()
-        .filter(|e| e.kind == cargo_e::TargetKind::Binary)
+        .filter(|e| e.kind == TargetKind::Binary)
         .count();
 
     println!(
@@ -495,9 +501,9 @@ enum LoopResult {
 /// The selection function: displays targets, waits for input, and returns a LoopResult.
 fn select_and_run_target_loop(
     cli: &Cli,
-    unique_targets: &[Example],
-    builtin_examples: &[&Example],
-    builtin_binaries: &[&Example],
+    unique_targets: &[CargoTarget],
+    builtin_examples: &[&CargoTarget],
+    builtin_binaries: &[&CargoTarget],
     start_offset: usize, // new parameter for starting page offset
 ) -> Result<LoopResult, Box<dyn Error>> {
     let current_offset = start_offset;
@@ -506,14 +512,21 @@ fn select_and_run_target_loop(
         cli.wait
     );
     // Build a combined list: examples first, then binaries.
-    let mut combined: Vec<(&str, &Example)> = Vec::new();
+    let mut combined: Vec<(&str, &CargoTarget)> = Vec::new();
     for target in unique_targets {
         let label = match target.kind {
-            cargo_e::TargetKind::Example => "ex.",
-            cargo_e::TargetKind::ExtendedExample => "exx",
-            cargo_e::TargetKind::Binary => "bin",
-            cargo_e::TargetKind::ExtendedBinary => "binx",
-            //_ => "other",
+            TargetKind::Example => "ex.",
+            TargetKind::ExtendedExample => "exx",
+            TargetKind::Binary => "bin",
+            TargetKind::ExtendedBinary => "binx",
+            TargetKind::ManifestTauri => "tauri",
+            TargetKind::ManifestTauriExample => "tauri-e",
+            TargetKind::ManifestDioxus => "dioxus",
+            TargetKind::ManifestDioxusExample => "dioxus-e",
+            TargetKind::Bench => "bench",
+            TargetKind::Test => "test",
+            TargetKind::Manifest => "manifest",
+            TargetKind::Unknown => "unknown",
         };
         combined.push((label, target));
     }
@@ -723,7 +736,7 @@ pub fn append_run_history(target_name: &str) -> io::Result<()> {
 /// Processes the final input string and returns a LoopResult.
 fn process_input(
     input: &str,
-    combined: &[(&str, &Example)],
+    combined: &[(&str, &CargoTarget)],
     cli: &Cli,
     offset: usize, // offset for the current page
 ) -> Result<LoopResult, Box<dyn Error>> {
@@ -733,7 +746,7 @@ fn process_input(
     } else if trimmed.eq_ignore_ascii_case("t") {
         #[cfg(feature = "tui")]
         {
-            let tui_examples: Vec<cargo_e::Example> =
+            let tui_examples: Vec<CargoTarget> =
                 combined.iter().map(|&(_, ex)| ex.clone()).collect();
             cargo_e::e_tui::tui_interactive::launch_tui(cli, &tui_examples)?;
             std::process::exit(0);
@@ -785,7 +798,7 @@ fn process_input(
             if cli.print_program_name {
                 println!("running {} \"{}\"...", target_type, target.name);
             }
-            let status = cargo_e::run_example(target, &cli.extra)?;
+            let status = e_runner::run_example(&cli, target)?;
             let _ = append_run_history(&target.name.clone());
             let message = if cli.print_exit_code {
                 format!("Exitcode {:?}. Press any key to continue...", status.code())
@@ -806,9 +819,9 @@ fn process_input(
 /// If the user quits (input "q"), it exits.
 fn cli_loop(
     cli: &Cli,
-    unique_examples: &[Example],
-    builtin_examples: &[&Example],
-    builtin_binaries: &[&Example],
+    unique_examples: &[CargoTarget],
+    builtin_examples: &[&CargoTarget],
+    builtin_binaries: &[&CargoTarget],
 ) -> Result<(), Box<dyn Error>> {
     let mut current_offset = 0; // persist the current page offset
     loop {
