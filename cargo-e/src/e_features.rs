@@ -8,7 +8,7 @@ pub fn get_feature_flags() -> Vec<&'static str> {
         } else {
             "!concurrent"
         },
-        if cfg!(feature = "windows") {
+        if cfg!(target_os = "windows") {
             "windows"
         } else {
             "!windows"

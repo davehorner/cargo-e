@@ -1,9 +1,11 @@
 // src/e_findmain.rs
 
-use crate::prelude::*;
+use crate::{
+    e_target::{CargoTarget, TargetKind},
+    prelude::*,
+};
 use toml::Value;
 
-use crate::e_types::{Example, TargetKind};
 use crate::e_workspace::{get_workspace_member_manifest_paths, is_workspace_manifest};
 
 /// Given an Example, attempts to locate the main file.
@@ -19,7 +21,7 @@ use crate::e_workspace::{get_workspace_member_manifest_paths, is_workspace_manif
 ///     If a target matching the sample name is found, it uses the provided `"path"` (if any)
 ///     or defaults to `"src/main.rs"`.
 ///   - Returns Some(candidate) if the file exists.
-pub fn find_main_file(sample: &Example) -> Option<PathBuf> {
+pub fn find_main_file(sample: &CargoTarget) -> Option<PathBuf> {
     let manifest_path = Path::new(&sample.manifest_path);
 
     // Determine the base directory.
@@ -116,7 +118,7 @@ pub fn find_main_line(file: &Path) -> Option<(usize, usize)> {
 ///
 /// For extended samples, it checks first for "src/main.rs", then "main.rs".
 /// For non-extended examples, it assumes the file is at "examples/\<name\>.rs" relative to cwd.
-pub fn compute_vscode_args(sample: &Example) -> (String, Option<String>) {
+pub fn compute_vscode_args(sample: &CargoTarget) -> (String, Option<String>) {
     let manifest_path = Path::new(&sample.manifest_path);
     // Debug print
     println!("DEBUG: manifest_path: {:?}", manifest_path);
@@ -181,7 +183,7 @@ pub fn compute_vscode_args(sample: &Example) -> (String, Option<String>) {
 
 /// Asynchronously opens VSCode for the given sample target.
 /// It computes the VSCode arguments using `compute_vscode_args` and then launches VSCode.
-pub async fn open_vscode_for_sample(sample: &Example) {
+pub async fn open_vscode_for_sample(sample: &CargoTarget) {
     let (folder_str, goto_arg) = compute_vscode_args(sample);
 
     let output = if cfg!(target_os = "windows") {
@@ -338,6 +340,8 @@ pub async fn open_vscode_for_sample(sample: &Example) {
 
 #[cfg(test)]
 mod tests {
+    use crate::e_target::TargetOrigin;
+
     use super::*;
     use std::fs;
     use tempfile::tempdir;
@@ -445,12 +449,13 @@ mod tests {
             name = "sample1"
         "#;
         fs::write(&manifest_path, toml_contents)?;
-        let sample = Example {
+        let sample = CargoTarget {
             name: "sample1".to_string(),
             display_name: "dummy".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path,
             kind: TargetKind::Binary,
             extended: false,
+            origin: Some(TargetOrigin::Named("sample1".into())),
         };
         let found = find_main_file(&sample).expect("Should find main file");
         assert_eq!(found, main_rs);
@@ -484,11 +489,12 @@ mod tests {
                 .unwrap()
         );
         fs::write(&manifest_path, toml_contents)?;
-        let sample = Example {
+        let sample = CargoTarget {
             name: "sample2".to_string(),
             display_name: "dummy".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path,
             kind: TargetKind::Binary,
+            origin: Some(TargetOrigin::Named("sample2".into())),
             extended: false,
         };
         let found = find_main_file(&sample).expect("Should find custom main file");
@@ -516,11 +522,12 @@ mod tests {
         "#;
         fs::write(&manifest_path, toml_contents)?;
 
-        let sample = Example {
+        let sample = CargoTarget {
             name: "sample_ext".to_string(),
             display_name: "extended sample".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: true,
         };
 
@@ -547,11 +554,12 @@ mod tests {
             edition = "2021"
         "#;
         fs::write(&manifest_path, toml_contents)?;
-        let sample = Example {
+        let sample = CargoTarget {
             name: "sample_ext2".to_string(),
             display_name: "extended sample 2".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: true,
         };
         let found = find_main_file(&sample).expect("Should find main.rs in extended sample");
@@ -597,11 +605,12 @@ mod tests {
         )?;
 
         // Construct the sample object using the temp folder's Cargo.toml path.
-        let sample = Example {
+        let sample = CargoTarget {
             name: "sample_non_ext".to_string(),
             display_name: "non-extended".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: false,
         };
 
@@ -629,11 +638,12 @@ mod tests {
             "[package]\nname = \"extended_sample\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         )?;
 
-        let sample = Example {
+        let sample = CargoTarget {
             name: "extended_sample".to_string(),
             display_name: "extended".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: true,
         };
 
@@ -661,11 +671,12 @@ mod tests {
             "[package]\nname = \"extended_sample2\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         )?;
 
-        let sample = Example {
+        let sample = CargoTarget {
             name: "extended_sample2".to_string(),
             display_name: "extended2".to_string(),
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: true,
         };
 
