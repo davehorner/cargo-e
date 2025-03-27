@@ -234,6 +234,14 @@ pub mod tui_interactive {
                                     )?;
                                     let sample = &exs[selected];
                                     println!("Target: {:?}", sample);
+        println!(
+            "Launching GenAI summarization for target: {}",
+            sample.manifest_path.to_str().unwrap_or_default()
+        );
+        futures::executor::block_on(crate::e_runner::open_genai_summarize_for_target(sample));
+
+
+
                                     std::thread::sleep(std::time::Duration::from_secs(5));
                                     reinit_terminal(&mut terminal)?;
                                 }

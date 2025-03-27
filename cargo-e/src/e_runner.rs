@@ -22,6 +22,55 @@ pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+use std::process::Command;
+use crate::e_target::CargoTarget; // Adjust the import based on your project structure
+
+/// Asynchronously launches the GenAI summarization example for the given target.
+/// It builds the command using the target's manifest path as the "origin" argument.
+pub async fn open_genai_summarize_for_target(target: &CargoTarget) {
+    // Extract the origin path from the target (e.g. the manifest path).
+    let origin_path = target.manifest_path.to_str().unwrap_or_default();
+
+    // Build the command to run the example.
+    let output = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args([
+                "/C",
+                "cargo",
+                "run",
+                "--example",
+                "e_genai_summarize",
+                "--",
+                origin_path,
+            ])
+            .output()
+    } else {
+        Command::new("cargo")
+            .args(["run", "--example", "e_genai_summarize", "--", origin_path])
+            .output()
+    };
+
+    // Handle the output from the command.
+    match output {
+        Ok(output) if output.status.success() => {
+            // The summarization example ran successfully.
+            println!("DEBUG: Summarization command output: {:?}", output);
+        }
+        Ok(output) => {
+            let msg = format!(
+                "Error running summarization example:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            error!("{}", msg);
+        }
+        Err(e) => {
+            let msg = format!("Failed to execute summarization command: {}", e);
+            error!("{}", msg);
+        }
+    }
+}
+
 /// In "equivalent" mode, behave exactly like "cargo run --example <name>"
 #[cfg(feature = "equivalent")]
 pub fn run_equivalent_example(
