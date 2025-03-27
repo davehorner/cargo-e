@@ -1,8 +1,10 @@
 #[cfg(feature = "tui")]
 pub mod tui_interactive {
+    use crate::e_command_builder::CargoCommandBuilder;
     use crate::e_manifest::maybe_patch_manifest_for_run;
+    use crate::e_target::{CargoTarget, TargetKind};
     use crate::prelude::*;
-    use crate::{e_bacon, e_findmain, Cli, Example, TargetKind};
+    use crate::{e_bacon, e_findmain, Cli};
     use crossterm::event::KeyEventKind;
     use crossterm::event::{poll, read};
     use crossterm::{
@@ -40,7 +42,10 @@ pub mod tui_interactive {
     }
 
     /// Launches an interactive terminal UI for selecting an example.
-    pub fn launch_tui(cli: &Cli, examples: &[Example]) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn launch_tui(
+        cli: &Cli,
+        examples: &[CargoTarget],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         flush_input()?; // Clear any buffered input (like stray Return keys)
         let mut exs = examples.to_vec();
         if exs.is_empty() {
@@ -202,12 +207,33 @@ pub mod tui_interactive {
                                     )?;
                                     // When 'e' is pressed, attempt to open the sample in VSCode.
                                     let sample = &exs[selected];
-                                    println!("Opening VSCode for path: {}", sample.manifest_path);
+                                    println!(
+                                        "Opening VSCode for path: {}",
+                                        sample
+                                            .manifest_path
+                                            .to_str()
+                                            .unwrap_or_default()
+                                            .to_owned()
+                                    );
                                     // Here we block on the asynchronous open_vscode call.
                                     // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
                                     futures::executor::block_on(
                                         e_findmain::open_vscode_for_sample(sample),
                                     );
+                                    std::thread::sleep(std::time::Duration::from_secs(5));
+                                    reinit_terminal(&mut terminal)?;
+                                }
+                            }
+                            KeyCode::Char('i') => {
+                                if let Some(selected) = list_state.selected() {
+                                    // Disable raw mode for debug printing.
+                                    crossterm::terminal::disable_raw_mode()?;
+                                    crossterm::execute!(
+                                        std::io::stdout(),
+                                        crossterm::terminal::LeaveAlternateScreen
+                                    )?;
+                                    let sample = &exs[selected];
+                                    println!("Target: {:?}", sample);
                                     std::thread::sleep(std::time::Duration::from_secs(5));
                                     reinit_terminal(&mut terminal)?;
                                 }
@@ -365,7 +391,7 @@ pub mod tui_interactive {
     /// installs a Ctrl+C handler to kill the process, waits for it to finish, updates history,
     /// flushes stray input, and then reinitializes the terminal.
     pub fn run_piece(
-        examples: &[Example],
+        examples: &[CargoTarget],
         index: usize,
         history_path: &Path,
         run_history: &mut HashSet<String>,
@@ -382,47 +408,78 @@ pub mod tui_interactive {
         )?;
         terminal.show_cursor()?;
 
-        let manifest_path = target.manifest_path.clone();
+        //let manifest_path = target.manifest_path.clone();
+        let manifest_path = PathBuf::from(target.manifest_path.clone());
 
-        let args: Vec<&str> = if target.kind == TargetKind::Example {
-            if target.extended {
-                if cli.print_program_name {
-                    println!("Running extended example with manifest: {}", manifest_path);
-                }
-                // For workspace extended examples, assume the current directory is set correctly.
-                vec!["run", "--manifest-path", &manifest_path]
-            } else {
-                if cli.print_program_name {
-                    println!(
-                        "Running example: cargo run --release --example {}",
-                        target.name
-                    );
-                }
-                vec![
-                    "run",
-                    "--manifest-path",
-                    &manifest_path,
-                    "--release",
-                    "--example",
-                    &target.name,
-                ]
-            }
-        } else {
-            if cli.print_program_name {
-                println!("Running binary: cargo run --release --bin {}", target.name);
-            }
-            vec![
-                "run",
-                "--manifest-path",
-                &manifest_path,
-                "--release",
-                "--bin",
-                &target.name,
-            ]
-        };
+        // let mut args: Vec<String> = if target.kind == TargetKind::Example {
+        //     if target.extended {
+        //         if cli.print_program_name {
+        //             println!("Running extended example with manifest: {}", manifest_path);
+        //         }
+        //         // For workspace extended examples, assume the current directory is set correctly.
+        //         vec![
+        //             "run".to_string(),
+        //             "--manifest-path".to_string(),
+        //             manifest_path.to_owned(),
+        //         ]
+        //     } else {
+        //         if cli.print_program_name {
+        //             println!(
+        //                 "Running example: cargo run --release --example {}",
+        //                 target.name
+        //             );
+        //         }
+        //         vec![
+        //             "run".to_string(),
+        //             "--manifest-path".to_string(),
+        //             manifest_path.to_owned(),
+        //             "--release".to_string(),
+        //             "--example".to_string(),
+        //             format!("{}", target.name),
+        //         ]
+        //     }
+        // } else {
+        //     if cli.print_program_name {
+        //         println!("Running binary: cargo run --release --bin {}", target.name);
+        //     }
+        //     vec![
+        //         "run".to_string(),
+        //         "--manifest-path".to_string(),
+        //         manifest_path.to_owned(),
+        //         "--release".to_string(),
+        //         "--bin".to_string(),
+        //         format!("{}", target.name),
+        //     ]
+        // };
 
+        // // Determine required features based on the target kind and name.
+        // if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
+        //     Path::new(&manifest_path),
+        //     &target.kind,
+        //     &target.name,
+        // ) {
+        //     args.push("--features".to_string());
+        //     args.push(features);
+        // }
+        let builder = CargoCommandBuilder::new()
+            .with_target(target)
+            .with_required_features(&manifest_path, target)
+            .with_cli(cli);
+        let mut cmd = builder.build_command();
+
+        // Set current directory appropriately.
+        if target.kind == TargetKind::ManifestTauri {
+            let manifest_dir = manifest_path.parent().expect("Expected parent directory");
+            cmd.current_dir(manifest_dir);
+        } else if target.extended {
+            if let Some(dir) = manifest_path.parent() {
+                cmd.current_dir(dir);
+            }
+        }
+
+        println!("Running command: {:?}", cmd);
         // If the target is extended, we want to run it from its directory.
-        let current_dir = if target.extended {
+        if target.extended {
             Path::new(&manifest_path).parent().map(|p| p.to_owned())
         } else {
             None
@@ -432,15 +489,23 @@ pub mod tui_interactive {
         let manifest_path_obj = Path::new(&manifest_path);
         let backup = maybe_patch_manifest_for_run(manifest_path_obj)?;
 
-        // Build the command.
-        let mut cmd = Command::new("cargo");
-        cmd.args(&args);
-        if let Some(ref dir) = current_dir {
-            cmd.current_dir(dir);
-        }
+        // // Build the command.
+        // let mut cmd = Command::new("cargo");
+        // cmd.args(&args);
+        // if let Some(ref dir) = current_dir {
+        //     cmd.current_dir(dir);
+        // }
+        // Convert command args into &str slices for spawn_cargo_process.
+        // (Assuming spawn_cargo_process accepts a slice of &str.)
+        let owned_args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        // Now create a vector of &str references valid as long as `owned_args` is in scope:
+        let args_ref: Vec<&str> = owned_args.iter().map(|s| s.as_str()).collect();
 
-        // Spawn the cargo process.
-        let mut child = crate::e_runner::spawn_cargo_process(&args)?;
+        // let args_ref: Vec<&str> = args.iter().map(|s| &**s).collect();
+        let mut child = crate::e_runner::spawn_cargo_process(&args_ref)?;
         if cli.print_instruction {
             println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
         }

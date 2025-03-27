@@ -21,35 +21,63 @@ pub fn is_workspace_manifest(manifest_path: &Path) -> bool {
 /// to that member's Cargo.toml file.
 /// Returns None if no workspace members are found.
 pub fn get_workspace_member_manifest_paths(manifest_path: &Path) -> Option<Vec<(String, PathBuf)>> {
-    // Read and parse the manifest file as TOML.
+    // Read and parse the workspace manifest.
     let content = fs::read_to_string(manifest_path).ok()?;
     let parsed: Value = content.parse().ok()?;
 
-    // Get the `[workspace]` table.
+    // Get the `[workspace]` table and its "members" array.
     let workspace = parsed.get("workspace")?;
-    // Get the members array.
     let members = workspace.get("members")?.as_array()?;
 
     // The workspace root is the directory containing the workspace Cargo.toml.
     let workspace_root = manifest_path.parent()?;
 
-    // For each member, construct the path: workspace_root / member / "Cargo.toml"
-    // and derive a member name from the member path.
-    let member_paths: Vec<(String, PathBuf)> = members
-        .iter()
-        .filter_map(|member| {
-            member.as_str().map(|s| {
-                // Construct the member's Cargo.toml path.
-                let member_manifest = workspace_root.join(s).join("Cargo.toml");
-                // Derive the member name from the last path component of s.
-                let member_name = Path::new(s)
-                    .file_name()
-                    .map(|os_str| os_str.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| s.to_string());
-                (member_name, member_manifest)
-            })
-        })
-        .collect();
+    let mut member_paths = Vec::new();
+
+    for member in members {
+        if let Some(s) = member.as_str() {
+            if s.ends_with("/*") {
+                // Strip the trailing "/*" and use that as a base directory.
+                let base = workspace_root.join(s.trim_end_matches("/*"));
+                // Scan the base directory for subdirectories that contain a Cargo.toml.
+                if let Ok(entries) = fs::read_dir(&base) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            let cargo_toml = path.join("Cargo.toml");
+                            if cargo_toml.exists() {
+                                // Use the directory's name as the member name.
+                                if let Some(member_name) =
+                                    path.file_name().and_then(|os| os.to_str())
+                                {
+                                    member_paths.push((
+                                        format!(
+                                            "{}/{}",
+                                            s.trim_end_matches("/*"),
+                                            member_name.to_string()
+                                        ),
+                                        cargo_toml,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Use the declared member path directly.
+                let member_path = workspace_root.join(s);
+                let member_manifest = member_path.join("Cargo.toml");
+                if member_manifest.exists() {
+                    let member_name = Path::new(s)
+                        .file_name()
+                        .and_then(|os| os.to_str())
+                        .unwrap_or(s)
+                        .to_string();
+                    member_paths.push((member_name, member_manifest));
+                }
+            }
+        }
+    }
 
     if member_paths.is_empty() {
         None
@@ -61,27 +89,64 @@ pub fn get_workspace_member_manifest_paths(manifest_path: &Path) -> Option<Vec<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
+    use std::fs;
+    use tempfile::TempDir;
 
     #[test]
-    fn test_get_workspace_member_manifest_paths() {
-        let mut file = NamedTempFile::new().unwrap();
-        // Write a simple workspace manifest.
-        writeln!(file, "[workspace]").unwrap();
-        writeln!(
-            file,
-            "members = [\"cargo-e\", \"addendum/e_crate_version_checker\"]"
-        )
-        .unwrap();
-        let paths = get_workspace_member_manifest_paths(file.path());
-        assert!(paths.is_some());
-        let paths = paths.unwrap();
-        // Check that we got two entries.
-        assert_eq!(paths.len(), 2);
-        // For each entry, the path should end with "Cargo.toml".
-        for (_, path) in paths {
+    fn test_workspace_member_manifest_paths_found() {
+        // Create a temporary directory to serve as the workspace root.
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a workspace manifest (Cargo.toml) in the workspace root.
+        let workspace_manifest_path = temp_dir.path().join("Cargo.toml");
+        let workspace_manifest_content = r#"
+[workspace]
+members = ["cargo-e", "addendum/e_crate_version_checker"]
+        "#;
+        fs::write(&workspace_manifest_path, workspace_manifest_content).unwrap();
+
+        // Create a dummy member directory "cargo-e" with its own Cargo.toml.
+        let cargo_e_dir = temp_dir.path().join("cargo-e");
+        fs::create_dir_all(&cargo_e_dir).unwrap();
+        fs::write(cargo_e_dir.join("Cargo.toml"), "dummy content").unwrap();
+
+        // Create a dummy member directory "addendum/e_crate_version_checker" with its own Cargo.toml.
+        let e_crate_dir = temp_dir
+            .path()
+            .join("addendum")
+            .join("e_crate_version_checker");
+        fs::create_dir_all(&e_crate_dir).unwrap();
+        fs::write(e_crate_dir.join("Cargo.toml"), "dummy content").unwrap();
+
+        // Call the function under test.
+        let result = get_workspace_member_manifest_paths(&workspace_manifest_path);
+        assert!(result.is_some());
+        let members = result.unwrap();
+        assert_eq!(members.len(), 2);
+
+        // Verify that each returned path ends with "Cargo.toml".
+        for (_, path) in members {
             assert!(path.ends_with("Cargo.toml"));
         }
+    }
+
+    #[test]
+    fn test_workspace_member_manifest_paths_not_found() {
+        // Create a temporary directory to serve as the workspace root.
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a workspace manifest (Cargo.toml) in the workspace root.
+        let workspace_manifest_path = temp_dir.path().join("Cargo.toml");
+        let workspace_manifest_content = r#"
+[workspace]
+members = ["cargo-e", "addendum/e_crate_version_checker"]
+        "#;
+        fs::write(&workspace_manifest_path, workspace_manifest_content).unwrap();
+
+        // Do NOT create the dummy member directories or Cargo.toml files.
+
+        // Call the function and assert that it returns None.
+        let result = get_workspace_member_manifest_paths(&workspace_manifest_path);
+        assert!(result.is_none());
     }
 }

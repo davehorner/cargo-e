@@ -1,7 +1,7 @@
-use crate::e_types::TargetKind;
-use crate::Example;
 use anyhow::{Context, Result};
 use std::process::Command;
+
+use crate::e_target::{CargoTarget, TargetKind};
 
 /// Prebuilds all given targets by invoking `cargo build` with the appropriate flags.
 ///
@@ -18,7 +18,7 @@ use std::process::Command;
 /// # Returns
 ///
 /// Returns `Ok(())` if all targets build successfully; otherwise, returns an error.
-pub fn prebuild_examples(targets: &[Example]) -> Result<()> {
+pub fn prebuild_examples(targets: &[CargoTarget]) -> Result<()> {
     for target in targets {
         // Determine the build flag and whether to include the manifest path
         let (build_flag, use_manifest) = match target.kind {
@@ -26,15 +26,29 @@ pub fn prebuild_examples(targets: &[Example]) -> Result<()> {
             TargetKind::ExtendedExample => ("--example", true),
             TargetKind::Binary => ("--bin", false),
             TargetKind::ExtendedBinary => ("--bin", true),
+            TargetKind::ManifestTauriExample => ("", true),
+            TargetKind::ManifestTauri => ("", true),
+            TargetKind::Test => ("--test", true),
+            TargetKind::Manifest => ("", true),
+            TargetKind::Bench => ("", true),
+            TargetKind::ManifestDioxus => ("", true),
+            TargetKind::ManifestDioxusExample => ("", true),
+            TargetKind::Unknown => ("", true),
         };
 
+        if build_flag.is_empty() {
+            return Ok(());
+        }
         println!("Prebuilding target [{}]: {}", build_flag, target.name);
 
         let mut command = Command::new("cargo");
         command.arg("build").arg(build_flag).arg(&target.name);
 
         if use_manifest {
-            command.args(&["--manifest-path", &target.manifest_path]);
+            command.args(&[
+                "--manifest-path",
+                &target.manifest_path.to_str().unwrap_or_default().to_owned(),
+            ]);
         }
 
         let status = command

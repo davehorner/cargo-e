@@ -1,5 +1,6 @@
+use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 use crate::{e_workspace, prelude::*};
-use crate::{Example, TargetKind};
+use std::collections::HashMap;
 use std::process::Output;
 /// Helper function that runs a Cargo command with a given manifest path.
 /// If it detects the workspace error, it temporarily patches the manifest (by
@@ -51,23 +52,34 @@ pub fn collect_binaries(
     prefix: &str,
     manifest_path: &Path,
     extended: bool,
-) -> Result<Vec<Example>, Box<dyn Error>> {
+) -> Result<Vec<CargoTarget>, Box<dyn Error>> {
     // Run the Cargo command using our helper.
     let output = run_cargo_with_opt_out(&["run", "--bin"], manifest_path)?;
     let stderr_str = String::from_utf8_lossy(&output.stderr);
+    debug!("DEBUG {} {} ", prefix, manifest_path.display());
+    debug!("DEBUG: stderr (binaries) = {:?}", stderr_str);
 
     let bin_names = crate::parse_available(&stderr_str, "binaries");
 
     let binaries = bin_names
         .into_iter()
         .map(|name| {
+            let target_kind = if let Some(parent) = manifest_path.parent() {
+                if parent.file_name().and_then(|s| s.to_str()) == Some("src-tauri") {
+                    TargetKind::ManifestTauri
+                } else if extended {
+                    TargetKind::ExtendedBinary
+                } else {
+                    TargetKind::Binary
+                }
+            } else if extended {
+                TargetKind::ExtendedBinary
+            } else {
+                TargetKind::Binary
+            };
+
             let display_name = if prefix.starts_with('$') {
-                format!(
-                    "{} > binary > {} {}",
-                    prefix,
-                    name,
-                    manifest_path.to_string_lossy().into_owned()
-                )
+                format!("{} > binary > {}", prefix, name)
             } else if extended {
                 format!("{} {}", prefix, name)
             } else if prefix.starts_with("builtin") {
@@ -76,17 +88,13 @@ pub fn collect_binaries(
                 format!("{} {}", prefix, name)
                 // name.clone()
             };
-
-            Example {
+            CargoTarget {
                 name: name.clone(),
                 display_name,
-                manifest_path: manifest_path.to_string_lossy().to_string(),
-                kind: if extended {
-                    TargetKind::ExtendedBinary
-                } else {
-                    TargetKind::Binary
-                },
+                manifest_path: manifest_path.into(),
+                kind: target_kind,
                 extended,
+                origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             }
         })
         .collect();
@@ -100,18 +108,27 @@ pub fn collect_examples(
     prefix: &str,
     manifest_path: &Path,
     extended: bool,
-) -> Result<Vec<Example>, Box<dyn Error>> {
+) -> Result<Vec<CargoTarget>, Box<dyn Error>> {
     // Run the Cargo command using our helper.
     let output = run_cargo_with_opt_out(&["run", "--example"], manifest_path)?;
+    debug!("DEBUG {} {} ", prefix, manifest_path.display());
     let stderr_str = String::from_utf8_lossy(&output.stderr);
     debug!("DEBUG: stderr (examples) = {:?}", stderr_str);
 
     let names = crate::parse_available(&stderr_str, "examples");
-    debug!("DEBUG: example names = {:?}", names);
+    if names.len() > 0 {
+        debug!("DEBUG: example names = {:?}", names);
+    }
 
     let examples = names
         .into_iter()
         .map(|name| {
+            let target_kind = if extended {
+                TargetKind::ExtendedExample
+            } else {
+                TargetKind::Example
+            };
+
             let display_name = if prefix.starts_with('$') {
                 format!("{} > example > {}", prefix, name)
             } else if extended {
@@ -120,20 +137,16 @@ pub fn collect_examples(
                 format!("builtin example: {}", name)
             } else {
                 format!("{} {}", prefix, name)
-                // name.clone()
             };
-
-            Example {
+            let target = CargoTarget {
                 name: name.clone(),
                 display_name,
-                manifest_path: manifest_path.to_string_lossy().to_string(),
-                kind: if extended {
-                    TargetKind::ExtendedExample
-                } else {
-                    TargetKind::Example
-                },
+                manifest_path: manifest_path.into(),
+                kind: target_kind,
                 extended,
-            }
+                origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
+            };
+            target
         })
         .collect();
 
@@ -142,10 +155,10 @@ pub fn collect_examples(
 
 // --- Concurrent or sequential collection ---
 pub fn collect_samples(
-    workspace_mode: bool,
+    _workspace_mode: bool,
     manifest_infos: Vec<(String, PathBuf, bool)>,
     __max_concurrency: usize,
-) -> Result<Vec<Example>, Box<dyn Error>> {
+) -> Result<Vec<CargoTarget>, Box<dyn Error>> {
     let mut all_samples = Vec::new();
 
     #[cfg(feature = "concurrent")]
@@ -155,59 +168,89 @@ pub fn collect_samples(
         let (tx, rx) = mpsc::channel();
 
         let start_concurrent = Instant::now();
-        for (prefix, manifest_path, extended) in manifest_infos {
+        for (_prefix, manifest_path, _extended) in manifest_infos {
             let tx = tx.clone();
-            let prefix_clone = prefix.clone();
             let manifest_clone = manifest_path.clone();
             pool.execute(move || {
-                let mut results = Vec::new();
-                if let Ok(mut ex) = collect_examples(&prefix_clone, &manifest_clone, extended) {
-                    results.append(&mut ex);
-                }
-                if let Ok(mut bins) = collect_binaries(&prefix_clone, &manifest_clone, extended) {
-                    results.append(&mut bins);
-                }
-                let etargets =
-                    crate::e_discovery::discover_targets(manifest_clone.parent().unwrap()).unwrap();
-                for target in etargets {
-                    // Check if the target is extended and that its name is not already present in results.
-                    if target.extended && !results.iter().any(|r| r.name == target.name) {
-                        let manifest_path = Path::new(&target.manifest_path);
-                        let new_prefix = format!("examples/{}", &prefix_clone);
-                        // Collect extended examples.
-                        if let Ok(ex_ext) = collect_examples(&new_prefix, manifest_path, true) {
-                            for ex in ex_ext {
-                                if !results.iter().any(|r| r.name == ex.name) {
-                                    results.push(ex);
-                                }
-                            }
-                        }
+                // Retrieve the runnable targets from the manifest.
+                let (bins, examples, benches, tests) =
+                    crate::e_manifest::get_runnable_targets(&manifest_clone).unwrap_or_default();
 
-                        // Collect extended binaries.
-                        if let Ok(bins_ext) = collect_binaries(&new_prefix, manifest_path, true) {
-                            for bin in bins_ext {
-                                if !results.iter().any(|r| r.name == bin.name) {
-                                    results.push(bin);
-                                }
-                            }
-                        }
-                        // Derive the subproject directory from the extended target's manifest path.
-
-                        // // Convert CargoTarget to Example by mapping the fields appropriately.
-                        // let example = Example {
-                        //     name: target.name,
-                        //     display_name: target.display_name,
-                        //     manifest_path: target.manifest_path,
-                        //     kind: TargetKind::Extended, // Ensure this field is compatible with Example's type.
-                        //     extended: target.extended,
-                        // };
-                        // results.push(example);
-                    }
+                crate::e_manifest::get_runnable_targets(&manifest_clone).unwrap_or_default();
+                // If there are no examples or binaries, return early.
+                if bins.is_empty() && examples.is_empty() {
+                    return;
                 }
-                // for e in etargets {
-                //    println!("{} found", e.name);
+
+                // Combine all targets.
+                let all_targets = bins
+                    .into_iter()
+                    .chain(examples)
+                    .chain(benches)
+                    .chain(tests)
+                    .collect::<Vec<_>>();
+
+                // Now refine each target using the new pure method.
+                // If you implemented it as an associated method `refined()`:
+
+                let refined_targets: Vec<_> = all_targets
+                    .into_iter()
+                    .map(|t| CargoTarget::refined_target(&t))
+                    .collect();
+                tx.send(refined_targets).expect("Failed to send results");
+                //  let mut results = Vec::new();
+                //  results.extend(bins);
+                //  results.extend(examples);
+                //  results.extend(benches);
+                //  results.extend(tests);
+                //  tx.send(results).expect("Failed to send results");
+
+                // let mut results = Vec::new();
+                // if let Ok(mut ex) = collect_examples(&prefix_clone, &manifest_clone, extended) {
+                //     results.append(&mut ex);
                 // }
-                tx.send(results).expect("Failed to send results");
+                // if let Ok(mut bins) = collect_binaries(&prefix_clone, &manifest_clone, extended) {
+                //     results.append(&mut bins);
+                // }
+                // let etargets =
+                // crate::e_discovery::discover_targets(manifest_clone.parent().unwrap()).unwrap();
+                // for target in etargets {
+                //     let m = target.manifest_path.clone();
+                //     // let manifest_path = Path::new(&m);
+                //     // if target.name.contains("html") {
+                //     //     std::process::exit(0);
+                //     // }
+                //     if let Some(existing) = results.iter_mut().find(|r| r.name == target.name) {
+                //        debug!("REPLACING {}",target.name);
+                //         *existing = target;
+                //     } else {
+                //         debug!("ADDING {}",target.name);
+                //         results.push(target);
+                //     }
+
+                //     // Check if the target is extended and that its name is not already present in results.
+                //     // if target.extended {
+                //     //     let new_prefix = format!("examples/{}", &prefix_clone);
+                //     //     // Collect extended examples.
+                //     //     if let Ok(ex_ext) = collect_examples(&new_prefix, manifest_path, true) {
+                //     //         for ex in ex_ext {
+                //     //             if !results.iter().any(|r| r.name == ex.name) {
+                //     //                 results.push(ex);
+                //     //             }
+                //     //         }
+                //     //     }
+
+                //     //     // Collect extended binaries.
+                //     //     if let Ok(bins_ext) = collect_binaries(&new_prefix, manifest_path, true) {
+                //     //         for bin in bins_ext {
+                //     //             if !results.iter().any(|r| r.name == bin.name) {
+                //     //                 results.push(bin);
+                //     //             }
+                //     //         }
+                //     //     }
+                //     // }
+                // }
+                // tx.send(results).expect("Failed to send results");
             });
         }
         drop(tx);
@@ -227,72 +270,104 @@ pub fn collect_samples(
     #[cfg(not(feature = "concurrent"))]
     {
         let start_seq = Instant::now();
-        for (prefix, manifest_path, extended) in manifest_infos {
-            if let Ok(mut ex) = collect_examples(&prefix, &manifest_path, extended) {
-                all_samples.append(&mut ex);
-            }
-            if let Ok(mut bins) = collect_binaries(&prefix, &manifest_path, extended) {
-                all_samples.append(&mut bins);
-            }
-            let manifest_path = Path::new(&manifest_path);
-            let new_prefix = format!("examples/{}", &prefix);
-            // Collect extended examples.
-            if let Ok(ex_ext) = collect_examples(&new_prefix, manifest_path, true) {
-                for ex in ex_ext {
-                    if !all_samples.iter().any(|r| r.name == ex.name) {
-                        all_samples.push(ex);
-                    }
-                }
-            }
+        for (_prefix, manifest_path, _extended) in manifest_infos {
+            let (bins, examples, benches, tests) =
+                crate::e_manifest::get_runnable_targets(&manifest_path).unwrap_or_default();
+
+            // Merge all targets into one collection.
+            all_samples.extend(bins);
+            all_samples.extend(examples);
+            all_samples.extend(benches);
+            all_samples.extend(tests);
+
+            // if let Ok(mut ex) = collect_examples(&prefix, &manifest_path, extended) {
+            //     all_samples.append(&mut ex);
+            // }
+            // if let Ok(mut bins) = collect_binaries(&prefix, &manifest_path, extended) {
+            //     all_samples.append(&mut bins);
+            // }
+            // let manifest_path = Path::new(&manifest_path);
+            // let new_prefix = format!("examples/{}", &prefix);
+            // // Collect extended examples.
+            // if let Ok(ex_ext) = collect_examples(&new_prefix, manifest_path, true) {
+            //     for ex in ex_ext {
+            //         if !all_samples.iter().any(|r| r.name == ex.name) {
+            //             all_samples.push(ex);
+            //         }
+            //     }
+            // }
 
             // Collect extended binaries.
-            if let Ok(bins_ext) = collect_binaries(&new_prefix, manifest_path, true) {
-                for bin in bins_ext {
-                    if !all_samples.iter().any(|r| r.name == bin.name) {
-                        all_samples.push(bin);
-                    }
-                }
-            }
+            // if let Ok(bins_ext) = collect_binaries(&new_prefix, manifest_path, true) {
+            //     for bin in bins_ext {
+            //         if !all_samples.iter().any(|r| r.name == bin.name) {
+            //             all_samples.push(bin);
+            //         }
+            //     }
+            // }
         }
         let duration_seq = start_seq.elapsed();
         debug!("timing: Sequential processing took {:?}", duration_seq);
     }
-    let mut target_map: std::collections::HashMap<String, crate::Example> =
-        std::collections::HashMap::new();
+    // First, refine all collected targets.
+    let initial_targets: Vec<_> = all_samples
+        .into_iter()
+        .map(|t| CargoTarget::refined_target(&t))
+        .collect();
 
-    // Group targets by name and choose one based on workspace_mode:
-    for target in all_samples {
-        target_map
-            .entry(target.name.clone())
-            .and_modify(|existing| {
-                if workspace_mode {
-                    // In workspace mode, extended targets override builtins.
-                    if target.extended && !existing.extended {
-                        *existing = target.clone();
-                    }
-                } else {
-                    // In normal mode, builtin targets (non-extended) override extended.
-                    if !target.extended && existing.extended {
-                        *existing = target.clone();
-                    }
-                }
-            })
-            .or_insert(target.clone());
+    // Build a HashMap keyed by (manifest, name) to deduplicate targets.
+    let mut targets_map: HashMap<(String, String), CargoTarget> = HashMap::new();
+    for target in initial_targets.into_iter() {
+        let key = CargoTarget::target_key(&target);
+        targets_map.entry(key).or_insert(target);
     }
 
-    let mut combined = Vec::new();
-    for target in target_map.into_values() {
-        combined.push(target);
-    }
+    // Expand subprojects in place.
+    CargoTarget::expand_subprojects_in_place(&mut targets_map)?;
 
-    Ok(combined)
+    // Finally, collect all unique targets.
+    let refined_targets: Vec<CargoTarget> = targets_map.into_values().collect();
+    // Now do an additional deduplication pass based on origin and name.
+    let deduped_targets = crate::e_target::dedup_targets(refined_targets);
+    return Ok(deduped_targets);
+    //    return Ok(refined_targets);
+
+    // let mut target_map: std::collections::HashMap<String, CargoTarget> =
+    //     std::collections::HashMap::new();
+
+    // // Group targets by name and choose one based on workspace_mode:
+    // for target in all_samples {
+    //     target_map
+    //         .entry(target.name.clone())
+    //         .and_modify(|existing| {
+    //             if workspace_mode {
+    //                 // In workspace mode, extended targets override builtins.
+    //                 if target.extended && !existing.extended {
+    //                     *existing = target.clone();
+    //                 }
+    //             } else {
+    //                 // In normal mode, builtin targets (non-extended) override extended.
+    //                 if !target.extended && existing.extended {
+    //                     *existing = target.clone();
+    //                 }
+    //             }
+    //         })
+    //         .or_insert(target.clone());
+    // }
+
+    // let mut combined = Vec::new();
+    // for target in target_map.into_values() {
+    //     combined.push(target);
+    // }
+
+    // Ok(combined)
     // Ok(all_samples)
 }
 
 pub fn collect_all_targets(
     use_workspace: bool,
     max_concurrency: usize,
-) -> Result<Vec<Example>, Box<dyn std::error::Error>> {
+) -> Result<Vec<CargoTarget>, Box<dyn std::error::Error>> {
     use std::path::PathBuf;
     let mut manifest_infos: Vec<(String, PathBuf, bool)> = Vec::new();
 

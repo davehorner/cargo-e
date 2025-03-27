@@ -129,7 +129,7 @@ pub fn print_version_and_features() {
     } else {
         features.push("!concurrent");
     }
-    if cfg!(feature = "windows") {
+    if cfg!(target_os = "windows") {
         features.push("windows");
     } else {
         features.push("!windows");
@@ -167,7 +167,7 @@ pub fn get_feature_flags() -> Vec<&'static str> {
     } else {
         flags.push("!concurrent");
     }
-    if cfg!(feature = "windows") {
+    if cfg!(target_os = "windows") {
         flags.push("windows");
     } else {
         flags.push("!windows");
