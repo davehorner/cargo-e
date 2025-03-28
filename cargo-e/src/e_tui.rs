@@ -2,6 +2,7 @@
 pub mod tui_interactive {
     use crate::e_command_builder::CargoCommandBuilder;
     use crate::e_manifest::maybe_patch_manifest_for_run;
+    use crate::e_prompts::prompt_line;
     use crate::e_target::{CargoTarget, TargetKind};
     use crate::prelude::*;
     use crate::{e_bacon, e_findmain, Cli};
@@ -232,9 +233,12 @@ pub mod tui_interactive {
                                         std::io::stdout(),
                                         crossterm::terminal::LeaveAlternateScreen
                                     )?;
-                                    let sample = &exs[selected];
-                                    println!("Target: {:?}", sample);
-                                    std::thread::sleep(std::time::Duration::from_secs(5));
+                                    let target = &exs[selected];
+                                    println!("Target: {:?}", target);
+                                    futures::executor::block_on(
+                                        crate::e_runner::open_ai_summarize_for_target(target),
+                                    );
+                                    prompt_line("", 120).ok();
                                     reinit_terminal(&mut terminal)?;
                                 }
                             }

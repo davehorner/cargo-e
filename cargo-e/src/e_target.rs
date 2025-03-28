@@ -1,11 +1,13 @@
 // src/e_target.rs
 use anyhow::{Context, Result};
+use log::debug;
 use std::{
     collections::HashMap,
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
+use toml::Value;
 
 #[derive(Debug, Clone)]
 pub enum TargetOrigin {
@@ -82,6 +84,119 @@ impl CargoTarget {
         })
     }
 
+    /// Updates the target's name and display_name by interrogating the candidate file and its manifest.
+    pub fn figure_main_name(&mut self) {
+        // Only operate if we have a candidate file path.
+        let candidate = match &self.origin {
+            Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
+            _ => {
+                debug!("No candidate file found in target.origin; skipping name determination");
+                return;
+            }
+        };
+
+        // Get the candidate file's stem in lowercase.
+        let candidate_stem = candidate
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+        debug!("Candidate stem: {}", candidate_stem);
+
+        // Start with folder-based logic.
+        let mut name = if candidate_stem == "main" {
+            if let Some(parent_dir) = candidate.parent() {
+                if let Some(parent_name) = parent_dir.file_name().and_then(|s| s.to_str()) {
+                    debug!("Candidate parent folder: {}", parent_name);
+                    if parent_name.eq_ignore_ascii_case("src") {
+                        // If candidate is src/main.rs, take the parent of "src".
+                        parent_dir
+                            .parent()
+                            .and_then(|proj_dir| proj_dir.file_name())
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or(candidate_stem.clone())
+                    } else if parent_name.eq_ignore_ascii_case("examples") {
+                        // If candidate is in an examples folder, use the candidate's parent folder's name.
+                        candidate
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or(candidate_stem.clone())
+                    } else {
+                        candidate_stem.clone()
+                    }
+                } else {
+                    candidate_stem.clone()
+                }
+            } else {
+                candidate_stem.clone()
+            }
+        } else {
+            candidate_stem.clone()
+        };
+        debug!("Name after folder-based logic: {}", name);
+
+        // If the candidate stem is "main", interrogate the manifest.
+        if candidate_stem == "main" {
+            let manifest_contents = fs::read_to_string(&self.manifest_path).unwrap_or_default();
+            if let Ok(manifest_toml) = manifest_contents.parse::<Value>() {
+                // Check for any [[bin]] entries.
+                if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
+                    debug!("Found {} [[bin]] entries", bins.len());
+                    if let Some(bin_name) = bins.iter().find_map(|bin| {
+                        if let Some(path_str) = bin.get("path").and_then(|p| p.as_str()) {
+                            debug!("Checking bin entry with path: {}", path_str);
+                            if path_str == "src/bin/main.rs" {
+                                let bn = bin
+                                    .get("name")
+                                    .and_then(|n| n.as_str())
+                                    .map(|s| s.to_string());
+                                debug!("Found matching bin with name: {:?}", bn);
+                                return bn;
+                            }
+                        }
+                        None
+                    }) {
+                        debug!("Using bin name from manifest: {}", bin_name);
+                        name = bin_name;
+                    } else if let Some(pkg) = manifest_toml.get("package") {
+                        debug!("No matching [[bin]] entry; checking [package] section");
+                        name = pkg
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or(&name)
+                            .to_string();
+                        debug!("Using package name from manifest: {}", name);
+                    }
+                } else if let Some(pkg) = manifest_toml.get("package") {
+                    debug!("No [[bin]] section found; using [package] section");
+                    name = pkg
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or(&name)
+                        .to_string();
+                    debug!("Using package name from manifest: {}", name);
+                } else {
+                    debug!(
+                        "Manifest does not contain [[bin]] or [package] sections; keeping name: {}",
+                        name
+                    );
+                }
+            } else {
+                debug!("Failed to parse manifest TOML; keeping name: {}", name);
+            }
+        }
+
+        debug!("Final determined name: {}", name);
+        if name.eq("main") {
+            panic!("Name is main");
+        }
+        self.name = name.clone();
+        self.display_name = name;
+    }
+
     /// Constructs a CargoTarget from a folder by trying to locate a runnable source file.
     ///
     /// The function attempts the following candidate paths in order:
@@ -126,8 +241,8 @@ impl CargoTarget {
 
             let sub_manifest =
                 fs::canonicalize(&sub_manifest).unwrap_or(sub_manifest.to_path_buf());
-            println!("Subproject found: {}", sub_manifest.display());
-            println!("{}", &folder_name);
+            debug!("Subproject found: {}", sub_manifest.display());
+            debug!("{}", &folder_name);
             return Some(CargoTarget {
                 name: folder_name.clone(),
                 display_name,
@@ -179,51 +294,9 @@ impl CargoTarget {
             found?
         };
 
-        // // First candidate: folder/<folder_name>.rs
-        // let candidate = if folder.join(format!("{}.rs", folder_name)).exists() {
-        //     folder.join(format!("{}.rs", folder_name))
-        // } else if folder.join("src/main.rs").exists() {
-        //     folder.join("src/main.rs")
-        // } else if folder.join("main.rs").exists() {
-        //     folder.join("main.rs")
-        // } else {
-        //     // Otherwise, scan the folder for any .rs file containing "fn main"
-        //     let mut found = None;
-        //     if let Ok(entries) = fs::read_dir(folder) {
-        //         for entry in entries.flatten() {
-        //             let path = entry.path();
-        //             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
-        //                 let contents = fs::read_to_string(&path).unwrap_or_default();
-        //                 if contents.contains("fn main") {
-        //                     found = Some(path);
-        //                     break;
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     found?
-        // };
-
         let candidate = fs::canonicalize(&candidate).unwrap_or(candidate.to_path_buf());
         // Compute the extended flag based on the candidate file location.
         let extended = crate::e_discovery::is_extended_target(manifest_path, &candidate);
-
-        // // Determine a fallback target kind based on the folder name.
-        // let fallback_kind = if folder_name.to_lowercase() == "examples" {
-        //     if extended {
-        //         TargetKind::ExtendedExample
-        //     } else {
-        //         TargetKind::Example
-        //     }
-        // } else if folder_name.to_lowercase() == "bin" {
-        //     if extended {
-        //         TargetKind::ExtendedBinary
-        //     } else {
-        //         TargetKind::Binary
-        //     }
-        // } else {
-        //     TargetKind::Example
-        // };
 
         // Read the candidate file's contents.
         let file_contents = std::fs::read_to_string(&candidate).unwrap_or_default();
@@ -242,37 +315,83 @@ impl CargoTarget {
         }
 
         // Determine the candidate file's stem in lowercase.
-        let candidate_stem = candidate.file_stem()?.to_str()?.to_lowercase();
-        let name = if candidate_stem == "main" {
-            candidate
-                .parent()
-                .and_then(|p| p.parent())
-                .and_then(|gp| {
-                    gp.file_name().and_then(|s| s.to_str()).and_then(|s| {
-                        if s.to_lowercase() == "examples" {
-                            // Use candidate's parent folder's name.
-                            candidate
-                                .parent()
-                                .and_then(|p| p.file_name())
-                                .and_then(|s| s.to_str())
-                                .map(|s| s.to_string())
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .unwrap_or(candidate_stem)
-        } else {
-            candidate_stem
-        };
-        Some(CargoTarget {
+        let name = candidate.file_stem()?.to_str()?.to_lowercase();
+        //         let name = if candidate_stem == "main" {
+        //     if let Some(parent_dir) = candidate.parent() {
+        //         if let Some(parent_name) = parent_dir.file_name().and_then(|s| s.to_str()) {
+        //             if parent_name.eq_ignore_ascii_case("src") {
+        //                 // If candidate is src/main.rs, take the parent of "src".
+        //                 parent_dir.parent()
+        //                     .and_then(|proj_dir| proj_dir.file_name())
+        //                     .and_then(|s| s.to_str())
+        //                     .map(|s| s.to_string())
+        //                     .unwrap_or(candidate_stem.clone())
+        //             } else if parent_name.eq_ignore_ascii_case("examples") {
+        //                 // If candidate is in the examples folder (e.g. examples/main.rs),
+        //                 // use the candidate's parent folder's name.
+        //                 candidate.parent()
+        //                     .and_then(|p| p.file_name())
+        //                     .and_then(|s| s.to_str())
+        //                     .map(|s| s.to_string())
+        //                     .unwrap_or(candidate_stem.clone())
+        //             } else {
+        //                 // Fall back to the candidate_stem if no special case matches.
+        //                 candidate_stem.clone()
+        //             }
+        //         } else {
+        //             candidate_stem.clone()
+        //         }
+        //     } else {
+        //         candidate_stem.clone()
+        //     }
+        // } else {
+        //     candidate_stem.clone()
+        // };
+        // let name = if candidate_stem.clone() == "main" {
+        //     // Read the manifest contents.
+        //     let manifest_contents = fs::read_to_string(manifest_path).unwrap_or_default();
+        //     if let Ok(manifest_toml) = manifest_contents.parse::<toml::Value>() {
+        //         // Look for any [[bin]] entries.
+        //         if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
+        //             if let Some(bin_name) = bins.iter().find_map(|bin| {
+        //                 if let Some(path_str) = bin.get("path").and_then(|p| p.as_str()) {
+        //                     if path_str == "src/bin/main.rs" {
+        //                         return bin.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
+        //                     }
+        //                 }
+        //                 None
+        //             }) {
+        //                 // Found a bin with the matching path; use its name.
+        //                 bin_name
+        //             } else if let Some(pkg) = manifest_toml.get("package") {
+        //                 // No matching bin entry, so use the package name.
+        //                 pkg.get("name").and_then(|n| n.as_str()).unwrap_or(&candidate_stem).to_string()
+        //             } else {
+        //                 candidate_stem.to_string()
+        //             }
+        //         } else if let Some(pkg) = manifest_toml.get("package") {
+        //             // No [[bin]] section; use the package name.
+        //             pkg.get("name").and_then(|n| n.as_str()).unwrap_or(&candidate_stem).to_string()
+        //         } else {
+        //             candidate_stem.to_string()
+        //         }
+        //     } else {
+        //         candidate_stem.to_string()
+        //     }
+        // } else {
+        //     candidate_stem.to_string()
+        // };
+        let mut target = CargoTarget {
             name: name.clone(),
             display_name: name,
             manifest_path: new_manifest.to_path_buf(),
             kind,
             extended,
             origin: Some(TargetOrigin::SingleFile(candidate)),
-        })
+        };
+        // Call the method to update name based on the candidate and manifest.
+        target.figure_main_name();
+        Some(target)
     }
     /// Returns a refined CargoTarget based on its file contents and location.
     /// This function is pure; it takes an immutable CargoTarget and returns a new one.
@@ -300,6 +419,7 @@ impl CargoTarget {
         );
         refined.kind = new_kind;
         refined.manifest_path = new_manifest;
+        refined.figure_main_name();
         refined
     }
 
@@ -447,7 +567,6 @@ impl CargoTarget {
             for new in new_targets {
                 let key = CargoTarget::target_key(&new);
                 map.entry(key).or_insert(new.clone());
-                println!("Inserted subproject target: {}", new.name);
             }
         }
         Ok(())

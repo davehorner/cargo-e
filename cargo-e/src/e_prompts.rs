@@ -138,6 +138,10 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
             let remaining = Duration::from_secs(wait_secs - elapsed);
             if poll(remaining)? {
                 if let Event::Key(key_event) = read()? {
+                    // Only process key press events
+                    if key_event.kind != crossterm::event::KeyEventKind::Press {
+                        continue;
+                    }
                     match key_event.code {
                         KeyCode::Enter => break,
                         KeyCode::Char(c) => {
@@ -203,7 +207,11 @@ pub fn prompt_line_with_poll(wait_secs: u64) -> Result<Option<String>, Box<dyn s
             // Poll for an event for the remaining time.
             let remaining = timeout - elapsed;
             if poll(remaining)? {
-                if let Event::Key(crossterm::event::KeyEvent { code, .. }) = read()? {
+                if let Event::Key(crossterm::event::KeyEvent { code, kind, .. }) = read()? {
+                    // Only process key press events
+                    if kind != crossterm::event::KeyEventKind::Press {
+                        continue;
+                    }
                     match code {
                         KeyCode::Enter => break,
                         KeyCode::Char(c) => {

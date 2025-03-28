@@ -172,7 +172,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let example = builtin_examples[0];
         let message = format!(
-            "{} example found. run? (Yes / no / edit / tui)     waiting {} seconds.",
+            "{} example found. run? (Yes / no / edit / tui / info)     waiting {} seconds.",
             example.name, cli.wait
         );
         match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
@@ -188,6 +188,11 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some('e') => {
                 use futures::executor::block_on;
                 block_on(cargo_e::e_findmain::open_vscode_for_sample(&example));
+            }
+            Some('i') => {
+                futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(example));
+                cargo_e::e_prompts::prompt_line("", 120).ok();
+                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
             }
             Some('t') => {
                 #[cfg(feature = "tui")]
@@ -222,13 +227,17 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         let binary = builtin_binaries[0];
         // Prompt the user for what to do.
         let message = format!(
-            "{} binary found.  run? (yes / No / edit / tui)     waiting {} seconds.",
+            "{} binary found.  run? (yes / No / edit / tui / info)     waiting {} seconds.",
             binary.name, cli.wait
         );
         match cargo_e::e_prompts::prompt(&message, cli.wait)? {
             Some('y') => {
                 // Run the binary.
                 cargo_e::e_runner::run_example(&cli, binary)?;
+            }
+            Some('i') => {
+                futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(binary));
+                cargo_e::e_prompts::prompt_line("", 120).ok();
             }
             Some('n') => {
                 //println!("exiting without running.");
@@ -508,7 +517,7 @@ fn select_and_run_target_loop(
 ) -> Result<LoopResult, Box<dyn Error>> {
     let current_offset = start_offset;
     let prompt_loop = format!(
-        "== # to run, tui, e<#> edit, 'q' to quit (waiting {} seconds) ",
+        "== # to run, tui, e<#> edit, i<#> info, 'q' to quit (waiting {} seconds) ",
         cli.wait
     );
     // Build a combined list: examples first, then binaries.
@@ -637,6 +646,8 @@ fn select_and_run_target_loop(
                 let mut allowed_chars: Vec<char> = ('0'..='9').collect();
                 allowed_chars.push('e');
                 allowed_chars.push('E');
+                allowed_chars.push('i');
+                allowed_chars.push('I');
                 if let Some(line) = cargo_e::e_prompts::prompt_line_with_poll_opts(
                     cli.wait.max(3),
                     &quick_exit_keys,
@@ -709,6 +720,9 @@ fn select_and_run_target_loop(
         // For fewer targets, use a simple single-character prompt.
         let mut allowed: Vec<char> = ('0'..='9').collect();
         allowed.extend(['e']);
+        allowed.extend(['i']);
+        allowed.extend(['I']);
+        allowed.extend(['E']);
         let mut quick_exit_keys: Vec<char> = vec!['q', 't', ' '];
         quick_exit_keys.extend('0'..='9');
         cargo_e::e_prompts::prompt_line_with_poll_opts(
@@ -753,6 +767,33 @@ fn process_input(
         }
         #[cfg(not(feature = "tui"))]
         {
+            Ok(LoopResult::Quit)
+        }
+    } else if trimmed.to_lowercase().starts_with("i") {
+        // Handle the "edit" command: e<num>
+        let num_str = trimmed[1..].trim();
+        if let Ok(rel_index) = num_str.parse::<usize>() {
+            let abs_index = if cli.relative_numbers {
+                offset + rel_index - 1
+            } else {
+                rel_index - 1
+            };
+            if abs_index > combined.len() {
+                eprintln!("error: Invalid target number for edit: {}", trimmed);
+                Ok(LoopResult::Quit)
+            } else {
+                let (target_type, target) = combined[abs_index];
+                println!("info {} \"{}\"...", target_type, target.name);
+                futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(target));
+                cargo_e::e_prompts::prompt_line("", 120).ok();
+                // After editing, you might want to pause briefly or simply return to the menu.
+                Ok(LoopResult::Run(
+                    <std::process::ExitStatus as process::ExitStatusExt>::from_raw(0),
+                    offset,
+                ))
+            }
+        } else {
+            eprintln!("error: Invalid edit command: {}", trimmed);
             Ok(LoopResult::Quit)
         }
     } else if trimmed.to_lowercase().starts_with("e") {

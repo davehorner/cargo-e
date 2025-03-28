@@ -1,7 +1,8 @@
-use crate::prelude::*;
+use crate::{e_target::TargetOrigin, prelude::*};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
 use once_cell::sync::Lazy;
+use which::which;
 
 // Global shared container for the currently running child process.
 pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -20,6 +21,96 @@ pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
         }
     })?;
     Ok(())
+}
+
+use crate::e_target::CargoTarget;
+use std::process::Command; // Adjust the import based on your project structure
+
+/// Asynchronously launches the GenAI summarization example for the given target.
+/// It builds the command using the target's manifest path as the "origin" argument.
+pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
+    // Extract the origin path from the target (e.g. the manifest path).
+    let origin_path = match &target.origin {
+        Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
+        _ => return (),
+    };
+
+    let exe_path = match which("cargoe_ai_summarize") {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("Error: 'cargoe_ai_summarize' not found in PATH: {}", err);
+            return;
+        }
+    };
+    // Build the command based on the platform.
+    // let mut cmd = if cfg!(target_os = "windows") {
+    //     let command_str = format!(
+    //         "e_ai_summarize --streaming --stdin {}",
+    //         origin_path.as_os_str().to_string_lossy()
+    //     );
+    //     println!("Running command: {}", command_str);
+    //     let mut command = Command::new("cmd");
+    //     command.args(["/C", &command_str]);
+    //     command
+    // } else {
+    let mut cmd = Command::new(exe_path);
+    cmd.arg("--streaming");
+    cmd.arg("--stdin");
+    cmd.arg(origin_path);
+    // command
+    // };
+
+    cmd.stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    // Spawn the command and wait for it to finish.
+    let child = cmd.spawn();
+    let status = child
+        .expect("Failed to spawn command")
+        .wait()
+        .expect("Failed to wait for command");
+
+    if !status.success() {
+        eprintln!("Command exited with status: {}", status);
+    }
+
+    // // Build the command to run the example.
+    // let output = if cfg!(target_os = "windows") {
+    //     let command_str = format!("e_ai_summarize --stdin {}", origin_path.as_os_str().to_string_lossy());
+    //     println!("Running command: {}", command_str);
+    //     Command::new("cmd")
+    //         .args([
+    //             "/C",
+    //             command_str.as_str(),
+    //         ])
+    //         .output()
+    // } else {
+    //     Command::new("e_ai_summarize")
+    //         .args([origin_path])
+    //         .output()
+    // };
+
+    // // Handle the output from the command.
+    // match output {
+    //     Ok(output) if output.status.success() => {
+    //         // The summarization example ran successfully.
+    //         println!("----
+    //         {}", String::from_utf8_lossy(&output.stdout));
+    //     }
+    //     Ok(output) => {
+    //         let msg = format!(
+    //             "Error running summarization example:\nstdout: {}\nstderr: {}",
+    //             String::from_utf8_lossy(&output.stdout),
+    //             String::from_utf8_lossy(&output.stderr)
+    //         );
+    //         error!("{}", msg);
+    //     }
+    //     Err(e) => {
+    //         let msg = format!("Failed to execute summarization command: {}", e);
+    //         error!("{}", msg);
+    //     }
+    // }
 }
 
 /// In "equivalent" mode, behave exactly like "cargo run --example <name>"
