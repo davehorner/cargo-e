@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.1...cargo-e-v0.2.2) - 2025-03-28
+
+### Added
+
+- *(tui)* improve arrow key handling and update dioxus detection - ESC no longer exits application.
+
 ## [0.2.1](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.0...cargo-e-v0.2.1) - 2025-03-28
 
 ### Added

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use which::which;
 
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 
@@ -205,6 +206,13 @@ impl CargoCommandBuilder {
                 self.args.push("dev".into());
             }
             TargetKind::ManifestDioxus => {
+                let exe_path = match which("dx") {
+                    Ok(path) => path,
+                    Err(err) => {
+                        eprintln!("Error: 'dx' not found in PATH: {}", err);
+                        return self;
+                    }
+                };
                 // For Dioxus targets, print the manifest path and set the execution directory
                 // to be the same directory as the manifest.
                 if let Some(manifest_parent) = target.manifest_path.parent() {
@@ -220,11 +228,18 @@ impl CargoCommandBuilder {
                         target.manifest_path.display()
                     );
                 }
-                self.alternate_cmd = Some("dx".to_string());
+                self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
                 self.args.push("serve".into());
                 self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::ManifestDioxusExample => {
+                let exe_path = match which("dx") {
+                    Ok(path) => path,
+                    Err(err) => {
+                        eprintln!("Error: 'dx' not found in PATH: {}", err);
+                        return self;
+                    }
+                };
                 // For Dioxus targets, print the manifest path and set the execution directory
                 // to be the same directory as the manifest.
                 if let Some(manifest_parent) = target.manifest_path.parent() {
@@ -240,7 +255,7 @@ impl CargoCommandBuilder {
                         target.manifest_path.display()
                     );
                 }
-                self.alternate_cmd = Some("dx".to_string());
+                self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
                 self.args.push("serve".into());
                 self.args.push("--example".into());
                 self.args.push(target.name.clone());
