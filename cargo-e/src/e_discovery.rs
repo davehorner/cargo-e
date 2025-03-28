@@ -305,11 +305,8 @@ pub fn determine_target_kind_and_manifest(
         return (TargetKind::ManifestTauri, new_manifest);
     }
 
-    // Dioxus detection: if any of the markers are found.
-    if file_contents.contains("LaunchBuilder::new")
-        || file_contents.contains("dioxus::LaunchBuilder")
-        || file_contents.contains("dioxus::launch")
-    {
+    // Dioxus detection
+    if file_contents.contains("dioxus::") {
         let kind = if example {
             TargetKind::ManifestDioxusExample
         } else {

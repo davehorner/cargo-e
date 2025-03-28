@@ -103,8 +103,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
             #[cfg(feature = "tui")]
             if cli.tui {
-                cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
-                std::process::exit(0);
+                do_tui_and_exit(&cli, &unique_examples);
             }
             cargo_e::e_runner::run_example(&cli, target)?;
         }
@@ -115,8 +114,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             #[cfg(feature = "tui")]
             if cli.tui {
-                cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
-                std::process::exit(0);
+                do_tui_and_exit(&cli, &unique_examples);
             }
             cargo_e::e_runner::run_example(&cli, target)?;
         } else {
@@ -149,8 +147,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 #[cfg(feature = "tui")]
                 if cli.tui {
-                    cargo_e::e_tui::tui_interactive::launch_tui(&cli, &fuzzy_matches)?;
-                    std::process::exit(0);
+                    do_tui_and_exit(&cli, &fuzzy_matches);
                 }
                 cli_loop(&cli, &fuzzy_matches, &[], &[])?;
             }
@@ -166,8 +163,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     if builtin_examples.len() == 1 {
         #[cfg(feature = "tui")]
         if cli.tui {
-            cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
-            std::process::exit(0);
+            do_tui_and_exit(&cli, &unique_examples);
         }
 
         let example = builtin_examples[0];
@@ -196,9 +192,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some('t') => {
                 #[cfg(feature = "tui")]
-                {
-                    cargo_e::e_tui::tui_interactive::launch_tui(&cli, &examples)?;
-                }
+                do_tui_and_exit(&cli, &examples);
                 #[cfg(not(feature = "tui"))]
                 {
                     println!("tui not enabled.");
@@ -220,8 +214,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         provide_notice_of_no_examples(&cli, &unique_examples)?;
         #[cfg(feature = "tui")]
         if cli.tui {
-            cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
-            std::process::exit(0);
+            do_tui_and_exit(&cli, &unique_examples);
         }
         // No examples, but one binary exists.
         let binary = builtin_binaries[0];
@@ -252,7 +245,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Open the TUI.
                 #[cfg(feature = "tui")]
                 {
-                    cargo_e::e_tui::tui_interactive::launch_tui(&cli, &examples)?;
+                    do_tui_and_exit(&cli, &examples);
                 }
             }
             _ => {
@@ -265,8 +258,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         #[cfg(feature = "tui")]
         if cli.tui {
-            cargo_e::e_tui::tui_interactive::launch_tui(&cli, &unique_examples)?;
-            std::process::exit(0);
+            do_tui_and_exit(&cli, &unique_examples);
         }
         cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
         // if builtin_examples.len() + builtin_binaries.len() > 1 {
@@ -277,6 +269,30 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         // }
     }
     Ok(())
+}
+
+#[allow(dead_code)]
+fn do_tui_and_exit(cli: &Cli, unique_examples: &[CargoTarget]) -> ! {
+    #[cfg(feature = "tui")]
+    {
+        let ret = cargo_e::e_tui::tui_interactive::launch_tui(cli, unique_examples);
+        if let Err(e) = ret {
+            eprintln!("TUI Error: {:?}", e);
+            std::process::exit(1);
+        }
+        std::process::exit(0);
+    }
+    #[cfg(not(feature = "tui"))]
+    {
+        // If TUI is not enabled, just print a message and exit.
+        eprintln!("TUI is not supported in this build. Exiting.");
+        let ret = cli_loop(&cli, &unique_examples, &[], &[]);
+        if let Err(e) = ret {
+            eprintln!("CLI Error: {:?}", e);
+            std::process::exit(1);
+        }
+        std::process::exit(0);
+    }
 }
 
 fn provide_notice_of_no_examples(
@@ -313,7 +329,7 @@ fn provide_notice_of_no_examples(
         #[cfg(feature = "tui")]
         {
             if trimmed.eq_ignore_ascii_case("t") {
-                cargo_e::e_tui::tui_interactive::launch_tui(cli, examples)?;
+                do_tui_and_exit(cli, examples);
             }
         }
 
@@ -762,8 +778,7 @@ fn process_input(
         {
             let tui_examples: Vec<CargoTarget> =
                 combined.iter().map(|&(_, ex)| ex.clone()).collect();
-            cargo_e::e_tui::tui_interactive::launch_tui(cli, &tui_examples)?;
-            std::process::exit(0);
+            do_tui_and_exit(cli, &tui_examples);
         }
         #[cfg(not(feature = "tui"))]
         {
