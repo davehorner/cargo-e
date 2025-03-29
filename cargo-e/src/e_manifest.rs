@@ -1,12 +1,12 @@
+use crate::e_target::TargetKind;
+use anyhow::{anyhow, Result};
+use log::debug;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
-
-use crate::e_target::TargetKind;
-use anyhow::{anyhow, Result};
 
 /// Locate the Cargo.toml by invoking `cargo locate-project --message-format plain`.
 /// If `workspace` is true, the `--workspace` flag is added so that the manifest
@@ -99,6 +99,29 @@ pub fn find_manifest_dir() -> std::io::Result<PathBuf> {
             return Ok(dir);
         }
         // Stop if we cannot go any higher.
+        if !dir.pop() {
+            break;
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "Could not locate Cargo.toml in the current or parent directories.",
+    ))
+}
+
+/// Searches upward from the given starting directory for a Cargo.toml file
+/// and returns the directory containing it.
+pub fn find_manifest_dir_from(start: &std::path::Path) -> std::io::Result<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        debug!(
+            "{:?} {:?}",
+            start.display(),
+            dir.join("Cargo.toml").display()
+        );
+        if dir.join("Cargo.toml").exists() {
+            return Ok(dir);
+        }
         if !dir.pop() {
             break;
         }
