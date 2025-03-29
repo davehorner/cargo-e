@@ -1,10 +1,7 @@
-# e_ai_summarize
+readme_content = """# e_ai_summarize
 
 e_ai_summarize is a GenAI-powered Rust source code summarizer and crate recreator. It analyzes Rust source files to provide concise, insightful summaries—including key functionality, used crates, safety considerations, and file operations. Additionally, it now supports generating scripts (in Rust or Python) to recreate a crate from a given source folder.
 
-- [example_output_summaries/example_output.252903_0031.md](example_output_summaries/example_output.252903_0031.md) - EXAMPLE OF THE OUTPUT OF THE PROGRAM WITH NO PARAMETERS.  The summary of the program itself is more elaborate than the crate scanning/recreation code at this time.  
-- Creates self contained python and rust scripts which recreate the contents of the crate on disk and copy the program to clipboard.  This allows you to paste the code for the entire crate, talk about it with your favorite LLM, and ask nicely for your modifications sent back in form.
-- **It's like your LLM wrote a manual for the examples and crates you've been using that no one cared to document or comment.  Don't go it alone.**
 ---
 
 ## Features
@@ -45,33 +42,33 @@ The tool now offers two main modes: **Summarization** and **Crate Recreation**.
 
 - **Summarize a Rust source file:**
 
-  ```bash
+  {{CODE}}bash
   cargo run -- path/to/source_file.rs
-  ```
+  {{CODE}}
 
 - **Interactive Follow-up Mode:**
 
   Run in interactive mode to ask follow-up questions after the summary is generated:
 
-  ```bash
+  {{CODE}}bash
   cargo run -- path/to/source_file.rs --stdin
-  ```
+  {{CODE}}
 
 - **Single Follow-up Question:**
 
   Provide a single follow-up question with the `-q` option:
 
-  ```bash
+  {{CODE}}bash
   cargo run -- path/to/source_file.rs -q "Does this code handle errors properly?"
-  ```
+  {{CODE}}
 
 - **Enable Streaming Mode:**
 
   Use the `--streaming` flag for streaming output:
 
-  ```bash
+  {{CODE}}bash
   cargo run -- path/to/source_file.rs --streaming
-  ```
+  {{CODE}}
 
 If no file is specified, e_ai_summarize will default to analyzing its own source code as a demonstration.
 
@@ -81,40 +78,38 @@ If no file is specified, e_ai_summarize will default to analyzing its own source
 
   Use the `--recreate-crate-rs` flag. Optionally, provide a source folder (defaults to the current directory) and add `--src-only` to process only the `src` subfolder.
 
-  ```bash
+  {{CODE}}bash
   cargo run -- path/to/source_folder --recreate-crate-rs [--src-only]
-  ```
+  {{CODE}}
 
 - **Generate a Python script to recreate the crate:**
 
   Use the `--recreate-crate-py` flag. Similar to the Rust mode, you can specify a source folder and use `--src-only` if needed.
 
-  ```bash
+  {{CODE}}bash
   cargo run -- path/to/source_folder --recreate-crate-py [--src-only]
-  ```
+  {{CODE}}
 
 ### Programmatic Usage
 
 You can also integrate e_ai_summarize into your own Rust projects. For example:
 
-```rust
+{{CODE}}rust
 use e_ai_summarize::summarizer::{self, ChatSession};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Summarize a source file
     let (summary, mut session) = summarizer::summarize_source_session(Some("path/to/source_file.rs"), true).await?;
-    println!("Summary:
-{}", summary);
+    println!("Summary:\n{}", summary);
 
     // Optionally, ask a follow-up question
     let followup = session.ask("Can you elaborate on the error handling?").await?;
-    println!("Follow-up Answer:
-{}", followup);
+    println!("Follow-up Answer:\n{}", followup);
 
     Ok(())
 }
-```
+{{CODE}}
 
 ---
 
@@ -167,3 +162,14 @@ Thanks to the contributors of the GenAI library and the broader Rust community f
 Enjoy using e_ai_summarize for all your Rust code analysis and crate recreation needs!
 
 *Created by Your David Horner around 3/25*
+"""
+
+# Replace the placeholder with actual triple backticks
+readme_content = readme_content.replace("{{CODE}}", "```")
+
+# Write the content to README.md
+with open("README.md", "w", encoding="utf-8") as file:
+    file.write(readme_content)
+
+print("README.md has been written successfully.")
+

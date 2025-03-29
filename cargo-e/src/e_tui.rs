@@ -3,7 +3,7 @@ pub mod tui_interactive {
     use crate::e_command_builder::CargoCommandBuilder;
     use crate::e_manifest::maybe_patch_manifest_for_run;
     use crate::e_prompts::prompt_line;
-    use crate::e_target::{CargoTarget, TargetKind};
+    use crate::e_target::CargoTarget;
     use crate::prelude::*;
     use crate::{e_bacon, e_findmain, Cli};
     use crossterm::event::KeyEventKind;
@@ -36,10 +36,49 @@ pub mod tui_interactive {
                     continue;
                 }
                 // You can also choose to ignore all events:
-                // continue;
+                continue;
             }
         }
         Ok(())
+    }
+
+    /// Try to collect an escape sequence if the first event is Esc.
+    /// Returns Some(arrow) if the sequence matches an arrow key, otherwise None.
+    fn try_collect_arrow_sequence() -> Result<Option<KeyCode>, Box<dyn std::error::Error>> {
+        // Buffer to hold the sequence. We already know the first event is Esc.
+        let mut sequence = vec![];
+        let start = Instant::now();
+        // Give a short window (e.g. 50 ms) to collect additional events.
+        while start.elapsed() < Duration::from_millis(50) {
+            if poll(Duration::from_millis(0))? {
+                if let Event::Key(key) = read()? {
+                    // Only consider Press events.
+                    if key.kind == KeyEventKind::Press {
+                        sequence.push(key);
+                    }
+                }
+            }
+        }
+        // Now, an arrow key should have a sequence like: Esc, '[' and then 'A' (or 'B', 'C', 'D').
+        if sequence.len() >= 2 {
+            if sequence[0].code == KeyCode::Char('[') {
+                // Check the third element if available.
+                if let Some(third) = sequence.get(1) {
+                    // Compare the character case-insensitively (to handle unexpected modifiers).
+                    if let KeyCode::Char(ch) = third.code {
+                        let ch = ch.to_ascii_uppercase();
+                        return Ok(match ch {
+                            'A' => Some(KeyCode::Up),
+                            'B' => Some(KeyCode::Down),
+                            'C' => Some(KeyCode::Right),
+                            'D' => Some(KeyCode::Left),
+                            _ => None,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Launches an interactive terminal UI for selecting an example.
@@ -94,7 +133,7 @@ pub mod tui_interactive {
 
                 let left_text = format!("Select example ({} examples found)", exs.len());
                 let separator = " ┃ ";
-                let right_text = "Esc or q to EXIT";
+                let right_text = "q to EXIT";
                 let title_line = if exit_hover {
                     Line::from(vec![
                         Span::raw(left_text),
@@ -105,19 +144,12 @@ pub mod tui_interactive {
                     Line::from(vec![
                         Span::raw(left_text),
                         Span::raw(separator),
-                        Span::styled("Esc or q to ", Style::default().fg(Color::White)),
+                        Span::styled("q to ", Style::default().fg(Color::White)),
                         Span::styled("EXIT", Style::default().fg(Color::Red)),
                     ])
                 };
 
                 let block = Block::default().borders(Borders::ALL).title(title_line);
-                // let items: Vec<ListItem> = exs.iter().map(|e| {
-                //     let mut item = ListItem::new(e.as_str());
-                //     if run_history.contains(e) {
-                //         item = item.style(Style::default().fg(Color::Blue));
-                //     }
-                //     item
-                // }).collect();
                 let items: Vec<ListItem> = exs
                     .iter()
                     .map(|ex| {
@@ -141,138 +173,179 @@ pub mod tui_interactive {
                 match event::read()? {
                     Event::Key(key) => {
                         // Only process key-press events.
-                        if key.kind != KeyEventKind::Press {
-                            continue;
-                        }
-                        match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => break 'main_loop,
-                            KeyCode::Down => {
-                                let i = match list_state.selected() {
-                                    Some(i) if i >= exs.len() - 1 => i,
-                                    Some(i) => i + 1,
-                                    None => 0,
-                                };
-                                list_state.select(Some(i));
-                                // Debounce: wait a short while to avoid duplicate processing.
-                                thread::sleep(Duration::from_millis(50));
-                            }
-                            KeyCode::Up => {
-                                let i = match list_state.selected() {
-                                    Some(0) | None => 0,
-                                    Some(i) => i - 1,
-                                };
-                                list_state.select(Some(i));
-                                // Debounce: wait a short while to avoid duplicate processing.
-                                thread::sleep(Duration::from_millis(50));
-                            }
-                            KeyCode::PageDown => {
-                                // Compute page size based on the terminal's current height.
-                                let page = terminal
-                                    .size()
-                                    .map(|r| r.height.saturating_sub(4)) // subtract borders/margins; adjust as needed
-                                    .unwrap_or(5)
-                                    as usize;
-                                let current = list_state.selected().unwrap_or(0);
-                                let new = std::cmp::min(current + page, exs.len() - 1);
-                                list_state.select(Some(new));
-                            }
-                            KeyCode::PageUp => {
-                                let page = terminal
-                                    .size()
-                                    .map(|r| r.height.saturating_sub(4))
-                                    .unwrap_or(5)
-                                    as usize;
-                                let current = list_state.selected().unwrap_or(0);
-                                let new = current.saturating_sub(page);
-                                list_state.select(Some(new));
-                            }
-                            KeyCode::Char('b') => {
-                                if let Some(selected) = list_state.selected() {
-                                    let sample = &examples[selected];
-                                    // Run bacon in detached mode. Extra arguments can be added if needed.
-                                    if let Err(e) = e_bacon::run_bacon(sample, &Vec::new()) {
-                                        eprintln!("Error running bacon: {}", e);
-                                    } else {
-                                        println!("Bacon launched for sample: {}", sample.name);
+                        if key.kind == KeyEventKind::Press {
+                            // Check if we might be starting an escape sequence for an arrow key.
+                            if key.code == KeyCode::Esc {
+                                // Try to collect the rest of the sequence.
+                                if let Some(arrow_code) = try_collect_arrow_sequence()? {
+                                    match arrow_code {
+                                        KeyCode::Up => {
+                                            let new_index = match list_state.selected() {
+                                                Some(0) | None => 0,
+                                                Some(i) => i.saturating_sub(1),
+                                            };
+                                            list_state.select(Some(new_index));
+                                        }
+                                        KeyCode::Down => {
+                                            let new_index = match list_state.selected() {
+                                                Some(i) if i >= exs.len() - 1 => i,
+                                                Some(i) => i + 1,
+                                                None => 0,
+                                            };
+                                            list_state.select(Some(new_index));
+                                        }
+                                        KeyCode::Left => {
+                                            // Handle left arrow if needed.
+                                        }
+                                        KeyCode::Right => {
+                                            // Handle right arrow if needed.
+                                        }
+                                        _ => {}
                                     }
-                                    reinit_terminal(&mut terminal)?;
+                                    // We've handled the arrow, so skip further processing.
+                                    continue;
+                                } else {
+                                    // No follow-up sequence—treat it as a standalone Esc if needed.
+                                    // For example, you might decide not to exit on Esc now.
+                                    // println!("Standalone Esc detected (ignoring).");
+                                    continue;
                                 }
                             }
-                            KeyCode::Char('e') => {
-                                if let Some(selected) = list_state.selected() {
-                                    // Disable raw mode for debug printing.
-                                    crossterm::terminal::disable_raw_mode()?;
-                                    crossterm::execute!(
-                                        std::io::stdout(),
-                                        crossterm::terminal::LeaveAlternateScreen
-                                    )?;
-                                    // When 'e' is pressed, attempt to open the sample in VSCode.
-                                    let sample = &exs[selected];
-                                    println!(
-                                        "Opening VSCode for path: {}",
-                                        sample
-                                            .manifest_path
-                                            .to_str()
-                                            .unwrap_or_default()
-                                            .to_owned()
-                                    );
-                                    // Here we block on the asynchronous open_vscode call.
-                                    // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
-                                    futures::executor::block_on(
-                                        e_findmain::open_vscode_for_sample(sample),
-                                    );
-                                    std::thread::sleep(std::time::Duration::from_secs(5));
-                                    reinit_terminal(&mut terminal)?;
+                            match key.code {
+                                KeyCode::Char('q') => {
+                                    // Exit the TUI mode when 'q' is pressed.
+                                    println!("Exiting TUI mode...");
+                                    break 'main_loop;
+                                }
+                                KeyCode::Down => {
+                                    let i = match list_state.selected() {
+                                        Some(i) if i >= exs.len() - 1 => i,
+                                        Some(i) => i + 1,
+                                        None => 0,
+                                    };
+                                    list_state.select(Some(i));
+                                    thread::sleep(Duration::from_millis(50));
+                                }
+                                KeyCode::Up => {
+                                    let i = match list_state.selected() {
+                                        Some(0) | None => 0,
+                                        Some(i) => i - 1,
+                                    };
+                                    list_state.select(Some(i));
+                                    thread::sleep(Duration::from_millis(50));
+                                }
+                                KeyCode::PageDown => {
+                                    // Compute page size based on the terminal's current height.
+                                    let page = terminal
+                                        .size()
+                                        .map(|r| r.height.saturating_sub(4)) // subtract borders/margins; adjust as needed
+                                        .unwrap_or(5)
+                                        as usize;
+                                    let current = list_state.selected().unwrap_or(0);
+                                    let new = std::cmp::min(current + page, exs.len() - 1);
+                                    list_state.select(Some(new));
+                                }
+                                KeyCode::PageUp => {
+                                    let page = terminal
+                                        .size()
+                                        .map(|r| r.height.saturating_sub(4))
+                                        .unwrap_or(5)
+                                        as usize;
+                                    let current = list_state.selected().unwrap_or(0);
+                                    let new = current.saturating_sub(page);
+                                    list_state.select(Some(new));
+                                }
+                                KeyCode::Char('b') => {
+                                    if let Some(selected) = list_state.selected() {
+                                        let sample = &examples[selected];
+                                        // Run bacon in detached mode. Extra arguments can be added if needed.
+                                        if let Err(e) = e_bacon::run_bacon(sample, &Vec::new()) {
+                                            eprintln!("Error running bacon: {}", e);
+                                        } else {
+                                            println!("Bacon launched for sample: {}", sample.name);
+                                        }
+                                        reinit_terminal(&mut terminal)?;
+                                    }
+                                }
+                                KeyCode::Char('e') => {
+                                    if let Some(selected) = list_state.selected() {
+                                        // Disable raw mode for debug printing.
+                                        crossterm::terminal::disable_raw_mode()?;
+                                        crossterm::execute!(
+                                            std::io::stdout(),
+                                            crossterm::terminal::LeaveAlternateScreen
+                                        )?;
+                                        // When 'e' is pressed, attempt to open the sample in VSCode.
+                                        let sample = &exs[selected];
+                                        println!(
+                                            "Opening VSCode for path: {}",
+                                            sample
+                                                .manifest_path
+                                                .to_str()
+                                                .unwrap_or_default()
+                                                .to_owned()
+                                        );
+                                        // Here we block on the asynchronous open_vscode call.
+                                        // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
+                                        futures::executor::block_on(
+                                            e_findmain::open_vscode_for_sample(sample),
+                                        );
+                                        std::thread::sleep(std::time::Duration::from_secs(5));
+                                        reinit_terminal(&mut terminal)?;
+                                    }
+                                }
+                                KeyCode::Char('i') => {
+                                    if let Some(selected) = list_state.selected() {
+                                        // Disable raw mode for debug printing.
+                                        crossterm::terminal::disable_raw_mode()?;
+                                        crossterm::execute!(
+                                            std::io::stdout(),
+                                            crossterm::terminal::LeaveAlternateScreen
+                                        )?;
+                                        let target = &exs[selected];
+                                        println!("Target: {:?}", target);
+                                        futures::executor::block_on(
+                                            crate::e_runner::open_ai_summarize_for_target(target),
+                                        );
+                                        prompt_line("", 120).ok();
+                                        reinit_terminal(&mut terminal)?;
+                                    }
+                                }
+                                // KeyCode::Char('v') => {
+                                //     if let Some(selected) = list_state.selected() {
+                                //         // Disable raw mode for debug printing.
+                                //         crossterm::terminal::disable_raw_mode()?;
+                                //         crossterm::execute!(
+                                //             std::io::stdout(),
+                                //             crossterm::terminal::LeaveAlternateScreen
+                                //         )?;
+                                //         // When 'e' is pressed, attempt to open the sample in VSCode.
+                                //         let sample = &examples[selected];
+                                //         println!("Opening VIM for path: {}", sample.manifest_path);
+                                //         // Here we block on the asynchronous open_vscode call.
+                                //         // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
+                                //         e_findmain::open_vim_for_sample(sample);
+                                //         std::thread::sleep(std::time::Duration::from_secs(5));
+                                //         reinit_terminal(&mut terminal)?;
+                                //     }
+                                // }
+                                KeyCode::Enter => {
+                                    if let Some(selected) = list_state.selected() {
+                                        run_piece(
+                                            &exs,
+                                            selected,
+                                            &history_path,
+                                            &mut run_history,
+                                            &mut terminal,
+                                            cli,
+                                        )?;
+                                        reinit_terminal(&mut terminal)?;
+                                    }
+                                }
+                                _ => {
+                                    //println!("Unhandled key event: {:?}", key.code);
                                 }
                             }
-                            KeyCode::Char('i') => {
-                                if let Some(selected) = list_state.selected() {
-                                    // Disable raw mode for debug printing.
-                                    crossterm::terminal::disable_raw_mode()?;
-                                    crossterm::execute!(
-                                        std::io::stdout(),
-                                        crossterm::terminal::LeaveAlternateScreen
-                                    )?;
-                                    let target = &exs[selected];
-                                    println!("Target: {:?}", target);
-                                    futures::executor::block_on(
-                                        crate::e_runner::open_ai_summarize_for_target(target),
-                                    );
-                                    prompt_line("", 120).ok();
-                                    reinit_terminal(&mut terminal)?;
-                                }
-                            }
-                            // KeyCode::Char('v') => {
-                            //     if let Some(selected) = list_state.selected() {
-                            //         // Disable raw mode for debug printing.
-                            //         crossterm::terminal::disable_raw_mode()?;
-                            //         crossterm::execute!(
-                            //             std::io::stdout(),
-                            //             crossterm::terminal::LeaveAlternateScreen
-                            //         )?;
-                            //         // When 'e' is pressed, attempt to open the sample in VSCode.
-                            //         let sample = &examples[selected];
-                            //         println!("Opening VIM for path: {}", sample.manifest_path);
-                            //         // Here we block on the asynchronous open_vscode call.
-                            //         // futures::executor::block_on(open_vscode(Path::new(&sample.manifest_path)));
-                            //         e_findmain::open_vim_for_sample(sample);
-                            //         std::thread::sleep(std::time::Duration::from_secs(5));
-                            //         reinit_terminal(&mut terminal)?;
-                            //     }
-                            // }
-                            KeyCode::Enter => {
-                                if let Some(selected) = list_state.selected() {
-                                    run_piece(
-                                        &exs,
-                                        selected,
-                                        &history_path,
-                                        &mut run_history,
-                                        &mut terminal,
-                                        cli,
-                                    )?;
-                                }
-                            }
-                            _ => {}
                         }
                     }
                     Event::Mouse(mouse_event) => {
@@ -288,7 +361,7 @@ pub mod tui_interactive {
                         let title_start = list_area.x + 2;
                         let left_text = format!("Select example ({} examples found)", exs.len());
                         let separator = " ┃ ";
-                        let right_text = "Esc or q to EXIT";
+                        let right_text = "q to EXIT";
                         let offset = (left_text.len() + separator.len()) as u16;
                         let right_region_start = title_start + offset;
                         let right_region_end = right_region_start + (right_text.len() as u16);
@@ -330,6 +403,7 @@ pub mod tui_interactive {
                                     && mouse_event.column >= right_region_start
                                     && mouse_event.column < right_region_end
                                 {
+                                    println!("Exiting TUI mode...");
                                     break 'main_loop;
                                 }
                                 let inner_y = list_area.y + 1;
@@ -388,6 +462,7 @@ pub mod tui_interactive {
             Clear(ClearType::All)
         )?;
         *terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+        flush_input()?; // Clear any buffered input after reinitializing the terminal.
         Ok(())
     }
 
@@ -456,15 +531,6 @@ pub mod tui_interactive {
         //     ]
         // };
 
-        // // Determine required features based on the target kind and name.
-        // if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
-        //     Path::new(&manifest_path),
-        //     &target.kind,
-        //     &target.name,
-        // ) {
-        //     args.push("--features".to_string());
-        //     args.push(features);
-        // }
         let builder = CargoCommandBuilder::new()
             .with_target(target)
             .with_required_features(&manifest_path, target)
@@ -472,14 +538,14 @@ pub mod tui_interactive {
         let mut cmd = builder.build_command();
 
         // Set current directory appropriately.
-        if target.kind == TargetKind::ManifestTauri {
-            let manifest_dir = manifest_path.parent().expect("Expected parent directory");
-            cmd.current_dir(manifest_dir);
-        } else if target.extended {
-            if let Some(dir) = manifest_path.parent() {
-                cmd.current_dir(dir);
-            }
-        }
+        // if target.kind == TargetKind::ManifestTauri {
+        //     let manifest_dir = manifest_path.parent().expect("Expected parent directory");
+        //     cmd.current_dir(manifest_dir);
+        // } else if target.extended {
+        //     if let Some(dir) = manifest_path.parent() {
+        //         cmd.current_dir(dir);
+        //     }
+        // }
 
         println!("Running command: {:?}", cmd);
         // If the target is extended, we want to run it from its directory.
@@ -493,23 +559,25 @@ pub mod tui_interactive {
         let manifest_path_obj = Path::new(&manifest_path);
         let backup = maybe_patch_manifest_for_run(manifest_path_obj)?;
 
-        // // Build the command.
-        // let mut cmd = Command::new("cargo");
-        // cmd.args(&args);
-        // if let Some(ref dir) = current_dir {
-        //     cmd.current_dir(dir);
-        // }
-        // Convert command args into &str slices for spawn_cargo_process.
-        // (Assuming spawn_cargo_process accepts a slice of &str.)
-        let owned_args: Vec<String> = cmd
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-        // Now create a vector of &str references valid as long as `owned_args` is in scope:
-        let args_ref: Vec<&str> = owned_args.iter().map(|s| s.as_str()).collect();
+        // // // Build the command.
+        // // let mut cmd = Command::new("cargo");
+        // // cmd.args(&args);
+        // // if let Some(ref dir) = current_dir {
+        // //     cmd.current_dir(dir);
+        // // }
+        // // Convert command args into &str slices for spawn_cargo_process.
+        // // (Assuming spawn_cargo_process accepts a slice of &str.)
+        // let owned_args: Vec<String> = cmd
+        //     .get_args()
+        //     .map(|arg| arg.to_string_lossy().to_string())
+        //     .collect();
+        // // Now create a vector of &str references valid as long as `owned_args` is in scope:
+        // let args_ref: Vec<&str> = owned_args.iter().map(|s| s.as_str()).collect();
 
-        // let args_ref: Vec<&str> = args.iter().map(|s| &**s).collect();
-        let mut child = crate::e_runner::spawn_cargo_process(&args_ref)?;
+        // // let args_ref: Vec<&str> = args.iter().map(|s| &**s).collect();
+        // let mut child = crate::e_runner::spawn_cargo_process(&args_ref)?;
+
+        let mut child = cmd.spawn()?;
         if cli.print_instruction {
             println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
         }
@@ -519,11 +587,11 @@ pub mod tui_interactive {
         // Now we enter an event loop, periodically checking if the child has exited
         // and polling for keyboard input.
         loop {
-            // Check if the child process has finished.
+            // // Check if the child process has finished.
             if let Some(status) = child.try_wait()? {
                 status_code = status.code().unwrap_or(1);
 
-                //println!("Process exited with status: {}", status_code);
+                println!("Process exited with status: {}", status_code);
                 break;
             }
             // Poll for input events with a 100ms timeout.
@@ -593,22 +661,24 @@ pub mod tui_interactive {
             let _ = crate::e_prompts::prompt(&message, cli.wait)?;
         }
 
-        // Flush stray input events.
-        while event::poll(std::time::Duration::from_millis(0))? {
-            let _ = event::read()?;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        reinit_terminal(terminal)?; // Reinitialize the terminal after running the target.
 
-        // Reinitialize the terminal.
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            EnterAlternateScreen,
-            crossterm::event::EnableMouseCapture,
-            Clear(ClearType::All)
-        )?;
-        *terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+        // // Flush stray input events.
+        // while event::poll(std::time::Duration::from_millis(0))? {
+        //     let _ = event::read()?;
+        // }
+        // std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // // // Reinitialize the terminal.
+        // enable_raw_mode()?;
+        // let mut stdout = io::stdout();
+        // execute!(
+        //     stdout,
+        //     EnterAlternateScreen,
+        //     crossterm::event::EnableMouseCapture,
+        //     Clear(ClearType::All)
+        // )?;
+        // *terminal = Terminal::new(CrosstermBackend::new(stdout))?;
         Ok(())
     }
 }
