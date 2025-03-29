@@ -13,7 +13,7 @@
 use clap::Parser;
 use e_ai_summarize::summarizer::{self};
 use log::debug;
-use rustyline::DefaultEditor;
+use rustyline::{Config, DefaultEditor};
 use tokio;
 
 /// Command-line arguments.
@@ -39,7 +39,9 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging (set RUST_LOG=debug to see debug! output).
-    env_logger::init();
+    env_logger::Builder::new()
+        .filter_module("rustyline", log::LevelFilter::Warn)
+        .init();
 
     // Parse command-line arguments.
     let args = Args::parse();
@@ -52,7 +54,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If follow-up questions are desired, use the session.
     if args.interactive || args.question.is_some() {
         if args.interactive {
-            let mut rl: DefaultEditor = DefaultEditor::new()?;
+            let config = Config::builder().build();
+            let mut rl = DefaultEditor::with_config(config)?;
             debug!("Interactive mode: enter follow-up questions (empty line to quit):");
             loop {
                 let line = rl.readline("> ")?;
