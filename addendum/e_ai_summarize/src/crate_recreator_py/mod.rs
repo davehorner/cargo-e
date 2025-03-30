@@ -7,7 +7,7 @@ use std::process::Command;
 mod script_generator;
 use self::script_generator::generate_py_script;
 // Import shared functions from the top‑level modules.
-use crate::cargo_utils::{find_cargo_toml, get_crate_name_from_cargo_toml};
+use crate::cargo_utils::{find_cargo_toml, get_crate_name_and_version};
 use crate::file_gatherer::gather_files;
 
 /// Recreates the crate by generating a Python script that, when executed,
@@ -19,11 +19,14 @@ pub fn recreate_crate_py(source_folder: &Path, src_only: bool) -> Result<()> {
     let (crate_root, crate_name) = if let Some(ref toml_path) = cargo_toml {
         // Explicitly annotate type to help inference.
         let root: std::path::PathBuf = toml_path.parent().unwrap().to_path_buf();
-        let name = get_crate_name_from_cargo_toml(toml_path).unwrap_or_else(|| {
-            root.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("crate")
-                .to_string()
+        let (name, _version) = get_crate_name_and_version(toml_path).unwrap_or_else(|_| {
+            (
+                root.file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("crate")
+                    .to_string(),
+                "?.?.?".to_owned(),
+            )
         });
         (root, name)
     } else {

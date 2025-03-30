@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 // Import shared functions from the top‑level modules.
-use crate::cargo_utils::{find_cargo_toml, get_crate_name_from_cargo_toml};
+use crate::cargo_utils::{find_cargo_toml, get_crate_name_and_version};
 use crate::file_gatherer::gather_files;
 mod script_generator;
 use self::script_generator::generate_rust_script;
@@ -14,22 +14,17 @@ use self::script_generator::generate_rust_script;
 /// The `source_folder` is used as the starting point, and if `src_only` is true, only the `src` subfolder is processed.
 pub fn recreate_crate_rs(source_folder: &Path, src_only: bool) -> Result<()> {
     let cargo_toml = find_cargo_toml(source_folder);
-    let (crate_root, crate_name) = if let Some(ref toml_path) = cargo_toml {
+    let (crate_root, crate_name, crate_version) = if let Some(ref toml_path) = cargo_toml {
         let root: std::path::PathBuf = toml_path.parent().unwrap().to_path_buf();
-        let name = get_crate_name_from_cargo_toml(toml_path).unwrap_or_else(|| {
-            root.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("crate")
-                .to_string()
-        });
-        (root, name)
+        let (name, version) = get_crate_name_and_version(toml_path).unwrap_or_default();
+        (root, name, version)
     } else {
         let fallback = source_folder
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("crate")
             .to_string();
-        (source_folder.to_path_buf(), fallback)
+        (source_folder.to_path_buf(), fallback, "?.?.?".into())
     };
 
     let gather_folder = if src_only {
@@ -43,13 +38,13 @@ pub fn recreate_crate_rs(source_folder: &Path, src_only: bool) -> Result<()> {
     }
 
     let files_dict = gather_files(&gather_folder)?;
-    let rust_script = generate_rust_script(&files_dict, &crate_name);
+    let rust_script = generate_rust_script(&files_dict, &crate_name, &crate_version);
     let timestamp = Local::now().format("%y%m%d_%H%M").to_string();
     let output_filename = format!("{}_recreate_{}.rs", crate_name, timestamp);
     fs::write(&output_filename, &rust_script)?;
     set_executable_permission(&output_filename)?;
     copy_to_clipboard(&rust_script)?;
-    println!("[TRACE] Generated Rust script saved to {}", output_filename);
+    println!("saved to {} and copied to clipboard.", output_filename);
     Ok(())
 }
 

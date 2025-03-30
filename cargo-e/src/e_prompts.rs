@@ -33,7 +33,7 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
         println!("{}", message);
     }
     use std::io::IsTerminal;
-    if !std::io::stdin().is_terminal() {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         println!("Non-interactive mode detected; skipping prompt.");
         return Ok(None);
     }

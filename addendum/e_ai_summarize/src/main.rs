@@ -14,7 +14,7 @@ struct Args {
     file: Option<String>,
 
     /// Run interactive follow-up mode (for summarization).
-    #[arg(long = "stdin", conflicts_with = "question")]
+    #[arg(short = 'i', long = "stdin", conflicts_with = "question")]
     interactive: bool,
 
     /// Provide a single follow-up question (for summarization).
@@ -22,15 +22,15 @@ struct Args {
     question: Option<String>,
 
     /// Enable streaming mode (for summarization).
-    #[arg(long = "streaming", action = clap::ArgAction::SetTrue)]
+    #[arg(short = 's',long = "streaming", action = clap::ArgAction::SetTrue)]
     streaming: bool,
 
     /// Generate a Python script that recreates the crate.
-    #[arg(long = "recreate-crate-py")]
+    #[arg(short = 'p', long = "recreate-crate-py")]
     recreate_crate_py: bool,
 
     /// Generate a Rust script that recreates the crate.
-    #[arg(long = "recreate-crate-rs")]
+    #[arg(short = 'r', long = "recreate-crate-rs")]
     recreate_crate_rs: bool,
 
     /// Process only the 'src' subfolder (for crate recreation).
@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     if args.recreate_crate_rs {
+        e_ai_summarize::cargo_utils::check_rust_script_installed();
         // For Rust script recreation mode, use the `file` argument as the source folder.
         let source_folder = args.file.unwrap_or_else(|| ".".to_string());
         e_ai_summarize::crate_recreator_rs::recreate_crate_rs(

@@ -80,8 +80,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .into_iter()
         .filter(|e| {
-            // Create a key using a unique combination of properties.
-            // You may need to adjust this depending on what distinguishes duplicates in your context.
             let key = (e.name.clone(), e.extended, e.kind);
             seen.insert(key)
         })

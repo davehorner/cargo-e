@@ -1,23 +1,33 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result}; // for context handling and error management
+use log::{debug, info};
+use path_slash::PathExt;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+use walkdir::WalkDir; // Import logging macros
 
-/// Recursively collects files from the given `source_folder` and returns a mapping of relative paths to file contents.
 pub fn gather_files(source_folder: &Path) -> Result<HashMap<PathBuf, String>> {
     let mut files = HashMap::new();
-    println!("[TRACE] Traversing folder: {:?}", source_folder);
+    debug!("Traversing folder: {:?}", source_folder);
 
     for entry in WalkDir::new(source_folder)
         .into_iter()
+        .filter_entry(|e| {
+            // Skip any entry whose path contains one of the unwanted directory names.
+            let excluded = ["target", ".git", ".aipack", ".github", "node_modules"];
+            !e.path().components().any(|comp| {
+                comp.as_os_str()
+                    .to_str()
+                    .map_or(false, |s| excluded.contains(&s))
+            })
+        })
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
         if path.is_dir() {
             if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                 if ["target", ".git", ".aipack", ".github"].contains(&name) {
-                    println!("[TRACE] Skipping directory: {}", name);
+                    debug!("Skipping directory: {}", name);
                     continue;
                 }
             }
@@ -29,8 +39,17 @@ pub fn gather_files(source_folder: &Path) -> Result<HashMap<PathBuf, String>> {
                 || file_name.ends_with("~")
                 || file_name.starts_with("LICENSE")
                 || file_name.starts_with("NOTICE")
+                || file_name.eq("run_history.txt")
             {
-                println!("[TRACE] Skipping file: {}", file_name);
+                debug!("Skipping file: {}", file_name);
+                continue;
+            }
+            // Skip files whose names contain "_recreate_"
+            if file_name.contains("_recreate_") {
+                debug!(
+                    "Skipping file: {} because it contains '_recreate_'",
+                    file_name
+                );
                 continue;
             }
             let lower = file_name.to_lowercase();
@@ -41,20 +60,28 @@ pub fn gather_files(source_folder: &Path) -> Result<HashMap<PathBuf, String>> {
                 || lower.ends_with(".pdb")
                 || lower.ends_with(".exe")
             {
-                println!("[TRACE] Skipping binary file: {}", file_name);
+                debug!("Skipping binary file: {}", file_name);
                 continue;
             }
             let rel_path = path
                 .strip_prefix(source_folder)
-                .with_context(|| format!("Failed to get relative path for {:?}", path))?
-                .to_path_buf();
-            println!("[TRACE] Processing file: {:?} as {:?}", path, rel_path);
-            let content = fs::read_to_string(path)
-                .with_context(|| format!("Failed to read file {:?}", path))?;
-            files.insert(rel_path, content);
+                .with_context(|| format!("Failed to get relative path for {:?}", path))?;
+
+            let slash_path: String = crate::sanitize(rel_path.to_slash_lossy());
+
+            debug!("Processing file: {:?} as {:?}", path, slash_path);
+
+            // Read the file contents
+            let bytes =
+                fs::read(path).with_context(|| format!("Failed to read file {:?}", path))?;
+            let content = String::from_utf8_lossy(&bytes).to_string();
+            let sanitized = crate::sanitize(content);
+            let rust_literal = crate::emit_literal(&sanitized);
+            // Insert the processed file into the HashMap
+            files.insert(rel_path.to_path_buf(), rust_literal);
         }
     }
 
-    println!("[TRACE] Total files gathered: {}", files.len());
+    info!("Total files gathered: {}", files.len());
     Ok(files)
 }

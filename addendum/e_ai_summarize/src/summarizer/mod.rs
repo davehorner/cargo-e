@@ -10,9 +10,14 @@ use genai::chat::printer::PrintChatStreamOptions;
 use genai::chat::printer::print_chat_stream;
 use genai::chat::{ChatMessage, ChatRequest};
 use include_dir::{Dir, include_dir};
+use path_slash::PathBufExt;
 use std::env;
 use std::fs;
 use std::path::Path;
+
+use crate::cargo_utils::find_cargo_toml;
+use crate::cargo_utils::get_crate_name_and_version;
+use crate::sanitize;
 static SRC_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/src");
 
 pub struct ChatSession {
@@ -150,21 +155,59 @@ pub async fn summarize_source_session(
     file_path: Option<&str>,
     streaming: bool,
 ) -> Result<(String, ChatSession), Box<dyn std::error::Error>> {
+    let mut crate_name = env!("CARGO_PKG_NAME").to_string();
+    let mut crate_version = env!("CARGO_PKG_VERSION").to_string();
+
+    let exe_path = env::current_exe().expect("Failed to get current exe path");
     // Read the content from the provided file or fallback to this file's own source.
     let content = if let Some(fp) = file_path {
+        let possible_toml = find_cargo_toml(Path::new(fp));
+        if let Some(crate_toml_path) = possible_toml {
+            let (name, version) =
+                get_crate_name_and_version(&crate_toml_path.to_path_buf()).unwrap_or_default();
+            crate_name = name;
+            crate_version = version;
+        }
         let path = Path::new(fp);
-        fs::read_to_string(path).unwrap_or_else(|err| {
-            eprintln!("Error reading {}: {}", fp, err);
+        if path.is_dir() {
+            let files = crate::cargo_utils::gather_files_from_crate(&path.to_string_lossy(), false)
+                .with_context(|| {
+                    format!(
+                        "Failed to gather files from crate at {}",
+                        &path.to_string_lossy()
+                    )
+                })?;
+            generate_heredoc_output(&crate_name, &crate_version, &files)
+        } else if path.is_file() {
+            fs::read_to_string(path).unwrap_or_else(|err| {
+                eprintln!("Error reading {}: {}", fp, err);
+                std::process::exit(1);
+            })
+        } else {
+            eprintln!("Error reading {}", fp);
             std::process::exit(1);
-        })
+        }
     } else {
         let mut combined_source = String::new();
-        let crate_name = env!("CARGO_PKG_NAME");
+        combined_source.push_str(&format!("The following is a file listing from {} v{}, the primary executable is {}, demonstrate using short options"
+                                          ,crate_name,crate_version,exe_path.file_name().unwrap_or_default().to_string_lossy()));
+        println!(
+            "Not arguments supplied, {} v{} is self summarizing {}.",
+            crate_name,
+            crate_version,
+            exe_path.file_name().unwrap_or_default().to_string_lossy()
+        );
 
+        // Read Cargo.toml content using the include_str! macro.
+        let cargo_toml = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
+        combined_source.push_str(&format!(
+            "\n//- ----- [Cargo.toml] -----\n{}\n//- ----- [Cargo.toml] -----\n\n",
+            cargo_toml
+        ));
         for entry in SRC_DIR.find("**/*.rs").unwrap() {
             if let Some(file) = entry.as_file() {
                 let rel_path = entry.path().display();
-                let header = format!("----- [{}]::{} -----\n", crate_name, rel_path);
+                let header = format!("//- ----- [{}]::{} -----\n", crate_name, rel_path);
                 combined_source.push_str(&header);
 
                 // Attempt to get UTF-8 contents; if unavailable, use a lossily converted version.
@@ -175,7 +218,7 @@ pub async fn summarize_source_session(
                 };
                 combined_source.push_str(&file_content);
 
-                let footer = format!("\n----- [{}]::{} -----\n\n", crate_name, rel_path);
+                let footer = format!("\n//- ----- [{}]::{} -----\n\n", crate_name, rel_path);
                 combined_source.push_str(&footer);
             }
         }
@@ -191,6 +234,7 @@ pub async fn summarize_source_session(
         //     lib_source, main_source
         // )
     };
+    println!("{}", content);
     // Create a ChatSession with a system prompt for summarization.
     let mut session = ChatSession::new("You are a Rust code analyst.", "gpt-4o-mini", streaming);
 
@@ -205,6 +249,12 @@ pub async fn summarize_source_session(
         // Ask for the usage summary using the existing session.
         let usage_summary = session.ask(&usage_prompt).await?;
         println!("Help and Usage Summary:\n{}\n", usage_summary);
+        println!(
+            "> {} v{} {} is performing self summarization report which includes the YES / NO answers to important questions.",
+            crate_name,
+            crate_version,
+            exe_path.file_name().unwrap_or_default().to_string_lossy()
+        );
     }
 
     // Build the summarization prompt.
@@ -216,7 +266,7 @@ pub async fn summarize_source_session(
 - Whether it performs any deletes or file modifications. This should include a FILE_OPERATIONS: YES/NO answer to start and a brief explanation.
 - If there are any notable limitations or issues.
 - Any other relevant insights.
-- Provide a tree view of the files if possible.
+- Provide a tree view of the files if possible.  If you can provide a - after the name and short sentence what it is, do so, leaving it blank is acceptable too.
 ---
 {}
 ",
@@ -265,54 +315,56 @@ pub async fn summarize_a_crate(
     Ok(answer)
 }
 
-// pub async fn summarize_a_crate(crate_location: &str) -> anyhow::Result<(String, ChatSession)> {
+/// Generates heredoc output for each file.
+pub fn generate_heredoc_output(
+    crate_name: &str,
+    crate_version: &str,
+    files: &std::collections::HashMap<std::path::PathBuf, String>,
+) -> String {
+    let mut out = String::new();
 
-//     // Use the shared file-gathering logic in cargo_utils.
+    let ver = if !crate_version.is_empty() {
+        format!("v{}", &crate_version)
+    } else {
+        String::new()
+    };
+    let reference = if !crate_name.is_empty() && !ver.is_empty() {
+        format!("[{} {}]", &crate_name, &ver)
+    } else if !crate_name.is_empty() {
+        format!("[{}]", &crate_name)
+    } else {
+        String::new()
+    };
+    for (path, content) in files {
+        let rel_path = path.to_slash_lossy();
+        out.push_str(&format!("//- ----- {}::{} -----\n", reference, rel_path));
+        out.push_str(&sanitize(&content));
+        out.push_str(&format!("\n//- ----- {}::{} -----\n", reference, rel_path));
+    }
+    out
+}
 
-//     // Here, we assume you want to analyze the entire crate.
+// Synchronous wrappers (_blocking versions)
+pub fn summarize_source_blocking() -> anyhow::Result<String> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(summarize_source())
+        .map_err(|e| anyhow::Error::msg(e.to_string()))
+}
 
-//     let files = crate::cargo_utils::gather_files_from_crate(crate_location, false)
+pub fn summarize_source_session_blocking(
+    file_path: Option<&str>,
+    streaming: bool,
+) -> anyhow::Result<(String, ChatSession)> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(summarize_source_session(file_path, streaming))
+        .map_err(|e| anyhow::Error::msg(e.to_string()))
+}
 
-//         .with_context(|| format!("Failed to gather files from crate at {}", crate_location))?;
-
-//     // Combine all file contents into one large string.
-
-//     // You might want to filter for specific files or limit the size in a real implementation.
-
-//     let mut combined_source = String::new();
-
-//     for (path, content) in &files {
-
-//         let path_str = path.to_string_lossy();
-
-//         combined_source.push_str(&format!("// File: {}\n", path_str));
-
-//         combined_source.push_str(content);
-
-//         combined_source.push_str("\n\n");
-
-//     }
-
-//     // Create a prompt for summarization.
-
-//     let prompt = format!(
-
-//         "Analyze the following Rust crate source code and summarize its main functionality, safety (including file operations), and any notable issues:\n\n{}",
-
-//         combined_source
-
-//     );
-
-//     // In a real implementation, you would now create a ChatSession with your GenAI client and send `prompt`.
-
-//     // For now, we simulate a summary:
-
-//     let summary = format!("Simulated summary for crate at {}", crate_location);
-
-//     // Create a stub ChatSession.
-
-//     let session = ChatSession::default();
-
-//     Ok((summary, session))
-
-// }
+pub fn summarize_a_crate_blocking(
+    crate_location: &str,
+    session: &mut ChatSession,
+) -> anyhow::Result<String> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(summarize_a_crate(crate_location, session))
+        .map_err(|e| anyhow::Error::msg(e.to_string()))
+}

@@ -29,3 +29,26 @@ pub fn run() -> anyhow::Result<()> {
         None => summarize::default_run(),
     }
 }
+
+pub async fn run_async() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    match cli.command {
+        Some(Commands::Summarize(args)) => {
+            // Call the asynchronous version of the summarize branch.
+            // (You'll need to add a run_async function in your summarize module.)
+            summarize::run_async(args).await?;
+        }
+        Some(Commands::GenScript(args)) => {
+            // These functions remain synchronous. You can call them directly.
+            genscript::run(args)?;
+        }
+        Some(Commands::GenHere(args)) => {
+            genhere::run(args)?;
+        }
+        None => {
+            // If no subcommand is provided, fallback to the default summarization run.
+            summarize::run_async(summarize::SummarizeArgs::default()).await?;
+        }
+    }
+    Ok(())
+}

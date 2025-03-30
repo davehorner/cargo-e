@@ -94,6 +94,7 @@ pub fn collect_binaries(
                 manifest_path: manifest_path.into(),
                 kind: target_kind,
                 extended,
+                toml_specified: false,
                 origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             }
         })
@@ -144,6 +145,7 @@ pub fn collect_examples(
                 manifest_path: manifest_path.into(),
                 kind: target_kind,
                 extended,
+                toml_specified: true,
                 origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             };
             target
@@ -364,6 +366,71 @@ pub fn collect_samples(
     // Ok(all_samples)
 }
 
+use log::warn;
+use std::fs;
+use std::path::Path;
+
+/// Returns the "depth" of a path (number of components)
+pub fn path_depth(path: &Path) -> usize {
+    path.components().count()
+}
+
+/// Deduplicates targets by their canonicalized origin.
+/// In particular, if two targets share the same origin key and one is a SingleFile
+/// and the other is a DefaultBinary, only the SingleFile target is kept.
+pub fn dedup_single_file_over_default_binary(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
+    let mut map: HashMap<Option<String>, CargoTarget> = HashMap::new();
+
+    for target in targets {
+        // Try to get a canonicalized string for the target's origin.
+        let origin_key = target.origin.as_ref().and_then(|origin| match origin {
+            TargetOrigin::SingleFile(path)
+            | TargetOrigin::DefaultBinary(path)
+            | TargetOrigin::SubProject(path) => fs::canonicalize(path)
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned()),
+            _ => None,
+        });
+
+        if let Some(key) = origin_key.clone() {
+            if let Some(existing) = map.get(&Some(key.clone())) {
+                // If one target is SingleFile and the other is DefaultBinary, keep the SingleFile.
+                match (&target.origin, &existing.origin) {
+                    (Some(TargetOrigin::SingleFile(_)), Some(TargetOrigin::DefaultBinary(_))) => {
+                        map.insert(Some(key), target);
+                    }
+                    (Some(TargetOrigin::DefaultBinary(_)), Some(TargetOrigin::SingleFile(_))) => {
+                        // Do nothing: keep the existing SingleFile.
+                    }
+                    _ => {
+                        // Otherwise, choose the target with a deeper manifest path.
+                        let current_depth = path_depth(&target.manifest_path);
+                        let existing_depth = path_depth(&existing.manifest_path);
+                        if current_depth > existing_depth {
+                            map.insert(Some(key), target);
+                        }
+                    }
+                }
+            } else {
+                map.insert(Some(key), target);
+            }
+        } else {
+            // For targets with no origin key, use None.
+            if let Some(existing) = map.get(&None) {
+                // Optionally, compare further; here we simply warn.
+                warn!(
+                    "Duplicate target with no origin: Existing: {:?} vs New: {:?}",
+                    existing, target
+                );
+            } else {
+                map.insert(None, target);
+            }
+        }
+    }
+
+    map.into_values().collect()
+}
+
 pub fn collect_all_targets(
     use_workspace: bool,
     max_concurrency: usize,
@@ -411,7 +478,9 @@ pub fn collect_all_targets(
     }
 
     let samples = collect_samples(use_workspace, manifest_infos, max_concurrency)?;
-    Ok(samples)
+    // Deduplicate targets: if a SingleFile and DefaultBinary share the same origin, keep only the SingleFile.
+    let deduped_samples = dedup_single_file_over_default_binary(samples);
+    Ok(deduped_samples)
 }
 
 // Formats the package manifest as "<package>/Cargo.toml"

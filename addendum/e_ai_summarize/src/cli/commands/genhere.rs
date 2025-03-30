@@ -1,11 +1,10 @@
 use crate::cargo_utils;
 use clap::Parser;
-use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 pub struct GenHereArgs {
     /// Crate location to start the upward search for Cargo.toml.
-    #[arg(short, long, value_hint = clap::ValueHint::DirPath)]
+    #[arg(short, long, value_hint = clap::ValueHint::DirPath, default_value = ".")]
     pub crate_location: String,
     /// Process only the 'src' subfolder.
     #[arg(long = "src-only")]
@@ -15,38 +14,43 @@ pub struct GenHereArgs {
     pub language: String,
 }
 
-/// Generates heredoc output for each file.
-/// Each file is output as:
-///
-/// <<FILE: relative/path>>
-/// file content here
-/// <<END FILE>>
-fn generate_heredoc_output(files: &std::collections::HashMap<PathBuf, String>) -> String {
-    let mut out = String::new();
-    for (path, content) in files {
-        let path_str = path.to_string_lossy();
-        out.push_str(&format!("<<FILE: {}>>\n", path_str));
-        out.push_str(content);
-        out.push_str("\n<<END FILE>>\n\n");
-    }
-    out
-}
-
 pub fn run(args: GenHereArgs) -> anyhow::Result<()> {
     match args.language.to_lowercase().as_str() {
         "py" => {
-            let files = cargo_utils::gather_files_from_crate(&args.crate_location, args.src_only)?;
-            let output = generate_heredoc_output(&files);
-            std::fs::write("gen_here_output.txt", &output)?;
-            crate::clipboard::copy_to_clipboard(&output)?;
-            println!("Heredoc output written to gen_here_output.txt and copied to clipboard.");
+            let toml_config =
+                cargo_utils::find_cargo_toml(std::path::Path::new(&args.crate_location));
+            if let Some(crate_toml_path) = toml_config {
+                let (crate_name, crate_version) =
+                    cargo_utils::get_crate_name_and_version(&crate_toml_path.to_path_buf())
+                        .unwrap_or_default();
+                let files =
+                    cargo_utils::gather_files_from_crate(&args.crate_location, args.src_only)?;
+                let output =
+                    crate::summarizer::generate_heredoc_output(&crate_name, &crate_version, &files);
+                std::fs::write("gen_here_output.txt", &output)?;
+                crate::clipboard::copy_to_clipboard(&output)?;
+                println!("Heredoc output written to gen_here_output.txt and copied to clipboard.");
+            } else {
+                println!("couldn't find a toml config.")
+            }
         }
         "rs" => {
-            let files = cargo_utils::gather_files_from_crate(&args.crate_location, args.src_only)?;
-            let output = generate_heredoc_output(&files);
-            std::fs::write("gen_here_output.txt", &output)?;
-            crate::clipboard::copy_to_clipboard(&output)?;
-            println!("Heredoc output written to gen_here_output.txt and copied to clipboard.");
+            let toml_config =
+                cargo_utils::find_cargo_toml(std::path::Path::new(&args.crate_location));
+            if let Some(crate_toml_path) = toml_config {
+                let (crate_name, crate_version) =
+                    cargo_utils::get_crate_name_and_version(&crate_toml_path.to_path_buf())
+                        .unwrap_or_default();
+                let files =
+                    cargo_utils::gather_files_from_crate(&args.crate_location, args.src_only)?;
+                let output =
+                    crate::summarizer::generate_heredoc_output(&crate_name, &crate_version, &files);
+                std::fs::write("gen_here_output.txt", &output)?;
+                crate::clipboard::copy_to_clipboard(&output)?;
+                println!("Heredoc output written to gen_here_output.txt and copied to clipboard.");
+            } else {
+                println!("couldn't find a toml config.")
+            }
         }
         other => {
             eprintln!(
