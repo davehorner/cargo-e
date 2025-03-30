@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.3...cargo-e-v0.2.4) - 2025-03-29
+
+### Other
+
+- updated the following local packages: e_ai_summarize
+
+## [0.2.3](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.2...cargo-e-v0.2.3) - 2025-03-29
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.2.2](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.1...cargo-e-v0.2.2) - 2025-03-28
 
 ### Added
@@ -175,15 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - temp
 - update Cargo.toml to use resolver v2 and change naive_is_newer to public in e_crate_update.rs; add LICENSE files and initial README for cargo-e; include CHANGELOG.md
 - clean up example code and comments in version checker files
-
-## [0.2.0](https://github.com/davehorner/cargo-e/compare/v0.1.5...v0.2.0) - 2025-03-13
-
-### Added
-
 - *(addendum, docs, deps, cli)* [**breaking**] new version checking/interactive upgrade e_crate_version_checker addendum HORNER02
-
-### Other
-
 - update version and improve README documentation
 
 ## [0.1.5](https://github.com/davehorner/cargo-e/compare/v0.1.4...v0.1.5) - 2025-03-11

@@ -1,6 +1,6 @@
 // src/e_target.rs
 use anyhow::{Context, Result};
-use log::debug;
+use log::{debug,trace};
 use std::{
     collections::HashMap,
     ffi::OsString,
@@ -41,6 +41,7 @@ pub struct CargoTarget {
     pub manifest_path: PathBuf,
     pub kind: TargetKind,
     pub extended: bool,
+    pub toml_specified: bool,
     pub origin: Option<TargetOrigin>,
 }
 
@@ -80,12 +81,145 @@ impl CargoTarget {
             manifest_path: new_manifest.to_path_buf(),
             kind,
             extended,
+            toml_specified: false,
             origin: Some(TargetOrigin::SingleFile(file_path.to_path_buf())),
         })
     }
 
-    /// Updates the target's name and display_name by interrogating the candidate file and its manifest.
+    //     /// Updates the target's name and display_name by interrogating the candidate file and its manifest.
+    //     pub fn figure_main_name(&mut self) {
+    //         // Only operate if we have a candidate file path.
+    //         let candidate = match &self.origin {
+    //             Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
+    //             _ => {
+    //                 debug!("No candidate file found in target.origin; skipping name determination");
+    //                 return;
+    //             }
+    //         };
+    // println!("figure_main: {}", &candidate.display());
+    //         // Get the candidate file's stem in lowercase.
+    //         let candidate_stem = candidate
+    //             .file_stem()
+    //             .and_then(|s| s.to_str())
+    //             .map(|s| s.to_lowercase())
+    //             .unwrap_or_default();
+    //         debug!("Candidate stem: {}", candidate_stem);
+
+    //         // Start with folder-based logic.
+    //         let mut name = if candidate_stem == "main"  {
+    //             if let Some(parent_dir) = candidate.parent() {
+    //                 if let Some(parent_name) = parent_dir.file_name().and_then(|s| s.to_str()) {
+    //                     debug!("Candidate parent folder: {}", parent_name);
+    //                     if parent_name.eq_ignore_ascii_case("src") {
+    //                         // If candidate is src/main.rs, take the parent of "src".
+    //                         parent_dir
+    //                             .parent()
+    //                             .and_then(|proj_dir| proj_dir.file_name())
+    //                             .and_then(|s| s.to_str())
+    //                             .map(|s| s.to_string())
+    //                             .unwrap_or(candidate_stem.clone())
+    //                     } else if parent_name.eq_ignore_ascii_case("examples") {
+    //                         // If candidate is in an examples folder, use the candidate's parent folder's name.
+    //                         candidate
+    //                             .parent()
+    //                             .and_then(|p| p.file_name())
+    //                             .and_then(|s| s.to_str())
+    //                             .map(|s| s.to_string())
+    //                             .unwrap_or(candidate_stem.clone())
+    //                     } else {
+    //                         candidate_stem.clone()
+    //                     }
+    //                 } else {
+    //                     candidate_stem.clone()
+    //                 }
+    //             } else {
+    //                 candidate_stem.clone()
+    //             }
+    //         } else {
+    //             candidate_stem.clone()
+    //         };
+
+    //         let mut package_manifest_name = String::new();
+    //         // If the candidate stem is "main", interrogate the manifest.
+    //         let manifest_contents = fs::read_to_string(&self.manifest_path).unwrap_or_default();
+    //         if let Ok(manifest_toml) = manifest_contents.parse::<Value>() {
+    //             if let Ok(manifest_toml) = manifest_contents.parse::<toml::Value>() {
+    //                 // Then try to retrieve the bin section.
+    //                 if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
+    //                     debug!("Found {} [[bin]] entries {:?}", bins.len(), bins);
+    //                 } else {
+    //                     debug!("No [[bin]] array found in manifest");
+    //                 }
+    //             } else {
+    //                 debug!("Failed to parse manifest TOML");
+    //             }
+    //             debug!("Opened manifest {:?}",&self.manifest_path);
+    //             // Check for any [[bin]] entries.
+    //             if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
+    //                 debug!("Found {} [[bin]] entries", bins.len());
+    //                 if let Some(bin_name) = bins.iter().find_map(|bin| {
+    //                     if let Some(path_str) = bin.get("path").and_then(|p| p.as_str()) {
+    //                         let bp = bin
+    //                         .get("path")
+    //                         .and_then(|n| n.as_str())
+    //                         .map(|s| s.to_string());
+    //                     let bn = bin
+    //                                 .get("name")
+    //                                 .and_then(|n| n.as_str())
+    //                                 .map(|s| s.to_string());
+    //                             debug!("Checking bin entry with path: {} {:?}", path_str, bp);
+    //                             if bp.as_deref().unwrap_or("") == path_str
+    //                             // && bn.as_deref().unwrap_or("") == candidate_stem
+    //                         {
+    //                             debug!("Found matching bin with name: {:?} {:?}=={:?}", bn,bp.as_deref().unwrap_or(""), path_str);
+    //                             name = bn.clone().unwrap_or_default();
+    //                             return bn.clone();
+    //                         }
+    //                     }
+    //                     None
+    //                 }) {
+    //                     //debug!("Using bin name from manifest: {} as {} ", name, bin_name);
+    //                     //name = bin_name;
+    //                 } else if let Some(pkg) = manifest_toml.get("package") {
+    //                     debug!("No matching [[bin]] entry; checking [package] section");
+    //                     name = pkg
+    //                         .get("name")
+    //                         .and_then(|n| n.as_str())
+    //                         .unwrap_or(&name)
+    //                         .to_string();
+    //                     debug!("Using package name from manifest: {}", name);
+    //                 }
+    //             } else if let Some(pkg) = manifest_toml.get("package") {
+    //                 debug!("No [[bin]] section found; using [package] section");
+    //                 package_manifest_name = pkg
+    //                 .get("name")
+    //                 .and_then(|n| n.as_str())
+    //                 .unwrap_or(&name)
+    //                 .to_string();
+    //                 debug!("Using package name from manifest: {}", name);
+    //             } else {
+    //                 debug!(
+    //                     "Manifest does not contain [[bin]] or [package] sections; keeping name: {}",
+    //                     name
+    //                 );
+    //             }
+    //         } else {
+    //             debug!("Failed to open manifest {:?}",&self.manifest_path);
+    //             debug!("Failed to parse manifest TOML; keeping name: {}", name);
+    //         }
+
+    //         debug!("Name after folder-based logic: {}", name);
+
+    //         debug!("Final determined name: {}", name);
+    //         if name.eq("main") {
+    //             panic!("Name is main");
+    //         }
+    //         self.name = name.clone();
+    //         self.display_name = name;
+    //     }
+
     pub fn figure_main_name(&mut self) {
+        let mut is_toml_specified = false;
         // Only operate if we have a candidate file path.
         let candidate = match &self.origin {
             Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
@@ -95,19 +229,195 @@ impl CargoTarget {
             }
         };
 
+        trace!("figure_main: {:?}", &self.origin);
+
         // Get the candidate file's stem in lowercase.
-        let candidate_stem = candidate
+        let mut candidate_stem = candidate
             .file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_lowercase())
             .unwrap_or_default();
-        debug!("Candidate stem: {}", candidate_stem);
+        trace!("Candidate stem: {}", candidate_stem);
 
-        // Start with folder-based logic.
-        let mut name = if candidate_stem == "main" {
-            if let Some(parent_dir) = candidate.parent() {
+        // First, check if the manifest path from self matches what we find upward.
+        let candidate_dir = candidate.parent().unwrap_or(candidate);
+        let found_manifest_dir = crate::e_manifest::find_manifest_dir_from(candidate_dir);
+        if let Ok(found_dir) = found_manifest_dir {
+            let found_manifest = found_dir.join("Cargo.toml");
+            if found_manifest == self.manifest_path {
+                trace!(
+                    "{} Manifest path matches candidate's upward search result: {:?}",
+                    candidate.display(),
+                    found_manifest
+                );
+            } else {
+                trace!(
+                "{} Manifest path mismatch. Found upward: {:?} but target.manifest_path is: {:?}"
+                , candidate.display(), found_manifest, self.manifest_path
+            );
+                // Compare depths.
+                let found_depth = found_manifest.components().count();
+                let target_depth = self.manifest_path.components().count();
+                if found_depth > target_depth {
+                    // Before switching, compare the candidate's relative paths.
+                    let orig_parent = self.manifest_path.parent().unwrap_or_else(|| Path::new(""));
+                    let found_parent = found_manifest.parent().unwrap_or_else(|| Path::new(""));
+                    let orig_rel = candidate.strip_prefix(orig_parent).ok();
+                    let found_rel = candidate.strip_prefix(found_parent).ok();
+                    if orig_rel == found_rel {
+                        trace!(
+                            "{} Relative path matches: {:?}",
+                            candidate.display(),
+                            orig_rel
+                        );
+                        self.manifest_path = found_manifest;
+                    } else {
+                        trace!(
+                            "{} Relative path mismatch: original: {:?}, found: {:?}",
+                            candidate.display(),
+                            orig_rel,
+                            found_rel
+                        );
+                    }
+                } else {
+                    trace!(
+                        "{} Keeping target manifest path (deeper or equal): {:?}",
+                        candidate.display(),
+                        self.manifest_path
+                    );
+                }
+            }
+        } else {
+            trace!(
+                "Could not locate Cargo.toml upward from candidate: {:?}",
+                candidate
+            );
+        }
+
+        // Determine name via manifest processing.
+        let mut name = candidate_stem.clone();
+        let manifest_contents = fs::read_to_string(&self.manifest_path).unwrap_or_default();
+        if let Ok(manifest_toml) = manifest_contents.parse::<Value>() {
+            trace!(
+                "{} Opened manifest {:?}",
+                candidate.display(),
+                &self.manifest_path
+            );
+
+            // // First, check for any [[bin]] entries.
+            // if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
+            //     trace!("Found {} [[bin]] entries", bins.len());
+            //     // Iterate over the bin entries and use absolute paths for comparison.
+            //     if let Some(bin_name) = bins.iter().find_map(|bin| {
+            //         if let (Some(rel_path_str), Some(bn)) = (
+            //             bin.get("path").and_then(|p| p.as_str()),
+            //             bin.get("name").and_then(|n| n.as_str()),
+            //         ) {
+            //             // Construct the expected absolute path for the candidate file.
+            //             let manifest_parent =
+            //                 self.manifest_path.parent().unwrap_or_else(|| Path::new(""));
+            //             let expected_path =
+            //                 fs::canonicalize(manifest_parent.join(rel_path_str)).ok()?;
+            //             let candidate_abs = fs::canonicalize(candidate).ok()?;
+            //             trace!(
+            //                 "\n{}\n{:?}\nactual candidate absolute path:\n{:?}",
+            //                 candidate.display(),
+            //                 expected_path,
+            //                 candidate_abs
+            //             );
+            //             if expected_path == candidate_abs {
+            //                 trace!(
+            //                     "{} Found matching bin with name: {}",
+            //                     candidate.display(),
+            //                     bn
+            //                 );
+            //                 return Some(bn.to_string());
+            //             }
+            //         }
+            //         None
+            //     }) {
+            //         trace!(
+            //             "{} Using bin name from manifest: {}",
+            //             candidate.display(),
+            //             bin_name
+            //         );
+            //         name = bin_name.clone();
+            //         candidate_stem = bin_name.into();
+            //     }
+            //        }
+            if let Some(bin_name) = crate::e_manifest::find_candidate_name(
+                &manifest_toml,
+                "bin",
+                candidate,
+                &self.manifest_path,
+            ) {
+                trace!(
+                    "{} Using bin name from manifest: {}",
+                    candidate.display(),
+                    bin_name
+                );
+                is_toml_specified = true;
+                name = bin_name.clone();
+                candidate_stem = bin_name.into();
+            } else if let Some(example_name) = crate::e_manifest::find_candidate_name(
+                &manifest_toml,
+                "example",
+                candidate,
+                &self.manifest_path,
+            ) {
+                is_toml_specified = true;
+                trace!(
+                    "{} Using example name from manifest: {}",
+                    candidate.display(),
+                    example_name
+                );
+                name = example_name.clone();
+                candidate_stem = example_name.into();
+            }
+
+            // if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
+            //     trace!("Found {} [[bin]] entries", bins.len());
+            //     // Iterate over the bin entries and use absolute paths for comparison.
+            //     if let Some(bin_name) = bins.iter().find_map(|bin| {
+            //         if let (Some(rel_path_str), Some(bn)) = (
+            //             bin.get("path").and_then(|p| p.as_str()),
+            //             bin.get("name").and_then(|n| n.as_str()),
+            //         ) {
+            //             // Construct the expected absolute path for the candidate file.
+            //             let manifest_parent = self.manifest_path.parent().unwrap_or_else(|| Path::new(""));
+            //             let expected_path = fs::canonicalize(manifest_parent.join(rel_path_str)).ok()?;
+            //             let candidate_abs = fs::canonicalize(candidate).ok()?;
+            //             trace!(
+            //                 "{} Expected candidate absolute path: {:?}, actual candidate absolute path: {:?}",
+            //                 candidate.display(),
+            //                 expected_path,
+            //                 candidate_abs
+            //             );
+            //             if expected_path == candidate_abs {
+            //                 trace!(
+            //                     "{} Found matching bin with name: {}",
+            //                     candidate.display(),
+            //                     bn
+            //                 );
+            //                 return Some(bn.to_string());
+            //             }
+            //         }
+            //         None
+            //     }) {
+            //         trace!("{} Using bin name from manifest: {}", candidate.display(), bin_name);
+            //         name = bin_name;
+            //     }
+            //}
+        } else {
+            trace!("Failed to open manifest {:?}", &self.manifest_path);
+            trace!("Failed to parse manifest TOML; keeping name: {}", name);
+        }
+
+        // Only if the candidate stem is "main", apply folder-based logic after manifest processing.
+        if candidate_stem == "main" {
+            let folder_name = if let Some(parent_dir) = candidate.parent() {
                 if let Some(parent_name) = parent_dir.file_name().and_then(|s| s.to_str()) {
-                    debug!("Candidate parent folder: {}", parent_name);
+                    trace!("Candidate parent folder: {}", parent_name);
                     if parent_name.eq_ignore_ascii_case("src") {
                         // If candidate is src/main.rs, take the parent of "src".
                         parent_dir
@@ -125,78 +435,31 @@ impl CargoTarget {
                             .map(|s| s.to_string())
                             .unwrap_or(candidate_stem.clone())
                     } else {
-                        candidate_stem.clone()
+                        parent_name.into()
                     }
                 } else {
                     candidate_stem.clone()
                 }
             } else {
                 candidate_stem.clone()
-            }
-        } else {
-            candidate_stem.clone()
-        };
-        debug!("Name after folder-based logic: {}", name);
-
-        // If the candidate stem is "main", interrogate the manifest.
-        if candidate_stem == "main" {
-            let manifest_contents = fs::read_to_string(&self.manifest_path).unwrap_or_default();
-            if let Ok(manifest_toml) = manifest_contents.parse::<Value>() {
-                // Check for any [[bin]] entries.
-                if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {
-                    debug!("Found {} [[bin]] entries", bins.len());
-                    if let Some(bin_name) = bins.iter().find_map(|bin| {
-                        if let Some(path_str) = bin.get("path").and_then(|p| p.as_str()) {
-                            debug!("Checking bin entry with path: {}", path_str);
-                            if path_str == "src/bin/main.rs" {
-                                let bn = bin
-                                    .get("name")
-                                    .and_then(|n| n.as_str())
-                                    .map(|s| s.to_string());
-                                debug!("Found matching bin with name: {:?}", bn);
-                                return bn;
-                            }
-                        }
-                        None
-                    }) {
-                        debug!("Using bin name from manifest: {}", bin_name);
-                        name = bin_name;
-                    } else if let Some(pkg) = manifest_toml.get("package") {
-                        debug!("No matching [[bin]] entry; checking [package] section");
-                        name = pkg
-                            .get("name")
-                            .and_then(|n| n.as_str())
-                            .unwrap_or(&name)
-                            .to_string();
-                        debug!("Using package name from manifest: {}", name);
-                    }
-                } else if let Some(pkg) = manifest_toml.get("package") {
-                    debug!("No [[bin]] section found; using [package] section");
-                    name = pkg
-                        .get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or(&name)
-                        .to_string();
-                    debug!("Using package name from manifest: {}", name);
-                } else {
-                    debug!(
-                        "Manifest does not contain [[bin]] or [package] sections; keeping name: {}",
-                        name
-                    );
-                }
-            } else {
-                debug!("Failed to parse manifest TOML; keeping name: {}", name);
+            };
+            trace!("Folder-based name: {}-{}", candidate.display(), folder_name);
+            // Only override if the folder-based name is different from "main".
+            if folder_name != "main" {
+                name = folder_name;
             }
         }
 
-        debug!("Final determined name: {}", name);
+        trace!("Final determined name: {}", name);
         if name.eq("main") {
             panic!("Name is main");
+        }
+        if is_toml_specified {
+            self.toml_specified = true;
         }
         self.name = name.clone();
         self.display_name = name;
     }
-
     /// Constructs a CargoTarget from a folder by trying to locate a runnable source file.
     ///
     /// The function attempts the following candidate paths in order:
@@ -241,8 +504,8 @@ impl CargoTarget {
 
             let sub_manifest =
                 fs::canonicalize(&sub_manifest).unwrap_or(sub_manifest.to_path_buf());
-            debug!("Subproject found: {}", sub_manifest.display());
-            debug!("{}", &folder_name);
+            trace!("Subproject found: {}", sub_manifest.display());
+            trace!("{}", &folder_name);
             return Some(CargoTarget {
                 name: folder_name.clone(),
                 display_name,
@@ -250,6 +513,7 @@ impl CargoTarget {
                 // For a subproject, we initially mark it as Manifest;
                 // later refinement may resolve it further.
                 kind: TargetKind::Manifest,
+                toml_specified: true,
                 extended: true,
                 origin: Some(TargetOrigin::SubProject(sub_manifest)),
             });
@@ -387,6 +651,7 @@ impl CargoTarget {
             manifest_path: new_manifest.to_path_buf(),
             kind,
             extended,
+            toml_specified: false,
             origin: Some(TargetOrigin::SingleFile(candidate)),
         };
         // Call the method to update name based on the candidate and manifest.

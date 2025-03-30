@@ -30,7 +30,7 @@ use std::process::Command; // Adjust the import based on your project structure
 /// It builds the command using the target's manifest path as the "origin" argument.
 pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     // Extract the origin path from the target (e.g. the manifest path).
-    let origin_path = match &target.origin {
+    let _origin_path = match &target.origin {
         Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
         _ => return (),
     };
@@ -56,7 +56,8 @@ pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     let mut cmd = Command::new(exe_path);
     cmd.arg("--streaming");
     cmd.arg("--stdin");
-    cmd.arg(origin_path);
+    cmd.arg(".");
+//    cmd.arg(origin_path);
     // command
     // };
 
