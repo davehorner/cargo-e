@@ -63,6 +63,41 @@ pub fn run(args: GenScriptArgs) -> anyhow::Result<()> {
     }
     Ok(())
 }
+pub async fn run_async(args: GenScriptArgs) -> anyhow::Result<()> {
+    match args.language.to_lowercase().as_str() {
+        "py" => {
+            // These functions are synchronous, so we call them directly.
+            crate::crate_recreator_py::recreate_crate_py(
+                Path::new(&args.crate_location),
+                args.src_only,
+            )?;
+            Ok(())
+        }
+        "rs" => {
+            crate::crate_recreator_rs::recreate_crate_rs(
+                Path::new(&args.crate_location),
+                args.src_only,
+            )?;
+            Ok(())
+        }
+        "summarize" => {
+            // Run the async summarization directly.
+            let mut session =
+                crate::summarizer::ChatSession::new(&args.system, &args.model, args.streaming);
+            let summary =
+                crate::summarizer::summarize_a_crate(&args.crate_location, &mut session).await?;
+            println!("Summary:\n{}\n", summary);
+            Ok(())
+        }
+        other => {
+            eprintln!(
+                "Unknown language option: {}. Supported options: py, rs, summarize",
+                other
+            );
+            Ok(())
+        }
+    }
+}
 
 // use clap::Parser;
 // use std::path::Path;

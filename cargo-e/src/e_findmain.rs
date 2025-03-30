@@ -455,6 +455,7 @@ mod tests {
             manifest_path: manifest_path,
             kind: TargetKind::Binary,
             extended: false,
+            toml_specified: false,
             origin: Some(TargetOrigin::Named("sample1".into())),
         };
         let found = find_main_file(&sample).expect("Should find main file");
@@ -495,6 +496,7 @@ mod tests {
             manifest_path: manifest_path,
             kind: TargetKind::Binary,
             origin: Some(TargetOrigin::Named("sample2".into())),
+            toml_specified: false,
             extended: false,
         };
         let found = find_main_file(&sample).expect("Should find custom main file");
@@ -528,6 +530,7 @@ mod tests {
             manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
             origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
+            toml_specified: false,
             extended: true,
         };
 
@@ -560,6 +563,7 @@ mod tests {
             manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
             origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
+            toml_specified: false,
             extended: true,
         };
         let found = find_main_file(&sample).expect("Should find main.rs in extended sample");
@@ -610,6 +614,7 @@ mod tests {
             display_name: "non-extended".to_string(),
             manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            toml_specified: false,
             origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: false,
         };
@@ -643,6 +648,7 @@ mod tests {
             display_name: "extended".to_string(),
             manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            toml_specified: false,
             origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: true,
         };
@@ -676,6 +682,7 @@ mod tests {
             display_name: "extended2".to_string(),
             manifest_path: manifest_path.clone(),
             kind: TargetKind::Example,
+            toml_specified: false,
             origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
             extended: true,
         };

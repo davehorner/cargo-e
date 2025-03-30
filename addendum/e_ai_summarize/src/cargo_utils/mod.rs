@@ -1,8 +1,49 @@
 use anyhow::{Context, Result, bail};
-use regex::Regex;
+use log::trace;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use which::which;
+
+use toml::Value; // Add toml crate to Cargo.toml
+
+/// Reads the Cargo.toml file and returns the crate name and version.
+pub fn get_crate_name_and_version(
+    crate_toml_path: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let content = fs::read_to_string(&crate_toml_path)?;
+
+    // Parse the TOML content
+    let toml: Value = toml::de::from_str(&content)?;
+
+    // Get crate name and version from the [package] section
+    let name = toml["package"]["name"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+    let version = toml["package"]["version"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+
+    Ok((name, version))
+}
+
+/// Checks if `rust-script` is installed and suggests installation if it's not.
+pub fn check_rust_script_installed() {
+    match which("rust-script") {
+        Ok(_) => {
+            // rust-script is installed
+            println!("rust-script is installed.");
+        }
+        Err(_) => {
+            // rust-script is not found in the PATH
+            eprintln!("rust-script is not installed.");
+            println!("Suggestion: To install rust-script, run the following command:");
+            println!("cargo install rust-script");
+        }
+    }
+}
 
 /// Searches upward from `start` for a Cargo.toml file.
 /// Returns the path to the Cargo.toml if found.
@@ -11,34 +52,14 @@ pub fn find_cargo_toml(start: &Path) -> Option<PathBuf> {
     loop {
         let candidate = current.join("Cargo.toml");
         if candidate.exists() {
-            println!("[TRACE] Found Cargo.toml at: {:?}", candidate);
+            trace!("Found Cargo.toml at: {:?}", candidate);
             return Some(candidate);
         }
         if !current.pop() {
             break;
         }
     }
-    println!("[TRACE] No Cargo.toml found.");
-    None
-}
-
-/// Parses the Cargo.toml file to extract the crate name from the \[package\] section.
-pub fn get_crate_name_from_cargo_toml(cargo_toml: &Path) -> Option<String> {
-    let content = fs::read_to_string(cargo_toml).ok()?;
-    let mut in_package = false;
-    let re = Regex::new(r#"name\s*=\s*["'](.+?)["']"#).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("[package]") {
-            in_package = true;
-        } else if trimmed.starts_with("[") && in_package {
-            break;
-        } else if in_package {
-            if let Some(caps) = re.captures(trimmed) {
-                return Some(caps.get(1)?.as_str().to_string());
-            }
-        }
-    }
+    trace!("No Cargo.toml found {}.", current.display());
     None
 }
 
@@ -55,7 +76,11 @@ pub fn gather_files_from_crate(
 ) -> Result<HashMap<PathBuf, String>> {
     // Use the file-gathering function from the file_gatherer module.
     use crate::file_gatherer::gather_files;
-
+    let crate_location = if crate_location.is_empty() {
+        ".".into()
+    } else {
+        crate_location
+    };
     let start_path = Path::new(crate_location);
 
     // Search upward for Cargo.toml
@@ -79,8 +104,8 @@ pub fn gather_files_from_crate(
         bail!("Target directory {:?} does not exist.", target_dir);
     }
 
-    println!("[TRACE] Gathering files from {:?}", target_dir);
     let files = gather_files(&target_dir)
         .with_context(|| format!("Failed to gather files from {:?}", target_dir))?;
+    println!("Gathered {} files from {:?}", files.len(), target_dir);
     Ok(files)
 }

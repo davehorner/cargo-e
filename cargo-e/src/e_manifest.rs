@@ -1,6 +1,6 @@
 use crate::e_target::TargetKind;
 use anyhow::{anyhow, Result};
-use log::debug;
+use log::trace;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs;
@@ -114,7 +114,7 @@ pub fn find_manifest_dir() -> std::io::Result<PathBuf> {
 pub fn find_manifest_dir_from(start: &std::path::Path) -> std::io::Result<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
-        debug!(
+        trace!(
             "{:?} {:?}",
             start.display(),
             dir.join("Cargo.toml").display()
@@ -200,6 +200,49 @@ pub fn get_required_features_from_manifest(
         }
     }
     None
+}
+
+/// Finds a candidate name from the manifest using the specified table key.
+/// For example, if `table_key` is "bin", it checks for `[[bin]]` entries; if it is "example",
+/// it checks for `[[example]]` entries.
+pub fn find_candidate_name(
+    manifest_toml: &Value,
+    table_key: &str,
+    candidate: &Path,
+    manifest_path: &Path,
+) -> Option<String> {
+    manifest_toml
+        .get(table_key)
+        .and_then(|v| v.as_array())
+        .and_then(|entries| {
+            entries.iter().find_map(|entry| {
+                if let (Some(rel_path_str), Some(name)) = (
+                    entry.get("path").and_then(|p| p.as_str()),
+                    entry.get("name").and_then(|n| n.as_str()),
+                ) {
+                    let manifest_parent = manifest_path.parent().unwrap_or_else(|| Path::new(""));
+                    let expected_path =
+                        fs::canonicalize(manifest_parent.join(rel_path_str)).ok()?;
+                    let candidate_abs = fs::canonicalize(candidate).ok()?;
+                    trace!(
+                        "\nCandidate: {}\nExpected: {:?}\nActual: {:?}",
+                        candidate.display(),
+                        expected_path,
+                        candidate_abs
+                    );
+                    if expected_path == candidate_abs {
+                        trace!(
+                            "{} Found matching {} with name: {}",
+                            candidate.display(),
+                            table_key,
+                            name
+                        );
+                        return Some(name.to_string());
+                    }
+                }
+                None
+            })
+        })
 }
 
 /// Returns the runnable targets (bins, examples, benches, and tests) from the Cargo.toml.
@@ -662,6 +705,7 @@ pub fn get_runnable_targets(
                     manifest_path: manifest_path.to_path_buf(),
                     kind: TargetKind::Bench,
                     extended: false,
+                    toml_specified: false,
                     origin: None,
                 });
             }
@@ -679,6 +723,7 @@ pub fn get_runnable_targets(
             manifest_path: manifest_path.to_path_buf(),
             kind: TargetKind::Test,
             extended: false,
+            toml_specified: false,
             origin: Some(TargetOrigin::SingleFile(candidate)),
         });
     }

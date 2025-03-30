@@ -12,6 +12,7 @@ fn integration_test_builder() {
         manifest_path: "Cargo.toml".into(),
         kind: TargetKind::Example,
         extended: true,
+        toml_specified: false,
         origin: Some(TargetOrigin::SingleFile(PathBuf::from(
             "examples/my_example.rs",
         ))),
