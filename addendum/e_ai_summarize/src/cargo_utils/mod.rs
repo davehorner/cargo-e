@@ -16,13 +16,20 @@ pub fn get_crate_name_and_version(
     // Parse the TOML content
     let toml: Value = toml::de::from_str(&content)?;
 
-    // Get crate name and version from the [package] section
-    let name = toml["package"]["name"]
-        .as_str()
+    // Try to get the [package] section
+    let package = toml
+        .get("package")
+        .ok_or("Missing [package] section in Cargo.toml")?;
+
+    // Safely extract name and version
+    let name = package
+        .get("name")
+        .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_string();
-    let version = toml["package"]["version"]
-        .as_str()
+    let version = package
+        .get("version")
+        .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_string();
 

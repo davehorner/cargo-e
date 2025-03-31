@@ -16,8 +16,8 @@ pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
             eprintln!("Ctrl+C pressed, terminating running child process...");
             let _ = child.kill();
         } else {
-            eprintln!("Ctrl+C pressed, no child process running. Exiting nicely.");
-            exit(0);
+            eprintln!("Ctrl+C pressed, no child process running.");
+            //exit(0);
         }
     })?;
     Ok(())
@@ -57,7 +57,7 @@ pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     cmd.arg("--streaming");
     cmd.arg("--stdin");
     cmd.arg(".");
-//    cmd.arg(origin_path);
+    //    cmd.arg(origin_path);
     // command
     // };
 

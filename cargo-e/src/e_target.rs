@@ -1,6 +1,6 @@
 // src/e_target.rs
 use anyhow::{Context, Result};
-use log::{debug,trace};
+use log::{debug, trace};
 use std::{
     collections::HashMap,
     ffi::OsString,
@@ -418,14 +418,30 @@ impl CargoTarget {
             let folder_name = if let Some(parent_dir) = candidate.parent() {
                 if let Some(parent_name) = parent_dir.file_name().and_then(|s| s.to_str()) {
                     trace!("Candidate parent folder: {}", parent_name);
-                    if parent_name.eq_ignore_ascii_case("src") {
+                    if parent_name.eq_ignore_ascii_case("src")
+                        || parent_name.eq_ignore_ascii_case("src-tauri")
+                    {
                         // If candidate is src/main.rs, take the parent of "src".
-                        parent_dir
+                        let p = parent_dir
                             .parent()
                             .and_then(|proj_dir| proj_dir.file_name())
                             .and_then(|s| s.to_str())
                             .map(|s| s.to_string())
-                            .unwrap_or(candidate_stem.clone())
+                            .unwrap_or(candidate_stem.clone());
+                        if p.eq("src-tauri") {
+                            let maybe_name = parent_dir
+                                .parent()
+                                .and_then(|proj_dir| proj_dir.parent())
+                                .and_then(|proj_dir| proj_dir.file_name())
+                                .and_then(|s| s.to_str())
+                                .map(String::from);
+                            match maybe_name {
+                                Some(name) => name,
+                                None => candidate_stem.clone(),
+                            }
+                        } else {
+                            p
+                        }
                     } else if parent_name.eq_ignore_ascii_case("examples") {
                         // If candidate is in an examples folder, use the candidate's parent folder's name.
                         candidate

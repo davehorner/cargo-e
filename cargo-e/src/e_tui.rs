@@ -119,6 +119,7 @@ pub mod tui_interactive {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
         let mut exit_hover = false;
+        let mut run_history_map = crate::e_parser::read_run_history(&history_path);
 
         'main_loop: loop {
             terminal.draw(|f| {
@@ -131,7 +132,7 @@ pub mod tui_interactive {
                     .split(area);
                 let list_area = chunks[0];
 
-                let left_text = format!("Select example ({} examples found)", exs.len());
+                let left_text = format!("Select target ({} found)", exs.len());
                 let separator = " ┃ ";
                 let right_text = "q to EXIT";
                 let title_line = if exit_hover {
@@ -148,15 +149,37 @@ pub mod tui_interactive {
                         Span::styled("EXIT", Style::default().fg(Color::Red)),
                     ])
                 };
-
+                let pad_width = exs.len().to_string().len();
+                // Compute the maximum width for the ex.kind values.
+                let max_kind_width = exs
+                    .iter()
+                    .map(|ex| format!("{:?}", ex.kind).len())
+                    .max()
+                    .unwrap_or(0);
+                let mut line_number = 0;
                 let block = Block::default().borders(Borders::ALL).title(title_line);
                 let items: Vec<ListItem> = exs
                     .iter()
                     .map(|ex| {
-                        let display_text = ex.display_name.clone();
-
-                        let mut item = ListItem::new(display_text);
-                        if run_history.contains(&ex.name) {
+                        let kind_str = format!("{:?}", ex.kind);
+                        let mut display = format!(
+                            "{:>width$}: [{:>max_kind_width$}] {}",
+                            line_number,
+                            kind_str,
+                            &ex.display_name,
+                            width = pad_width,
+                            max_kind_width = max_kind_width
+                        );
+                        if let Some(count) = run_history_map.get(&ex.name) {
+                            display.push_str(&format!(
+                                "({} run{})",
+                                count,
+                                if *count == 1 { "" } else { "s" }
+                            ));
+                        }
+                        line_number = line_number + 1;
+                        let mut item = ListItem::new(display);
+                        if run_history_map.get(&ex.name).is_some() {
                             item = item.style(Style::default().fg(Color::Blue));
                         }
                         item
@@ -339,6 +362,8 @@ pub mod tui_interactive {
                                             &mut terminal,
                                             cli,
                                         )?;
+                                        run_history_map =
+                                            crate::e_parser::read_run_history(&history_path);
                                         reinit_terminal(&mut terminal)?;
                                     }
                                 }
@@ -359,7 +384,7 @@ pub mod tui_interactive {
                         let list_area = chunks[0];
                         let title_row = list_area.y;
                         let title_start = list_area.x + 2;
-                        let left_text = format!("Select example ({} examples found)", exs.len());
+                        let left_text = format!("Select target ({} found)", exs.len());
                         let separator = " ┃ ";
                         let right_text = "q to EXIT";
                         let offset = (left_text.len() + separator.len()) as u16;
@@ -424,6 +449,8 @@ pub mod tui_interactive {
                                             &mut terminal,
                                             cli,
                                         )?;
+                                        run_history_map =
+                                            crate::e_parser::read_run_history(&history_path);
                                     }
                                 }
                             }
@@ -473,7 +500,7 @@ pub mod tui_interactive {
         examples: &[CargoTarget],
         index: usize,
         history_path: &Path,
-        run_history: &mut HashSet<String>,
+        _run_history: &mut HashSet<String>,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
         cli: &Cli,
     ) -> Result<(), Box<dyn Error>> {
@@ -487,50 +514,7 @@ pub mod tui_interactive {
         )?;
         terminal.show_cursor()?;
 
-        //let manifest_path = target.manifest_path.clone();
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-
-        // let mut args: Vec<String> = if target.kind == TargetKind::Example {
-        //     if target.extended {
-        //         if cli.print_program_name {
-        //             println!("Running extended example with manifest: {}", manifest_path);
-        //         }
-        //         // For workspace extended examples, assume the current directory is set correctly.
-        //         vec![
-        //             "run".to_string(),
-        //             "--manifest-path".to_string(),
-        //             manifest_path.to_owned(),
-        //         ]
-        //     } else {
-        //         if cli.print_program_name {
-        //             println!(
-        //                 "Running example: cargo run --release --example {}",
-        //                 target.name
-        //             );
-        //         }
-        //         vec![
-        //             "run".to_string(),
-        //             "--manifest-path".to_string(),
-        //             manifest_path.to_owned(),
-        //             "--release".to_string(),
-        //             "--example".to_string(),
-        //             format!("{}", target.name),
-        //         ]
-        //     }
-        // } else {
-        //     if cli.print_program_name {
-        //         println!("Running binary: cargo run --release --bin {}", target.name);
-        //     }
-        //     vec![
-        //         "run".to_string(),
-        //         "--manifest-path".to_string(),
-        //         manifest_path.to_owned(),
-        //         "--release".to_string(),
-        //         "--bin".to_string(),
-        //         format!("{}", target.name),
-        //     ]
-        // };
-
         let builder = CargoCommandBuilder::new()
             .with_target(target)
             .with_required_features(&manifest_path, target)
@@ -649,9 +633,14 @@ pub mod tui_interactive {
 
         if !detached {
             // Only update run history if update_history is true and exit code is zero.
-            if update_history && status_code == 0 && run_history.insert(target.name.clone()) {
-                let history_data = run_history.iter().cloned().collect::<Vec<_>>().join("\n");
-                fs::write(history_path, history_data)?;
+            if update_history && status_code == 0 {
+                use std::io::Write;
+                let mut file = fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(history_path)?;
+                // Append a newline-separated entry.
+                writeln!(file, "{}", target.name)?;
             }
             let message = if cli.print_exit_code {
                 format!("Exitcode {:?}. Press any key to continue...", status_code)

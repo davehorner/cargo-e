@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.3</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.5</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -295,7 +295,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.3</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.5</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 
