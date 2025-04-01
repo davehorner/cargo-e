@@ -19,23 +19,30 @@
 
 use cargo_e::e_cli::RunAll;
 use cargo_e::e_runner;
+use cargo_e::e_runner::is_active_rust_script;
+use cargo_e::e_runner::GLOBAL_CHILD;
 use cargo_e::e_target::CargoTarget;
 use cargo_e::e_target::TargetKind;
 #[cfg(feature = "tui")]
 use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
-
-#[cfg(not(target_os = "windows"))]
-use std::os::unix::process;
-#[cfg(target_os = "windows")]
-use std::os::windows::process;
+use once_cell::sync::Lazy;
 
 use cargo_e::prelude::*;
 use cargo_e::Cli;
 use clap::Parser;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::process;
+#[cfg(target_os = "windows")]
+use std::os::windows::process;
+use std::thread;
+use std::time::Duration;
 
-pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+pub fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
 
     let mut args: Vec<String> = env::args().collect();
@@ -71,7 +78,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    let examples = cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads)?;
+    let examples =
+        cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads).unwrap_or_default();
     use std::collections::HashSet;
 
     // After collecting all samples, deduplicate them.
@@ -96,23 +104,17 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     if let Some(explicit) = cli.explicit_example.clone() {
-        let epath = Path::new(&explicit);
-        if epath.exists() {
-            let extra: Vec<&str> = cli.extra.iter().map(|s| s.as_str()).collect();
-            let child = cargo_e::e_runner::run_rust_script(&epath, &extra);
-            match child {
-                Some(mut status) => match status.wait() {
-                    Ok(code) => {
-                        std::process::exit(code.code().unwrap_or(1));
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {:?}", e);
-                        std::process::exit(1);
-                    }
-                },
-                None => {}
-            }
+        if let Some(explicit_example) = cli.explicit_example.clone() {
+            let mut explicit_lock = EXPLICIT.lock().unwrap();
+            *explicit_lock = explicit_example;
         }
+        {
+            let mut extra_lock = EXTRA_ARGS.lock().unwrap();
+            *extra_lock = cli.extra.clone();
+        }
+
+        // Now call run_rust_script_with_ctrlc_handling
+        run_rust_script_with_ctrlc_handling();
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
@@ -164,7 +166,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if cli.tui {
                     do_tui_and_exit(&cli, &fuzzy_matches);
                 }
-                cli_loop(&cli, &fuzzy_matches, &[], &[])?;
+                cli_loop(&cli, &fuzzy_matches, &[], &[]);
             }
             std::process::exit(1);
         }
@@ -193,7 +195,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some('n') => {
                 //println!("exiting without running.");
-                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
+                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
                 std::process::exit(0);
             }
             Some('e') => {
@@ -203,7 +205,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some('i') => {
                 futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(example));
                 cargo_e::e_prompts::prompt_line("", 120).ok();
-                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
+                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
             }
             Some('t') => {
                 #[cfg(feature = "tui")]
@@ -211,7 +213,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(not(feature = "tui"))]
                 {
                     println!("tui not enabled.");
-                    cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
+                    cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
                     std::process::exit(0);
                 }
             }
@@ -226,7 +228,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // Only one example exists: run it.
     } else if builtin_examples.is_empty() && builtin_binaries.len() == 1 {
-        provide_notice_of_no_examples(&cli, &unique_examples)?;
+        provide_notice_of_no_examples(&cli, &unique_examples).ok();
         #[cfg(feature = "tui")]
         if cli.tui {
             do_tui_and_exit(&cli, &unique_examples);
@@ -249,7 +251,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some('n') => {
                 //println!("exiting without running.");
-                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
+                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
                 std::process::exit(0);
             }
             Some('e') => {
@@ -269,13 +271,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     } else {
-        provide_notice_of_no_examples(&cli, &unique_examples)?;
+        provide_notice_of_no_examples(&cli, &unique_examples).ok();
 
         #[cfg(feature = "tui")]
         if cli.tui {
             do_tui_and_exit(&cli, &unique_examples);
         }
-        cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries)?;
+        cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
         // if builtin_examples.len() + builtin_binaries.len() > 1 {
         //     //select_and_run_target(&cli, &examples, &builtin_examples, &builtin_binaries)?;
         // } else {
@@ -301,11 +303,7 @@ fn do_tui_and_exit(cli: &Cli, unique_examples: &[CargoTarget]) -> ! {
     {
         // If TUI is not enabled, just print a message and exit.
         eprintln!("TUI is not supported in this build. Exiting.");
-        let ret = cli_loop(&cli, &unique_examples, &[], &[]);
-        if let Err(e) = ret {
-            eprintln!("CLI Error: {:?}", e);
-            std::process::exit(1);
-        }
+        cli_loop(&cli, &unique_examples, &[], &[]);
         std::process::exit(0);
     }
 }
@@ -313,7 +311,7 @@ fn do_tui_and_exit(cli: &Cli, unique_examples: &[CargoTarget]) -> ! {
 fn provide_notice_of_no_examples(
     cli: &Cli,
     examples: &[CargoTarget],
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ex_count = examples
         .iter()
         .filter(|e| matches!(e.kind, TargetKind::Example))
@@ -545,7 +543,7 @@ fn select_and_run_target_loop(
     builtin_examples: &[&CargoTarget],
     builtin_binaries: &[&CargoTarget],
     start_offset: usize, // new parameter for starting page offset
-) -> Result<LoopResult, Box<dyn Error>> {
+) -> Result<LoopResult, Box<dyn Error + Send + Sync>> {
     let current_offset = start_offset;
     let prompt_loop = format!(
         "== # to run, tui, e<#> edit, i<#> info, 'q' to quit (waiting {} seconds) ",
@@ -784,7 +782,7 @@ fn process_input(
     combined: &[(&str, &CargoTarget)],
     cli: &Cli,
     offset: usize, // offset for the current page
-) -> Result<LoopResult, Box<dyn Error>> {
+) -> Result<LoopResult, Box<dyn Error + Send + Sync>> {
     let trimmed = input.trim();
     if trimmed.eq_ignore_ascii_case("q") {
         Ok(LoopResult::Quit)
@@ -893,7 +891,7 @@ fn cli_loop(
     unique_examples: &[CargoTarget],
     builtin_examples: &[&CargoTarget],
     builtin_binaries: &[&CargoTarget],
-) -> Result<(), Box<dyn Error>> {
+) {
     let mut current_offset = 0; // persist the current page offset
     loop {
         match select_and_run_target_loop(
@@ -902,12 +900,12 @@ fn cli_loop(
             builtin_examples,
             builtin_binaries,
             current_offset,
-        )? {
-            LoopResult::Quit => {
+        ) {
+            Ok(LoopResult::Quit) => {
                 println!("quitting.");
                 break;
             }
-            LoopResult::Run(status, new_offset) => {
+            Ok(LoopResult::Run(status, new_offset)) => {
                 // Update the offset so the next iteration starts at the same page
                 current_offset = new_offset;
                 if status.code() == Some(130) {
@@ -918,7 +916,108 @@ fn cli_loop(
                     continue;
                 }
             }
+            Err(err) => {
+                eprintln!("Error: {:?}", err);
+                std::process::exit(1); // Exit with an error code
+            }
         }
     }
-    Ok(())
+}
+
+trait JoinTimeout {
+    fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
+}
+
+impl<T> JoinTimeout for thread::JoinHandle<T> {
+    fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
+        let result = thread::sleep(timeout);
+        match self.join() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
+}
+
+pub fn run_rust_script_with_ctrlc_handling() {
+    let explicit = {
+        let lock = EXPLICIT.lock().unwrap_or_else(|e| {
+            eprintln!("Failed to acquire lock: {}", e);
+            std::process::exit(1); // Exit the program if the lock cannot be obtained
+        });
+        lock.clone() // Clone the data to move it into the thread
+    };
+
+    let explicit_path = Path::new(&explicit); // Construct Path outside the lock
+
+    if explicit_path.exists() {
+        match is_active_rust_script(&explicit_path) {
+            Ok(true) => {}
+            Ok(false) | Err(_) => {
+                // Handle the error locally without propagating it
+                eprintln!("Failed to check if the file is a rust-script");
+                std::process::exit(1); // Exit with an error code
+            }
+        }
+
+        let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
+        let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
+
+        // Run the child process in a separate thread to allow Ctrl+C handling
+        let handle = thread::spawn(move || {
+            let extra_str_slice_cloned = extra_str_slice.clone();
+            let child = e_runner::run_rust_script(
+                &explicit,
+                &extra_str_slice_cloned
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|| {
+                eprintln!("Failed to run rust-script: {:?}", &explicit);
+                std::process::exit(1); // Exit with an error code
+            });
+
+            // Lock global to store the child process
+            {
+                let mut global = GLOBAL_CHILD.lock().unwrap();
+                *global = Some(child);
+            }
+
+            // Wait for the child process to complete
+            let status = {
+                let mut global = GLOBAL_CHILD.lock().unwrap();
+                if let Some(mut child) = global.take() {
+                    child.wait()
+                } else {
+                    // Handle missing child process
+                    eprintln!("Child process missing");
+                    std::process::exit(1); // Exit with an error code
+                }
+            };
+
+            // Handle the child process exit status
+            match status {
+                Ok(status) => {
+                    eprintln!("Child process exited with status code: {:?}", status.code());
+                    std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                }
+                Err(err) => {
+                    eprintln!("Error waiting for child process: {}", err);
+                    std::process::exit(1); // Exit with an error code
+                }
+            }
+        });
+
+        // Wait for the thread to complete, but with a timeout
+        let timeout = Duration::from_secs(10);
+        match handle.join_timeout(timeout) {
+            Ok(_) => {
+                println!("Child process finished successfully.");
+            }
+            Err(_) => {
+                eprintln!("Child process took too long to finish. Exiting...");
+                std::process::exit(1); // Exit if the process takes too long
+            }
+        }
+    }
 }
