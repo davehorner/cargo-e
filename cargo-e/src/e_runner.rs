@@ -2,6 +2,9 @@ use crate::{e_target::TargetOrigin, prelude::*};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
 use once_cell::sync::Lazy;
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::Path;
 use which::which;
 
 // Global shared container for the currently running child process.
@@ -432,5 +435,68 @@ pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
     {
         let child = Command::new("cargo").args(args).spawn()?;
         Ok(child)
+    }
+}
+
+/// Returns true if the file's a "rust-script"
+pub fn is_active_rust_script<P: AsRef<Path>>(path: P) -> io::Result<bool> {
+    let file = File::open(path)?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+    if !first_line.contains("rust-script") || !first_line.starts_with("#") {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+/// Checks if `rust-script` is installed and suggests installation if it's not.
+pub fn check_rust_script_installed() -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let r = which("rust-script");
+    match r {
+        Ok(_) => {
+            // rust-script is installed
+        }
+        Err(e) => {
+            // rust-script is not found in the PATH
+            eprintln!("rust-script is not installed.");
+            println!("Suggestion: To install rust-script, run the following command:");
+            println!("cargo install rust-script");
+            return Err(e.into());
+        }
+    }
+    Ok(r?)
+}
+
+pub fn run_rust_script<P: AsRef<Path>>(script_path: P, args: &[&str]) -> Option<Child> {
+    match is_active_rust_script(&script_path) {
+        Ok(true) => {}
+        _ => {
+            return None;
+        }
+    }
+    let rust_script = check_rust_script_installed().ok()?;
+
+    let script: &std::path::Path = script_path.as_ref();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        let child = Command::new(rust_script)
+            .arg(script)
+            .args(args)
+            .creation_flags(CREATE_NEW_PROCESS_GROUP)
+            .spawn()
+            .ok()?;
+        Some(child)
+    }
+    #[cfg(not(windows))]
+    {
+        let child = Command::new(rust_script)
+            .arg(script)
+            .args(args)
+            .spawn()
+            .ok()?;
+        Some(child)
     }
 }
