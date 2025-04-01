@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.5</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.6</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -53,7 +53,8 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 ## Features
 - **runs the default example if there is only one example defined.**
 - **ai summarization:** info or 'i' sends the example code for summarization; including a YES or NO answer on if the code is safe to run.  Interactive follow up questions may be asked to allow for concept/code exploration.
-- **partial search for matching:** If an explicit name isn’t found, a case-insensitive partial search is performed to list matching targets for user selection. one command for binaries and examples.
+- **partial search for matching:** If an explicit name isn't found, a case-insensitive partial search is performed to list matching targets for user selection. one command for binaries and examples.
+- **rust-script:** If an explicit name is a file, the first line is checked for a valid bang # rust-script.  `cargo e` runs your scripts and is less typing.
 - **framework sample support:** detects [tauri](https://github.com/tauri-apps/tauri) and [dioxus](https://github.com/DioxusLabs/dioxus) projects; running the target calls the associated framework runner.
 - **seamless sample execution:** Run built-in examples and extended samples (located in the `examples` directory) with a simple command. Improved discoverability of examples and binaries, even across workspaces.
 - **automatic required feature detection:** Examples and binaries marked with required features will automatically have those features applied. `cargo-e` takes care of that hassle for you.
@@ -295,7 +296,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.5</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.6</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 
