@@ -251,7 +251,7 @@ pub fn prompt_line_with_poll_opts(
     wait_secs: u64,
     quick_exit: &[char],
     allowed_chars: Option<&[char]>,
-) -> Result<Option<String>, Box<dyn Error>> {
+) -> Result<Option<String>, Box<dyn Error + Send + Sync>> {
     #[cfg(feature = "tui")]
     {
         let timeout = Duration::from_secs(wait_secs);

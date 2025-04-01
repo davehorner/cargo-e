@@ -1,33 +1,46 @@
 use crate::{e_target::TargetOrigin, prelude::*};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
+use crate::e_target::CargoTarget;
 use once_cell::sync::Lazy;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use which::which;
+use std::process::Command;
+use which::which; // Adjust the import based on your project structure
 
 // Global shared container for the currently running child process.
 pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
 
 /// Registers a global Ctrl+C handler once.
 /// The handler checks GLOBAL_CHILD and kills the child process if present.
 pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
     ctrlc::set_handler(move || {
-        let mut child_lock = GLOBAL_CHILD.lock().unwrap();
-        if let Some(child) = child_lock.as_mut() {
-            eprintln!("Ctrl+C pressed, terminating running child process...");
-            let _ = child.kill();
+        let mut count_lock = CTRL_C_COUNT.lock().unwrap();
+        *count_lock += 1;
+
+        let count = *count_lock;
+
+        // If there is no child process and Ctrl+C is pressed 3 times, exit the program
+        if count == 3 {
+            eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
+            exit(0);
         } else {
-            eprintln!("Ctrl+C pressed, no child process running.");
-            //exit(0);
+            let mut child_lock = GLOBAL_CHILD.lock().unwrap();
+            if let Some(child) = child_lock.as_mut() {
+                eprintln!(
+                    "Ctrl+C pressed {} times, terminating running child process...",
+                    count
+                );
+                let _ = child.kill();
+            } else {
+                eprintln!("Ctrl+C pressed {} times, no child process running.", count);
+            }
         }
     })?;
     Ok(())
 }
-
-use crate::e_target::CargoTarget;
-use std::process::Command; // Adjust the import based on your project structure
 
 /// Asynchronously launches the GenAI summarization example for the given target.
 /// It builds the command using the target's manifest path as the "origin" argument.
@@ -469,34 +482,13 @@ pub fn check_rust_script_installed() -> Result<std::path::PathBuf, Box<dyn Error
 }
 
 pub fn run_rust_script<P: AsRef<Path>>(script_path: P, args: &[&str]) -> Option<Child> {
-    match is_active_rust_script(&script_path) {
-        Ok(true) => {}
-        _ => {
-            return None;
-        }
-    }
     let rust_script = check_rust_script_installed().ok()?;
 
     let script: &std::path::Path = script_path.as_ref();
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        let child = Command::new(rust_script)
-            .arg(script)
-            .args(args)
-            .creation_flags(CREATE_NEW_PROCESS_GROUP)
-            .spawn()
-            .ok()?;
-        Some(child)
-    }
-    #[cfg(not(windows))]
-    {
-        let child = Command::new(rust_script)
-            .arg(script)
-            .args(args)
-            .spawn()
-            .ok()?;
-        Some(child)
-    }
+    let child = Command::new(rust_script)
+        .arg(script)
+        .args(args)
+        .spawn()
+        .ok()?;
+    Some(child)
 }

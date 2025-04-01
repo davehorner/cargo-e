@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.6...cargo-e-v0.2.7) - 2025-04-01
+
+### Added
+
+- *(ctrlc)* allow triple Ctrl+C to exit when no child is running
+
 ## [0.2.6](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.5...cargo-e-v0.2.6) - 2025-04-01
 
 ### Added
