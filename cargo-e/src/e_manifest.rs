@@ -91,6 +91,36 @@ pub(crate) fn maybe_patch_manifest_for_run(manifest_path: &Path) -> Result<Optio
     Ok(None)
 }
 
+pub fn maybe_create_and_use_cargo_e_manifest(manifest_path: &Path) -> Result<Option<PathBuf>> {
+    // Construct the path for the new Cargo-e.toml file next to the original manifest.
+    let cargo_e_manifest_path = manifest_path.with_file_name("Cargo-e.toml");
+
+    // If the file already exists, return its path.
+    if cargo_e_manifest_path.exists() {
+        return Ok(Some(cargo_e_manifest_path));
+    }
+
+    // Run a lightweight command (cargo metadata) to check for a workspace issue.
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--manifest-path"])
+        .arg(manifest_path)
+        .output()?;
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+    let workspace_error_marker = "current package believes it's in a workspace when it's not:";
+
+    if stderr_str.contains(workspace_error_marker) {
+        // Read the original manifest content.
+        let original = fs::read_to_string(manifest_path)?;
+        // If the manifest doesn't already include a [workspace] section, create the new file.
+        if !original.contains("[workspace]") {
+            let new_content = format!("{}\n[workspace]\n", original);
+            fs::write(&cargo_e_manifest_path, &new_content)?;
+            return Ok(Some(cargo_e_manifest_path));
+        }
+    }
+    Ok(None)
+}
+
 /// Search upward from the current directory for Cargo.toml.
 pub fn find_manifest_dir() -> std::io::Result<PathBuf> {
     let mut dir = std::env::current_dir()?;
