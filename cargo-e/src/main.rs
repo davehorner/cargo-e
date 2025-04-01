@@ -96,6 +96,26 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     if let Some(explicit) = cli.explicit_example.clone() {
+       let epath = Path::new(&explicit);
+        if epath.exists() {
+            let extra: Vec<&str> = cli.extra.iter().map(|s| s.as_str()).collect();
+            let child = cargo_e::e_runner::run_rust_script(&epath,&extra);
+            match child {
+                Some(mut status) => {
+
+                    match status.wait() {
+                        Ok(code) => {
+                            std::process::exit(code.code().unwrap_or(1));
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {:?}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {

@@ -71,7 +71,7 @@ impl CargoCommandBuilder {
 
     /// Configure the command based on the target kind.
     pub fn with_target(mut self, target: &CargoTarget) -> Self {
-        println!("Target origin: {:?}", target.origin);
+        println!("Target origin: {:?}", target.origin.clone().unwrap());
         match target.kind {
             TargetKind::Unknown => {
                 return self;
@@ -88,6 +88,7 @@ impl CargoCommandBuilder {
             }
             TargetKind::Example | TargetKind::ExtendedExample => {
                 self.args.push("run".into());
+                self.args.push("--message-format=json".into());
                 self.args.push("--example".into());
                 self.args.push(target.name.clone());
                 self.args.push("--manifest-path".into());
