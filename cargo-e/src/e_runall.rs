@@ -3,8 +3,8 @@ use crate::e_runner::GLOBAL_CHILD;
 use crate::e_target::{CargoTarget, TargetKind};
 use crate::{e_cli::RunAll, e_prompts::prompt};
 use anyhow::{Context, Result};
+use std::time::Duration;
 use std::time::Instant;
-use std::{thread, time::Duration};
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
@@ -65,7 +65,7 @@ fn send_ctrl_c(child: &mut Child) -> Result<()> {
 ///
 ///
 
-pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> Result<()> {
+pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> Result<bool> {
     // Adjust RUSTFLAGS if --quiet was provided.
     set_rustflags_if_quiet(cli.quiet);
 
@@ -78,8 +78,9 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
     let mut targets = filtered_targets.to_vec();
     targets.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
+    let mut user_requested_quit = false;
     for target in targets {
-        println!("Running target: {}", target.name);
+        println!("\nRunning target: {}", target.name);
 
         let current_bin = env!("CARGO_PKG_NAME");
         // Skip running our own binary.
@@ -102,6 +103,7 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
         );
         let key = crate::e_prompts::prompt(&format!("Full command: {}", cmd_debug), 2)?;
         if let Some('q') = key {
+            user_requested_quit = true;
             println!("User requested quit.");
             break;
         }
@@ -128,7 +130,13 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
 
         // Let the target run for the specified duration.
         let run_duration = Duration::from_secs(cli.wait);
-        thread::sleep(run_duration);
+        // thread::sleep(run_duration);
+        let key = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
+        if let Some('q') = key {
+            user_requested_quit = true;
+            println!("User requested quit.");
+            break;
+        }
 
         let output = {
             let mut global = crate::e_runner::GLOBAL_CHILD.lock().unwrap();
@@ -152,7 +160,7 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
                 if let Ok(Some(key)) = prompt("", timeout.as_secs() / 2) {
                     // Wait on the child process.
                     if key == 'q' {
-                        println!("User requested quit.");
+                        println!("User requested stop {}.", target.name);
                         send_ctrl_c(&mut child)?;
                         child.kill().ok();
                         break child.wait_with_output().context(format!(
@@ -215,13 +223,18 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
                 .context("Failed to restore patched manifest")?;
         }
 
+        // Check if the user requested to quit.
+        if user_requested_quit {
+            break;
+        }
+
         // If using a timeout/run_all mechanism, sleep or prompt as needed.
         // For simplicity, we wait for a fixed duration here.
         let run_duration = Duration::from_secs(cli.wait);
-        thread::sleep(run_duration);
+        let _ = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
     }
 
-    Ok(())
+    Ok(user_requested_quit)
 }
 
 // pub fn run_all_examples(cli: &Cli, filtered_targets: &[CargoTarget]) -> Result<()> {

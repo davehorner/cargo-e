@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.5...cargo-e-v0.2.6) - 2025-04-01
+
+### Added
+
+- *(rust-script)* runs rust-script given valid existing rust-file script. scripts must # bang and rust-script on the first line.
+
 ## [0.2.5](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.4...cargo-e-v0.2.5) - 2025-03-31
 
 ### Added
