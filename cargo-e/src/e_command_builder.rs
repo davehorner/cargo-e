@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use which::which;
+use std::io::Read;
 
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 
@@ -205,6 +206,59 @@ impl CargoCommandBuilder {
                 }
                 self.args.push("tauri".into());
                 self.args.push("dev".into());
+            }
+            TargetKind::ManifestLeptos => {
+
+                let readme_path = target.manifest_path.parent()
+                .map(|p| p.join("README.md"))
+                .filter(|p| p.exists())
+                .or_else(|| target.manifest_path.parent()
+                    .map(|p| p.join("readme.md"))
+                    .filter(|p| p.exists())
+                );
+            
+            if let Some(readme) = readme_path {
+                if let Ok(mut file) = std::fs::File::open(&readme) {
+                    let mut contents = String::new();
+                    if file.read_to_string(&mut contents).is_ok() && contents.contains("cargo leptos watch") {
+                        // Use cargo leptos watch
+                        println!("Detected 'cargo leptos watch' in {}", readme.display());
+                        self.alternate_cmd = Some("cargo".to_string());
+                        self.args.push("leptos".into());
+                        self.args.push("watch".into());
+                        self = self.with_required_features(&target.manifest_path, target);
+                        return self;
+                    }
+                }
+            }
+            
+            // fallback to trunk
+            let exe_path = match which("trunk") {
+                Ok(path) => path,
+                Err(err) => {
+                    eprintln!("Error: 'trunk' not found in PATH: {}", err);
+                    return self;
+                }
+            };
+            
+            if let Some(manifest_parent) = target.manifest_path.parent() {
+                println!("Manifest path: {}", target.manifest_path.display());
+                println!(
+                    "Execution directory (same as manifest folder): {}",
+                    manifest_parent.display()
+                );
+                self.execution_dir = Some(manifest_parent.to_path_buf());
+            } else {
+                println!(
+                    "No manifest parent found for: {}",
+                    target.manifest_path.display()
+                );
+            }
+            
+            self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
+            self.args.push("serve".into());
+            self.args.push("--open".into());
+            self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::ManifestDioxus => {
                 let exe_path = match which("dx") {

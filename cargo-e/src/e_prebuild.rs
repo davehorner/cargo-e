@@ -33,6 +33,7 @@ pub fn prebuild_examples(targets: &[CargoTarget]) -> Result<()> {
             TargetKind::Bench => ("", true),
             TargetKind::ManifestDioxus => ("", true),
             TargetKind::ManifestDioxusExample => ("", true),
+            TargetKind::ManifestLeptos => ("", true),
             TargetKind::Unknown => ("", true),
         };
 

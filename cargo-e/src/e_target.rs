@@ -32,6 +32,7 @@ pub enum TargetKind {
     ManifestTauriExample,
     ManifestDioxusExample,
     ManifestDioxus,
+    ManifestLeptos,
 }
 
 #[derive(Debug, Clone)]

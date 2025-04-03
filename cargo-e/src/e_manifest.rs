@@ -152,6 +152,7 @@ pub fn get_required_features_from_manifest(
         TargetKind::ManifestTauriExample => "example",
         TargetKind::ManifestDioxus => "bin",
         TargetKind::ManifestDioxusExample => "example",
+        TargetKind::ManifestLeptos => "bin",
         TargetKind::Test => "test",
         TargetKind::Bench => "bench",
         TargetKind::Unknown => "",
