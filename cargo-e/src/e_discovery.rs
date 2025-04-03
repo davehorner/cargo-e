@@ -321,25 +321,25 @@ pub fn determine_target_kind_and_manifest(
     }
 
     // Check if the file contains "fn main"
+
     if file_contents.contains("fn main") {
-        if file_contents.contains("fn main") {
-            if example {
-                let kind = if extended {
-                    TargetKind::ExtendedExample
-                } else {
-                    TargetKind::Example
-                };
-                return (kind, new_manifest);
+        if example {
+            let kind = if extended {
+                TargetKind::ExtendedExample
             } else {
-                let kind = if extended {
-                    TargetKind::ExtendedBinary
-                } else {
-                    TargetKind::Binary
-                };
-                return (kind, new_manifest);
-            }
+                TargetKind::Example
+            };
+            return (kind, new_manifest);
+        } else {
+            let kind = if extended {
+                TargetKind::ExtendedBinary
+            } else {
+                TargetKind::Binary
+            };
+            return (kind, new_manifest);
         }
     }
+
     // Check if the file contains a #[test] attribute; if so, mark it as a test.
     if file_contents.contains("#[test]") {
         return (TargetKind::Test, new_manifest);
