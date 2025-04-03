@@ -18,9 +18,9 @@
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
 use cargo_e::e_cli::RunAll;
+use cargo_e::e_processmanager::ProcessManager;
 use cargo_e::e_runner;
 use cargo_e::e_runner::is_active_rust_script;
-use cargo_e::e_runner::GLOBAL_CHILD;
 use cargo_e::e_target::CargoTarget;
 use cargo_e::e_target::TargetKind;
 #[cfg(feature = "tui")]
@@ -60,7 +60,58 @@ pub fn main() -> anyhow::Result<()> {
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
 
-    let _ = cargo_e::e_runner::register_ctrlc_handler();
+
+
+    // Create sample dispatchers.
+    // let mut stdout_dispatcher = EventDispatcher::new();
+    // stdout_dispatcher.add_callback(r"BuildFinished", Box::new(|line| {
+    //     println!("(STDOUT) Dispatcher caught: {}", line);
+    // }));
+    // let stdout_dispatcher = Arc::new(stdout_dispatcher);
+ 
+    // let mut stderr_dispatcher = EventDispatcher::new();
+    // stderr_dispatcher.add_callback(r"error", Box::new(|line| {
+    //     println!("(STDERR) Dispatcher caught an error: {}", line);
+    // }));
+    // let stderr_dispatcher = Arc::new(stderr_dispatcher);
+ 
+    // let mut progress_dispatcher = EventDispatcher::new();
+    // progress_dispatcher.add_callback(r"Progress", Box::new(|line| {
+    //     println!("(Progress) {}", line);
+    // }));
+    // let progress_dispatcher = Arc::new(progress_dispatcher);
+ 
+    // let mut stage_dispatcher = EventDispatcher::new();
+    // stage_dispatcher.add_callback(r"Stage:", Box::new(|line| {
+    //     println!("(Stage) {}", line);
+    // }));
+    // let stage_dispatcher = Arc::new(stage_dispatcher);
+ 
+    // // Here we run "cargo run --example funny_example" so that the build phase and runtime output are distinct.
+    // println!("=== Running: cargo run --example funny_example ===");
+    // let mut command = Command::new("cargo");
+    // command.args(&[
+    //     "run",
+    //     "--example",
+    //     "funny_example",
+    //     "--color", "always",
+    //     "--message-format=json-render-diagnostics",
+    // ]);
+ 
+    // // First run without an estimated output size.
+    // let cargo_handle = command.spawn_cargo_capture(
+    //     Some(stdout_dispatcher.clone()),
+    //     Some(stderr_dispatcher.clone()),
+    //     Some(progress_dispatcher.clone()),
+    //     Some(stage_dispatcher.clone()),
+    //     None, // no estimate provided
+    // );
+    // let result = cargo_handle.wait().expect("Failed during run");
+
+
+
+
+    // let _ = cargo_e::e_runner::register_ctrlc_handler();
     #[cfg(feature = "check-version-program-start")]
     {
         e_crate_version_checker::register_user_crate!();
@@ -74,6 +125,7 @@ pub fn main() -> anyhow::Result<()> {
         let _ = interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait);
     }
 
+    let mut manager = ProcessManager::new();
     // Control the maximum number of Cargo processes running concurrently.
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -122,7 +174,7 @@ pub fn main() -> anyhow::Result<()> {
             if cli.tui {
                 do_tui_and_exit(&cli, &unique_examples);
             }
-            cargo_e::e_runner::run_example(&cli, target)?;
+            cargo_e::e_runner::run_example(&manager,&cli, target)?;
         }
         // If not found among examples, search for a binary with that name.
         else if let Some(target) = examples
@@ -133,7 +185,7 @@ pub fn main() -> anyhow::Result<()> {
             if cli.tui {
                 do_tui_and_exit(&cli, &unique_examples);
             }
-            cargo_e::e_runner::run_example(&cli, target)?;
+            cargo_e::e_runner::run_example(&manager,&cli, target)?;
         } else {
             eprintln!(
                 "error: 0 named '{}' found in examples or binaries.",
@@ -166,7 +218,7 @@ pub fn main() -> anyhow::Result<()> {
                 if cli.tui {
                     do_tui_and_exit(&cli, &fuzzy_matches);
                 }
-                cli_loop(&cli, &fuzzy_matches, &[], &[]);
+                cli_loop(&manager, &cli, &fuzzy_matches, &[], &[]);
             }
             std::process::exit(1);
         }
@@ -191,11 +243,11 @@ pub fn main() -> anyhow::Result<()> {
         match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
             Some('y') | Some(' ') | Some('\n') => {
                 println!("running {}...", example.name);
-                cargo_e::e_runner::run_example(&cli, &example)?;
+                cargo_e::e_runner::run_example(&manager,&cli, &example)?;
             }
             Some('n') => {
                 //println!("exiting without running.");
-                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
+                cli_loop(&manager, &cli, &unique_examples, &builtin_examples, &builtin_binaries);
                 std::process::exit(0);
             }
             Some('e') => {
@@ -205,7 +257,7 @@ pub fn main() -> anyhow::Result<()> {
             Some('i') => {
                 futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(example));
                 cargo_e::e_prompts::prompt_line("", 120).ok();
-                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
+                cli_loop(&manager, &cli, &unique_examples, &builtin_examples, &builtin_binaries);
             }
             Some('t') => {
                 #[cfg(feature = "tui")]
@@ -222,7 +274,7 @@ pub fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
             None => {
-                cargo_e::e_runner::run_example(&cli, builtin_examples[0])?;
+                cargo_e::e_runner::run_example(&manager,&cli, builtin_examples[0])?;
                 std::process::exit(0);
             }
         }
@@ -243,7 +295,7 @@ pub fn main() -> anyhow::Result<()> {
         match cargo_e::e_prompts::prompt(&message, cli.wait)? {
             Some('y') => {
                 // Run the binary.
-                cargo_e::e_runner::run_example(&cli, binary)?;
+                cargo_e::e_runner::run_example(&manager,&cli, binary)?;
             }
             Some('i') => {
                 futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(binary));
@@ -251,7 +303,7 @@ pub fn main() -> anyhow::Result<()> {
             }
             Some('n') => {
                 //println!("exiting without running.");
-                cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
+                cli_loop(&manager, &cli, &unique_examples, &builtin_examples, &builtin_binaries);
                 std::process::exit(0);
             }
             Some('e') => {
@@ -277,7 +329,7 @@ pub fn main() -> anyhow::Result<()> {
         if cli.tui {
             do_tui_and_exit(&cli, &unique_examples);
         }
-        cli_loop(&cli, &unique_examples, &builtin_examples, &builtin_binaries);
+        cli_loop(&manager, &cli, &unique_examples, &builtin_examples, &builtin_binaries);
         // if builtin_examples.len() + builtin_binaries.len() > 1 {
         //     //select_and_run_target(&cli, &examples, &builtin_examples, &builtin_binaries)?;
         // } else {
@@ -538,6 +590,7 @@ enum LoopResult {
 
 /// The selection function: displays targets, waits for input, and returns a LoopResult.
 fn select_and_run_target_loop(
+    manager: &ProcessManager,
     cli: &Cli,
     unique_targets: &[CargoTarget],
     builtin_examples: &[&CargoTarget],
@@ -687,7 +740,7 @@ fn select_and_run_target_loop(
                         let selection = line;
                         // current_index = total; // break out of paging loop.
                         // println!("{} currindex", current_index);
-                        return process_input(&selection, &combined, cli, current_index);
+                        return process_input(&manager, &selection, &combined, cli, current_index);
                     }
                 }
                 current_index = end_index;
@@ -762,7 +815,7 @@ fn select_and_run_target_loop(
     }
     .unwrap_or_default();
     println!("{}", &final_input);
-    process_input(&final_input, &combined, cli, 0)
+    process_input(&manager, &final_input, &combined, cli, 0)
 }
 pub fn append_run_history(target_name: &str) -> io::Result<()> {
     use std::io::Write;
@@ -777,7 +830,7 @@ pub fn append_run_history(target_name: &str) -> io::Result<()> {
     Ok(())
 }
 /// Processes the final input string and returns a LoopResult.
-fn process_input(
+fn process_input(manager: &ProcessManager,
     input: &str,
     combined: &[(&str, &CargoTarget)],
     cli: &Cli,
@@ -867,16 +920,16 @@ fn process_input(
             if cli.print_program_name {
                 println!("running {} \"{}\"...", target_type, target.name);
             }
-            let status = e_runner::run_example(&cli, target)?;
+            let status = e_runner::run_example(&manager,&cli, target)?;
             let _ = append_run_history(&target.name.clone());
             let message = if cli.print_exit_code {
-                format!("Exitcode {:?}. Press any key to continue...", status.code())
+                format!("Exitcode {:?}. Press any key to continue...", status.unwrap().code())
             } else {
                 "".to_string()
             };
             let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
 
-            Ok(LoopResult::Run(status, offset))
+            Ok(LoopResult::Run(status.unwrap(), offset))
         }
     } else {
         Ok(LoopResult::Quit)
@@ -887,6 +940,7 @@ fn process_input(
 /// If a target exits with an "interrupted" code (e.g. 130), it re‑displays the menu.
 /// If the user quits (input "q"), it exits.
 fn cli_loop(
+    manager: &ProcessManager,
     cli: &Cli,
     unique_examples: &[CargoTarget],
     builtin_examples: &[&CargoTarget],
@@ -894,7 +948,7 @@ fn cli_loop(
 ) {
     let mut current_offset = 0; // persist the current page offset
     loop {
-        match select_and_run_target_loop(
+        match select_and_run_target_loop(&manager,
             cli,
             unique_examples,
             builtin_examples,
@@ -978,34 +1032,34 @@ pub fn run_rust_script_with_ctrlc_handling() {
             });
 
             // Lock global to store the child process
-            {
-                let mut global = GLOBAL_CHILD.lock().unwrap();
-                *global = Some(child);
-            }
+            // {
+            //     let mut global = GLOBAL_CHILD.lock().unwrap();
+            //     *global = Some(child);
+            // }
 
-            // Wait for the child process to complete
-            let status = {
-                let mut global = GLOBAL_CHILD.lock().unwrap();
-                if let Some(mut child) = global.take() {
-                    child.wait()
-                } else {
-                    // Handle missing child process
-                    eprintln!("Child process missing");
-                    std::process::exit(1); // Exit with an error code
-                }
-            };
+            // // Wait for the child process to complete
+            // let status = {
+            //     let mut global = GLOBAL_CHILD.lock().unwrap();
+            //     if let Some(mut child) = global.take() {
+            //         child.wait()
+            //     } else {
+            //         // Handle missing child process
+            //         eprintln!("Child process missing");
+            //         std::process::exit(1); // Exit with an error code
+            //     }
+            // };
 
             // Handle the child process exit status
-            match status {
-                Ok(status) => {
-                    eprintln!("Child process exited with status code: {:?}", status.code());
-                    std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                }
-                Err(err) => {
-                    eprintln!("Error waiting for child process: {}", err);
-                    std::process::exit(1); // Exit with an error code
-                }
-            }
+            // match status {
+            //     Ok(status) => {
+            //         eprintln!("Child process exited with status code: {:?}", status.code());
+            //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+            //     }
+            //     Err(err) => {
+            //         eprintln!("Error waiting for child process: {}", err);
+            //         std::process::exit(1); // Exit with an error code
+            //     }
+            // }
         });
 
         // Wait for the thread to complete, but with a timeout

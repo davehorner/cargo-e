@@ -1,3 +1,4 @@
+use crate::e_processmanager::ProcessManager;
 use crate::{e_target::TargetOrigin, prelude::*};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
@@ -7,40 +8,164 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::AtomicUsize;
 use which::which; // Adjust the import based on your project structure
+use anyhow::Result;
+use std::collections::{HashMap, VecDeque};
+use crate::e_cargocommand_ext::CargoProcessHandle;
+
+// lazy_static! {
+//     pub static ref GLOBAL_CHILDREN: Arc<Mutex<Vec<Arc<CargoProcessHandle>>>> = Arc::new(Mutex::new(Vec::new()));
+//     static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
+// }
+
+// pub static GLOBAL_CHILDREN:     Lazy<Arc<Mutex<Vec<Arc<Mutex<CargoProcessHandle>>>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+pub static GLOBAL_CHILDREN: Lazy<Arc<Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(HashMap::new()))
+});
+
+static CTRL_C_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 // Global shared container for the currently running child process.
-pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
+// pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+// static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
 
-/// Registers a global Ctrl+C handler once.
-/// The handler checks GLOBAL_CHILD and kills the child process if present.
+// pub static GLOBAL_CHILDREN: Lazy<Arc<Mutex<VecDeque<CargoProcessHandle>>>> = Lazy::new(|| Arc::new(Mutex::new(VecDeque::new())));
+/// Resets the Ctrl+C counter.
+/// This can be called to reset the count when starting a new program or at any other point.
+pub fn reset_ctrl_c_count() {
+    CTRL_C_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+// pub fn kill_last_process() -> Result<()> {
+//     let mut global = GLOBAL_CHILDREN.lock().unwrap();
+
+//     if let Some(mut child_handle) = global.pop_back() {
+//         // Kill the most recent process
+//         eprintln!("Killing the most recent child process...");
+//         let _ = child_handle.kill();
+//         Ok(())
+//     } else {
+//         eprintln!("No child processes to kill.");
+//         Err(anyhow::anyhow!("No child processes to kill").into())
+//     }
+// }
+
+pub fn take_process_results(pid: u32) -> Option<CargoProcessHandle> {
+    let mut global = GLOBAL_CHILDREN.lock().ok()?;
+    // Take ownership
+    // let handle = global.remove(&pid)?;
+    // let mut handle = handle.lock().ok()?;
+    let handle = global.remove(&pid)?;
+    // global.remove(&pid)
+        // This will succeed only if no other Arc exists
+    Arc::try_unwrap(handle)
+        .ok()?                 // fails if other Arc exists
+        .into_inner()
+        .ok()                  // fails if poisoned
+}
+
+pub fn get_process_results_in_place(pid: u32) -> Option<crate::e_cargocommand_ext::CargoProcessResult> {
+    let global = GLOBAL_CHILDREN.lock().ok()?;                      // MutexGuard<HashMap>
+    let handle = global.get(&pid)?.clone();                         // Arc<Mutex<CargoProcessHandle>>
+    let handle = handle.lock().ok()?;                               // MutexGuard<CargoProcessHandle>
+    Some(handle.result.clone())                                    // ✅ return the result field
+}
+
+/// Registers a global Ctrl+C handler that interacts with the `GLOBAL_CHILDREN` process container.
 pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+    println!("Registering Ctrl+C handler...");
     ctrlc::set_handler(move || {
-        let mut count_lock = CTRL_C_COUNT.lock().unwrap();
-        *count_lock += 1;
+         let count = CTRL_C_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        {
+            eprintln!("Ctrl+C pressed");
 
-        let count = *count_lock;
+    // lock only ONE mutex safely
+    if let Ok(mut global) = GLOBAL_CHILDREN.try_lock() {
+            // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+            eprintln!("Ctrl+C got lock on global container");
 
-        // If there is no child process and Ctrl+C is pressed 3 times, exit the program
+            // If there are processes in the global container, terminate the most recent one
+            if let Some((pid, child_handle)) = global.iter_mut().next() {
+                eprintln!("Ctrl+C pressed, terminating the child process with PID: {}", pid);
+
+                // Lock the child process and kill it
+                let mut child_handle = child_handle.lock().unwrap();
+                if child_handle.requested_exit {
+                    eprintln!("Child process is already requested kill...");
+                } else {
+                    eprintln!("Child process is not running, no need to kill.");
+                    child_handle.requested_exit=true;
+                    println!("Killing child process with PID: {}", pid);
+                    let _ = child_handle.kill();  // Attempt to kill the process
+                    println!("Killed child process with PID: {}", pid);
+
+                    reset_ctrl_c_count();
+                    return;  // Exit after successfully terminating the process
+                }
+
+                // Now remove the process from the global container
+                // let pid_to_remove = *pid;
+
+                // // Reacquire the lock after killing and remove the process from global
+                // drop(global);  // Drop the first borrow
+
+                // // Re-lock global and safely remove the entry using the pid
+                // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+                // global.remove(&pid_to_remove); // Remove the process entry by PID
+                // println!("Removed process with PID: {}", pid_to_remove);
+            }
+
+    } else {
+        eprintln!("Couldn't acquire GLOBAL_CHILDREN lock safely");
+    }
+
+            
+        }
+
+        // Now handle the Ctrl+C count and display messages
+        // If Ctrl+C is pressed 3 times without any child process, exit the program.
         if count == 3 {
             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
-            exit(0);
+            std::process::exit(0);
+        } else if count == 2 {
+            // Notify that one more Ctrl+C will exit the program.
+            eprintln!("Ctrl+C pressed 2 times, press one more to exit.");
         } else {
-            let mut child_lock = GLOBAL_CHILD.lock().unwrap();
-            if let Some(child) = child_lock.as_mut() {
-                eprintln!(
-                    "Ctrl+C pressed {} times, terminating running child process...",
-                    count
-                );
-                let _ = child.kill();
-            } else {
-                eprintln!("Ctrl+C pressed {} times, no child process running.", count);
-            }
+            eprintln!("Ctrl+C pressed {} times, no child process running.", count);
         }
     })?;
     Ok(())
 }
+
+// /// Registers a global Ctrl+C handler once.
+// /// The handler checks GLOBAL_CHILD and kills the child process if present.
+// pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+//     ctrlc::set_handler(move || {
+//         let mut count_lock = CTRL_C_COUNT.lock().unwrap();
+//         *count_lock += 1;
+
+//         let count = *count_lock;
+
+//         // If there is no child process and Ctrl+C is pressed 3 times, exit the program
+//         if count == 3 {
+//             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
+//             exit(0);
+//         } else {
+//             let mut child_lock = GLOBAL_CHILD.lock().unwrap();
+//             if let Some(child) = child_lock.as_mut() {
+//                 eprintln!(
+//                     "Ctrl+C pressed {} times, terminating running child process...",
+//                     count
+//                 );
+//                 let _ = child.kill();
+//             } else {
+//                 eprintln!("Ctrl+C pressed {} times, no child process running.", count);
+//             }
+//         }
+//     })?;
+//     Ok(())
+// }
 
 /// Asynchronously launches the GenAI summarization example for the given target.
 /// It builds the command using the target's manifest path as the "origin" argument.
@@ -156,10 +281,10 @@ pub fn run_equivalent_example(
 }
 
 /// Runs the given example (or binary) target.
-pub fn run_example(
+pub fn run_example(manager: &ProcessManager,
     cli: &crate::Cli,
     target: &crate::e_target::CargoTarget,
-) -> anyhow::Result<std::process::ExitStatus> {
+) -> anyhow::Result<Option<std::process::ExitStatus>> {
     // Retrieve the current package name at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
@@ -187,7 +312,7 @@ pub fn run_example(
     // Before spawning, determine the directory to run from.
     // If a custom execution directory was set (e.g. for Tauri targets), that is used.
     // Otherwise, if the target is extended, run from its parent directory.
-    if let Some(exec_dir) = builder.execution_dir {
+    if let Some(ref exec_dir) = builder.execution_dir {
         cmd.current_dir(exec_dir);
     } else if target.extended {
         if let Some(dir) = target.manifest_path.parent() {
@@ -209,27 +334,32 @@ pub fn run_example(
     // Check if the manifest triggers the workspace error.
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
 
+    let pid = Arc::new(builder).run(|pid, handle| {
+    manager.register(handle);
+})?;
+let ret=manager.wait(pid)?;
+    // let handle=    Arc::new(builder).run_wait()?;
     // Spawn the process.
-    let child = cmd.spawn()?;
-    {
-        let mut global = GLOBAL_CHILD.lock().unwrap();
-        *global = Some(child);
-    }
-    let status = {
-        let mut global = GLOBAL_CHILD.lock().unwrap();
-        if let Some(mut child) = global.take() {
-            child.wait()?
-        } else {
-            return Err(anyhow::anyhow!("Child process missing"));
-        }
-    };
+    // let child = cmd.spawn()?;
+    // {
+    //     let mut global = GLOBAL_CHILD.lock().unwrap();
+    //     *global = Some(child);
+    // }
+    // let status = {
+    //     let mut global = GLOBAL_CHILD.lock().unwrap();
+    //     if let Some(mut child) = global.take() {
+    //         child.wait()?
+    //     } else {
+    //         return Err(anyhow::anyhow!("Child process missing"));
+    //     }
+    // };
 
     // Restore the manifest if we patched it.
     if let Some(original) = maybe_backup {
         fs::write(&target.manifest_path, original)?;
     }
 
-    Ok(status)
+    Ok(ret.exit_status)
 }
 // /// Runs an example or binary target, applying a temporary manifest patch if a workspace error is detected.
 // /// This function uses the same idea as in the collection helpers: if the workspace error is found,
@@ -434,21 +564,21 @@ pub fn run_example(
 /// Helper function to spawn a cargo process.
 /// On Windows, this sets the CREATE_NEW_PROCESS_GROUP flag.
 pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        let child = Command::new("cargo")
-            .args(args)
-            .creation_flags(CREATE_NEW_PROCESS_GROUP)
-            .spawn()?;
-        Ok(child)
-    }
-    #[cfg(not(windows))]
-    {
+    // #[cfg(windows)]
+    // {
+    //     use std::os::windows::process::CommandExt;
+    //     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    //     let child = Command::new("cargo")
+    //         .args(args)
+    //         .creation_flags(CREATE_NEW_PROCESS_GROUP)
+    //         .spawn()?;
+    //     Ok(child)
+    // }
+    // #[cfg(not(windows))]
+    // {
         let child = Command::new("cargo").args(args).spawn()?;
         Ok(child)
-    }
+    // }
 }
 
 /// Returns true if the file's a "rust-script"
