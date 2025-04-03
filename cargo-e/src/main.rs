@@ -561,6 +561,7 @@ fn select_and_run_target_loop(
             TargetKind::ManifestTauriExample => "tauri-e",
             TargetKind::ManifestDioxus => "dioxus",
             TargetKind::ManifestDioxusExample => "dioxus-e",
+            TargetKind::ManifestLeptos => "leptos",
             TargetKind::Bench => "bench",
             TargetKind::Test => "test",
             TargetKind::Manifest => "manifest",
