@@ -34,7 +34,7 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
     }
     use std::io::IsTerminal;
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        println!("Non-interactive mode detected; skipping prompt.");
+        // println!("Non-interactive mode detected; skipping prompt.");
         return Ok(None);
     }
 
@@ -51,6 +51,10 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
         let result = if poll(timeout)? {
             if let Event::Key(key_event) = read()? {
                 if let KeyCode::Char(c) = key_event.code {
+                                        // Check if it's the Ctrl+C character, which is often '\x03'
+                    if c == '\x03' {  // Ctrl+C
+                        return Err(anyhow::anyhow!("Ctrl+C pressed").into()); // Propagate as error to handle
+                    }
                     Some(c.to_ascii_lowercase())
                 } else {
                     None
@@ -95,7 +99,7 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
     }
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
-        println!("Non-interactive mode detected; skipping prompt.");
+        // println!("Non-interactive mode detected; skipping prompt.");
         return Ok(None);
     }
 
