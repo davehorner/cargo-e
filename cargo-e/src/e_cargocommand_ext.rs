@@ -1,4 +1,5 @@
 
+use crate::e_command_builder::TerminalError;
 use crate::e_eventdispatcher::EventDispatcher;
 use crate::e_runner::GLOBAL_CHILDREN;
 use std::io::{BufRead, BufReader};
@@ -40,6 +41,7 @@ pub struct CargoStats {
 #[derive(Debug,Default, Clone)]
 pub struct CargoProcessResult {
     pub pid: u32,
+    pub terminal_error: Option<TerminalError>,
     pub exit_status: Option<ExitStatus>,
     pub start_time: Option<SystemTime>,
     pub build_finished_time: Option<SystemTime>,
@@ -70,6 +72,7 @@ pub struct CargoProcessHandle {
     // Separate progress counters for build and runtime output.
     pub build_progress_counter: Arc<AtomicUsize>,
     pub runtime_progress_counter: Arc<AtomicUsize>,
+    pub terminal_error_flag: Arc<Mutex<TerminalError>>,
 }
  
 impl CargoProcessHandle {
@@ -305,6 +308,7 @@ impl CargoCommandExt for Command {
         // Create the CargoProcessHandle
         let result = CargoProcessResult {
             pid,
+            terminal_error: None,
             exit_status: None,
             start_time: Some(start_time),
             build_finished_time: None,
@@ -338,6 +342,7 @@ impl CargoCommandExt for Command {
             build_progress_counter: Arc::new(AtomicUsize::new(0)),
             runtime_progress_counter: Arc::new(AtomicUsize::new(0)),
             requested_exit: false,
+            terminal_error_flag: Arc::new(Mutex::new(TerminalError::NoError)),
         }
     }
 
@@ -350,12 +355,6 @@ impl CargoCommandExt for Command {
         stage_dispatcher: Option<Arc<EventDispatcher>>,
         estimate_bytes: Option<usize>,
     ) -> CargoProcessHandle {
-        let mut capture_mode = CaptureMode::Filtering(DispatcherSet {
-    stdout: stdout_dispatcher.clone(),
-    stderr: stderr_dispatcher.clone(),
-    progress: progress_dispatcher.clone(),
-    stage: stage_dispatcher.clone(),
-});
         self.stdout(Stdio::piped())
             .stderr(Stdio::piped());
  
@@ -416,10 +415,6 @@ impl CargoCommandExt for Command {
                                 Message::BuildFinished(_) => {
                                     // Mark the end of the build phase.
                                     if in_build_phase {
-                                            capture_mode = CaptureMode::Passthrough {
-        stdout: std::io::stdout(),
-        stderr: std::io::stderr(),
-    };
                                         in_build_phase = false;
                                         let mut s = stats_clone.lock().unwrap();
                                         s.build_finished_count += 1;
@@ -498,6 +493,10 @@ impl CargoCommandExt for Command {
             }
         });
  
+ let mut tflag = TerminalError::NoError;
+        // Create a flag to indicate if the process is a terminal process.
+     let terminal_flag = Arc::new(Mutex::new(TerminalError::NoError));
+     let terminal_flag_clone = Arc::clone(&terminal_flag);
         // Spawn a thread to capture stderr.
         let stderr = child.stderr.take().expect("Failed to capture stderr");
         let stderr_disp_clone = stderr_dispatcher.clone();
@@ -506,25 +505,50 @@ impl CargoCommandExt for Command {
         let progress_disp_clone_stderr = progress_dispatcher.clone();
         let escape_sequence = "\u{1b}[1m\u{1b}[32m";  
         let stderr_handle = thread::spawn(move || {
+            let mut flag = terminal_flag_clone.lock().unwrap();
             let stderr_reader = BufReader::new(stderr);
             for line in stderr_reader.lines() {
                 if let Ok(line) = line {
-                    if line.contains("IO(Custom { kind: NotConnected") {
-                        println!("{} IS A TERMINAL PROCESS - {}", pid,line);
-                        continue;
-                    }
-                                let line = if line.starts_with(escape_sequence) {
-                // If the line starts with the escape sequence, preserve it and remove leading spaces
-                let rest_of_line = &line[escape_sequence.len()..]; // Get the part of the line after the escape sequence
-                format!("{}{}", escape_sequence, rest_of_line.trim_start()) // Reassemble the escape sequence and the trimmed text
-            } else {
-                line // If it doesn't start with the escape sequence, leave it unchanged
-            };
+                    // if line.contains("IO(Custom { kind: NotConnected") {
+                    //     println!("{} IS A TERMINAL PROCESS - {}", pid,line);
+                    //     continue;
+                    // }
+                    let line = if line.starts_with(escape_sequence) {
+                        // If the line starts with the escape sequence, preserve it and remove leading spaces
+                        let rest_of_line = &line[escape_sequence.len()..]; // Get the part of the line after the escape sequence
+                        format!("{}{}", escape_sequence, rest_of_line.trim_start()) // Reassemble the escape sequence and the trimmed text
+                    } else {
+                        line // If it doesn't start with the escape sequence, leave it unchanged
+                    };
                     println!("{}", line.trim());
-                    if let Some(ref disp) = stderr_disp_clone {
-                        disp.dispatch(&line);
-                    }
-                    // Here, we assume stderr is less structured. We add its length to runtime counter.
+if let Some(ref disp) = stderr_disp_clone {
+    // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
+    let responses = disp.dispatch(&line);
+
+    // Iterate over the responses.
+    for ret in responses {
+        if let Some(response) = ret {
+            if response.number==255 {
+                tflag = TerminalError::NoTerminal;
+         *flag = TerminalError::NoTerminal;
+        println!("{} IS A TERMINAL PROCESS - {}", pid, line);
+
+                println!("{} IS A TERMINAL PROCESS - {}", pid, line);
+            }
+            if let Some(ref msg) = response.message {
+                println!("DISPATCH RESULT {} {}", pid, msg);
+            }
+        }
+    }
+}
+                    // if let Some(ref disp) = stderr_disp_clone {
+                    //     if let Some(ret) = disp.dispatch(&line) {
+                    //         if let Some(ref msg) = ret.message {
+                    //             println!("DISPATCH RESULT {} {}", pid, msg);
+                    //         }
+                    //     }
+                    // }
+                    // // Here, we assume stderr is less structured. We add its length to runtime counter.
                     runtime_counter_stderr.fetch_add(line.len(), Ordering::Relaxed);
                     if let Some(total) = estimate_bytes {
                         let current = runtime_counter_stderr.load(Ordering::Relaxed);
@@ -539,7 +563,6 @@ impl CargoCommandExt for Command {
 
  
         let pid = child.id();
-
     let result = CargoProcessResult {
         pid: pid,
         exit_status: None,
@@ -551,6 +574,7 @@ impl CargoCommandExt for Command {
         stats: CargoStats::default(),
         build_output_size: 0,
         runtime_output_size: 0,
+        terminal_error: Some(tflag),
     };
         CargoProcessHandle {
             child,
@@ -567,7 +591,8 @@ impl CargoCommandExt for Command {
             estimate_bytes,
             build_progress_counter,
             runtime_progress_counter,
-            requested_exit: false
+            requested_exit: false,
+            terminal_error_flag: terminal_flag,
         }
     }
 }

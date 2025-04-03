@@ -340,6 +340,10 @@ pub fn run_example(manager: &ProcessManager,
     manager.register(handle);
 })?;
 let ret=manager.wait(pid)?;
+println!("HERE IS THE RESULT!{} {:?}",pid,manager.get_terminal_error(pid));
+
+
+
     // let handle=    Arc::new(builder).run_wait()?;
     // Spawn the process.
     // let child = cmd.spawn()?;

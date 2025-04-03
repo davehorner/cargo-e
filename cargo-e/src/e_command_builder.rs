@@ -11,16 +11,21 @@ use anyhow::Context;
 use crate::e_runner::GLOBAL_CHILDREN;
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 use crate::e_cargocommand_ext::{CargoCommandExt, CargoProcessHandle};
-use crate::e_eventdispatcher::EventDispatcher;
+use crate::e_eventdispatcher::{CallbackResponse, EventDispatcher};
 use crate::e_cargocommand_ext::CargoProcessResult;
 
-#[derive(Debug)]
+#[derive(Debug,Clone,PartialEq,Copy)]
 pub enum TerminalError {
     NotConnected,
-    OtherError(String),
+    NoTerminal,
     NoError,
 }
 
+impl Default for TerminalError {
+    fn default() -> Self {
+        TerminalError::NoError
+    }
+}
 
 /// A builder that constructs a Cargo command for a given target.
 #[derive(Clone)]
@@ -156,33 +161,41 @@ impl CargoCommandBuilder {
         let sender = self.sender.clone().unwrap();
 
         let mut stdout_dispatcher = EventDispatcher::new();
-        stdout_dispatcher.add_callback(r"BuildFinished", Box::new(|line| {
+        stdout_dispatcher.add_callback(r"listening on", Box::new(|line, captures| {
             println!("(STDOUT) Dispatcher caught: {}", line);
+            None
+        })); 
+        stdout_dispatcher.add_callback(r"BuildFinished", Box::new(|line, captures| {
+            println!("(STDOUT) Dispatcher caught: {}", line);
+            None
         }));
         self.stdout_dispatcher = Some(Arc::new(stdout_dispatcher));
 
         let mut stderr_dispatcher = EventDispatcher::new();
-        stderr_dispatcher.add_callback(r"IO\(Custom \{ kind: NotConnected", Box::new(move |line| {
+        stderr_dispatcher.add_callback(r"IO\(Custom \{ kind: NotConnected", Box::new(move |line, captures| {
             println!("(STDERR) Terminal error detected: {}", &line);
             let result = if line.contains("NotConnected") {
-                TerminalError::NotConnected
+                TerminalError::NoTerminal
             } else {
-                TerminalError::OtherError(line.to_string())
+                TerminalError::NoError
             };
             let sender = sender.lock().unwrap();
-            sender.send(result).unwrap();
+            sender.send(result).ok();
+            Some(CallbackResponse{ number: 255, message: Some(line.to_string()) })
         }));
         self.stderr_dispatcher = Some(Arc::new(stderr_dispatcher));
 
         let mut progress_dispatcher = EventDispatcher::new();
-        progress_dispatcher.add_callback(r"Progress", Box::new(|line| {
+        progress_dispatcher.add_callback(r"Progress", Box::new(|line, captures| {
             println!("(Progress) {}", line);
+            None
         }));
         self.progress_dispatcher = Some(Arc::new(progress_dispatcher));
 
         let mut stage_dispatcher = EventDispatcher::new();
-        stage_dispatcher.add_callback(r"Stage:", Box::new(|line| {
+        stage_dispatcher.add_callback(r"Stage:", Box::new(|line, captures| {
             println!("(Stage) {}", line);
+            None
         }));
         self.stage_dispatcher = Some(Arc::new(stage_dispatcher));
     }
@@ -251,6 +264,13 @@ pub fn wait(self: Arc<Self>, pid: Option<u32>) -> anyhow::Result<CargoProcessRes
 
                 // If the status is `Some(status)`, the process has finished
                 if let Some(status) = status {
+
+// Check the terminal error flag and update the result if there is an error
+if *cargo_process_handle.terminal_error_flag.lock().unwrap() != TerminalError::NoError {
+    let terminal_error = *cargo_process_handle.terminal_error_flag.lock().unwrap();
+    cargo_process_handle.result.terminal_error = Some(terminal_error);
+}
+
                     cargo_process_handle.result.exit_status = Some(status);
                     cargo_process_handle.result.end_time = Some( SystemTime::now() );
                     println!("Process with PID {} finished", pid);

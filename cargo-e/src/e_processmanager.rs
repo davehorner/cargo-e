@@ -1,6 +1,7 @@
 // src/e_process_manager.rs
 
 use crate::e_cargocommand_ext::{CargoProcessHandle, CargoProcessResult};
+use crate::e_command_builder::TerminalError;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
@@ -151,6 +152,23 @@ impl ProcessManager {
                 let _ = h.kill();
             }
         }
+    }
+
+        // Returns the terminal error for a given PID.
+    pub fn get_terminal_error(&self, pid: u32) -> Option<TerminalError> {
+        // Lock the process map
+        let processes = self.processes.lock().unwrap();
+
+        // Check if the process exists
+        if let Some(handle) = processes.get(&pid) {
+            // Lock the handle to access the terminal error flag
+            let handle = handle.lock().unwrap();
+            // Return the terminal error flag value
+            return Some(handle.terminal_error_flag.lock().unwrap().clone());
+        }
+
+        // If no process is found for the given PID, return None
+        None
     }
 
     pub fn install_ctrlc_handler(&'static self) {
