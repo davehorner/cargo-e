@@ -65,20 +65,27 @@ impl ProcessManager {
     }
 
     fn install_handler(self_: Arc<Self>, rx: Receiver<()>) {
-        ctrlc::set_handler({
+       match ctrlc::set_handler({
             let tx = self_.signal_tx.clone();
             move || {
                 let _ = tx.send(());
             }
-        }).expect("Failed to install Ctrl+C handler");
-
-        thread::spawn(move || {
-            while rx.recv().is_ok() {
-                self_.signalled_count.fetch_add(1, Ordering::Relaxed);
-                println!("ctrlc> signal received.");
-                self_.handle_signal();
+        }) {
+            Ok(_) => {
+                println!("ctrlc> Ctrl+C handler installed.");
+                thread::spawn(move || {
+                    while rx.recv().is_ok() {
+                        self_.signalled_count.fetch_add(1, Ordering::Relaxed);
+                        println!("ctrlc> signal received.");
+                        self_.handle_signal();
+                    }
+                });
             }
-        });
+            Err(e) => {
+                eprintln!("ctrlc> Failed to install Ctrl+C handler: {}", e);
+                return;
+            }
+        }
     }
 
     fn handle_signal(&self) {

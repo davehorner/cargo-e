@@ -92,6 +92,7 @@ rustyline = "15.0.0"
 which = "7.0.2"
 cargo_metadata = "0.19.2"
 regex = "1.11.1"
+open = "5.3.2"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.29.0"

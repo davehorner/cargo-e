@@ -474,6 +474,9 @@ impl CargoCommandExt for Command {
                                     sd.dispatch(&format!("Stage: BuildFinished (assumed) occurred at {:?}", now));
                                 }
                             }
+                            if let Some(ref disp) = stdout_disp_clone {
+                                disp.dispatch(&line);
+                            }
                             // Print the runtime output.
                             println!("{}RUNTIME: {}", pid, line);
                             if line.contains("not a terminal") {
@@ -529,7 +532,6 @@ if let Some(ref disp) = stderr_disp_clone {
     for ret in responses {
         if let Some(response) = ret {
             if response.number==255 {
-                tflag = TerminalError::NoTerminal;
          *flag = TerminalError::NoTerminal;
         println!("{} IS A TERMINAL PROCESS - {}", pid, line);
 

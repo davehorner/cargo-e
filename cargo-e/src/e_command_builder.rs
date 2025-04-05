@@ -2,8 +2,10 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Sender};
 use std::time::SystemTime;
+use regex::Regex;
 use which::which;
 
 use anyhow::Context;
@@ -161,19 +163,91 @@ impl CargoCommandBuilder {
         let sender = self.sender.clone().unwrap();
 
         let mut stdout_dispatcher = EventDispatcher::new();
-        stdout_dispatcher.add_callback(r"listening on", Box::new(|line, captures| {
+        stdout_dispatcher.add_callback(r"listening on", Box::new(|line, _captures, _state| {
             println!("(STDOUT) Dispatcher caught: {}", line);
+                // Use a regex to capture a URL from the line.
+                let url_regex = Regex::new(r"(http://[^\s]+)").unwrap();
+                if let Some(url_caps) = url_regex.captures(line) {
+                    let url = url_caps.get(1).unwrap().as_str();
+                    // Call open::that on the captured URL.
+                    match open::that(url) {
+                        Ok(_) => println!("Opened URL: {}", url),
+                        Err(e) => eprintln!("Failed to open URL: {}. Error: {}", url, e),
+                    }
+                }
             None
         })); 
-        stdout_dispatcher.add_callback(r"BuildFinished", Box::new(|line, captures| {
+        stdout_dispatcher.add_callback(r"BuildFinished", Box::new(|line, _captures, _state| {
             println!("(STDOUT) Dispatcher caught: {}", line);
             None
         }));
+          stdout_dispatcher.add_callback(
+        r"server listening at:",
+        Box::new(|line, _captures, state| {
+            // If we're not already in multiline mode, this is the initial match.
+            if !state.load(Ordering::Relaxed) {
+                println!("Matched 'server listening at:' in: {}", line);
+                state.store(true, Ordering::Relaxed);
+                Some(CallbackResponse {
+                    number: 1,
+                    message: Some(format!("Started multiline mode after: {}", line)),
+                })
+            } else {
+                // We are in multiline mode; process subsequent lines.
+                println!("Multiline callback received: {}", line);
+                // Use a regex to capture a URL from the line.
+                let url_regex = Regex::new(r"(http://[^\s]+)").unwrap();
+                if let Some(url_caps) = url_regex.captures(line) {
+                    let url = url_caps.get(1).unwrap().as_str();
+                    // Call open::that on the captured URL.
+                    match open::that(url) {
+                        Ok(_) => println!("Opened URL: {}", url),
+                        Err(e) => eprintln!("Failed to open URL: {}. Error: {}", url, e),
+                    }
+                    // End multiline mode.
+                    state.store(false, Ordering::Relaxed);
+                    Some(CallbackResponse {
+                        number: 2,
+                        message: Some(format!("Captured and opened URL: {}", url)),
+                    })
+                } else {
+                    None
+                }
+            }
+        }),
+    );
         self.stdout_dispatcher = Some(Arc::new(stdout_dispatcher));
 
         let mut stderr_dispatcher = EventDispatcher::new();
-        stderr_dispatcher.add_callback(r"IO\(Custom \{ kind: NotConnected", Box::new(move |line, captures| {
-            println!("(STDERR) Terminal error detected: {}", &line);
+        stderr_dispatcher.add_callback(
+    r".*",
+    Box::new(|line, _captures, _state| {
+        println!("(STDERR) {:?}", line);
+        None // We're just printing, so no callback response is needed.
+    }),
+);
+    stderr_dispatcher.add_callback(
+        r"(?:\x1b\[[0-9;]*[A-Za-z])*\s*Serving(?:\x1b\[[0-9;]*[A-Za-z])*\s+at\s+(http://[^\s]+)",
+        Box::new(|line, captures, _state| {
+            if let Some(caps) = captures {
+                let url = caps.get(1).unwrap().as_str();
+                println!("(STDERR) Captured URL: {}", url);
+                match open::that(url) {
+                    Ok(_) => println!("(STDERR) Opened URL: {}", url),
+                    Err(e) => eprintln!("(STDERR) Failed to open URL: {}. Error: {:?}", url, e),
+                }
+                Some(CallbackResponse {
+                    number: 1,
+                    message: Some(format!("Captured and opened URL: {}", url)),
+                })
+            } else {
+                println!("(STDERR) No URL captured in line: {}", line);
+                None
+            }
+        }),
+    );
+        stderr_dispatcher.add_callback(r"IO\(Custom \{ kind: NotConnected", Box::new(move |line, captures, state| {
+            println!("(STDERR) Terminal error detected: {:?}", &line);
             let result = if line.contains("NotConnected") {
                 TerminalError::NoTerminal
             } else {
@@ -186,14 +260,14 @@ impl CargoCommandBuilder {
         self.stderr_dispatcher = Some(Arc::new(stderr_dispatcher));
 
         let mut progress_dispatcher = EventDispatcher::new();
-        progress_dispatcher.add_callback(r"Progress", Box::new(|line, captures| {
+        progress_dispatcher.add_callback(r"Progress", Box::new(|line, _captures,_state| {
             println!("(Progress) {}", line);
             None
         }));
         self.progress_dispatcher = Some(Arc::new(progress_dispatcher));
 
         let mut stage_dispatcher = EventDispatcher::new();
-        stage_dispatcher.add_callback(r"Stage:", Box::new(|line, captures| {
+        stage_dispatcher.add_callback(r"Stage:", Box::new(|line, _captures, _state| {
             println!("(Stage) {}", line);
             None
         }));
@@ -489,7 +563,8 @@ if *cargo_process_handle.terminal_error_flag.lock().unwrap() != TerminalError::N
                             println!("Detected 'cargo leptos watch' in {}", readme.display());
                             self.execution_dir =
                                 target.manifest_path.parent().map(|p| p.to_path_buf());
-                            self.alternate_cmd = Some("cargo".to_string());
+                            self.execution_dir = Some(target.manifest_path.parent().unwrap().to_path_buf());
+                        self.alternate_cmd = Some("cargo".to_string());
                             self.args.push("leptos".into());
                             self.args.push("watch".into());
                             self = self.with_required_features(&target.manifest_path, target);

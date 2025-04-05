@@ -123,7 +123,7 @@ pub fn main() -> anyhow::Result<()> {
         let _ = interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait);
     }
 
-    let mut manager = ProcessManager::new();
+    let manager = ProcessManager::new();
     // Control the maximum number of Cargo processes running concurrently.
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -979,12 +979,12 @@ fn cli_loop(
 }
 
 trait JoinTimeout {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
+    fn join_timeout(self, timeout: std::time::Duration) -> Result<(), ()>;
 }
 
-impl<T> JoinTimeout for thread::JoinHandle<T> {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
-        let result = thread::sleep(timeout);
+impl<T> JoinTimeout for std::thread::JoinHandle<T> {
+    fn join_timeout(self, timeout: std::time::Duration) -> Result<(), ()> {
+        let result = std::thread::sleep(timeout);
         match self.join() {
             Ok(_) => Ok(()),
             Err(_) => Err(()),
@@ -1017,7 +1017,7 @@ pub fn run_rust_script_with_ctrlc_handling() {
         let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
 
         // Run the child process in a separate thread to allow Ctrl+C handling
-        let handle = thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             let extra_str_slice_cloned = extra_str_slice.clone();
             let child = e_runner::run_rust_script(
                 &explicit,
@@ -1032,38 +1032,38 @@ pub fn run_rust_script_with_ctrlc_handling() {
             });
 
             // Lock global to store the child process
-            {
-                let mut global = GLOBAL_CHILD.lock().unwrap();
-                *global = Some(child);
-            }
+            // {
+            //     let mut global = GLOBAL_CHILD.lock().unwrap();
+            //     *global = Some(child);
+            // }
 
-            // Wait for the child process to complete
-            let status = {
-                let mut global = GLOBAL_CHILD.lock().unwrap();
-                if let Some(mut child) = global.take() {
-                    child.wait()
-                } else {
-                    // Handle missing child process
-                    eprintln!("Child process missing");
-                    std::process::exit(1); // Exit with an error code
-                }
-            };
+            // // Wait for the child process to complete
+            // let status = {
+            //     let mut global = GLOBAL_CHILD.lock().unwrap();
+            //     if let Some(mut child) = global.take() {
+            //         child.wait()
+            //     } else {
+            //         // Handle missing child process
+            //         eprintln!("Child process missing");
+            //         std::process::exit(1); // Exit with an error code
+            //     }
+            // };
 
             // Handle the child process exit status
-            match status {
-                Ok(status) => {
-                    eprintln!("Child process exited with status code: {:?}", status.code());
-                    std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                }
-                Err(err) => {
-                    eprintln!("Error waiting for child process: {}", err);
-                    std::process::exit(1); // Exit with an error code
-                }
-            }
+            // match status {
+            //     Ok(status) => {
+            //         eprintln!("Child process exited with status code: {:?}", status.code());
+            //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+            //     }
+            //     Err(err) => {
+            //         eprintln!("Error waiting for child process: {}", err);
+            //         std::process::exit(1); // Exit with an error code
+            //     }
+            // }
         });
 
         // Wait for the thread to complete, but with a timeout
-        let timeout = Duration::from_secs(10);
+        let timeout = std::time::Duration::from_secs(10);
         match handle.join_timeout(timeout) {
             Ok(_) => {
                 println!("Child process finished successfully.");

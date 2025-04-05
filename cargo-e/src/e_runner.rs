@@ -599,18 +599,6 @@ pub fn is_active_scriptisto<P: AsRef<Path>>(path: P) -> io::Result<bool> {
     Ok(true)
 }
 
-/// Returns true if the file's a "scriptisto"
-pub fn is_active_scriptisto<P: AsRef<Path>>(path: P) -> io::Result<bool> {
-    let file = File::open(path)?;
-    let mut reader = std::io::BufReader::new(file);
-    let mut first_line = String::new();
-    reader.read_line(&mut first_line)?;
-    if !first_line.contains("scriptisto") || !first_line.starts_with("#") {
-        return Ok(false);
-    }
-    Ok(true)
-}
-
 /// Returns true if the file's a "rust-script"
 pub fn is_active_rust_script<P: AsRef<Path>>(path: P) -> io::Result<bool> {
     let file = File::open(path)?;
@@ -716,35 +704,35 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
                     std::process::exit(1); // Exit with an error code
                 });
 
-                // Lock global to store the child process
-                {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    *global = Some(child);
-                }
+                // // Lock global to store the child process
+                // {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     *global = Some(child);
+                // }
 
-                // Wait for the child process to complete
-                let status = {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    if let Some(mut child) = global.take() {
-                        child.wait()
-                    } else {
-                        // Handle missing child process
-                        eprintln!("Child process missing");
-                        std::process::exit(1); // Exit with an error code
-                    }
-                };
+                // // Wait for the child process to complete
+                // let status = {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     if let Some(mut child) = global.take() {
+                //         child.wait()
+                //     } else {
+                //         // Handle missing child process
+                //         eprintln!("Child process missing");
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // };
 
                 // Handle the child process exit status
-                match status {
-                    Ok(status) => {
-                        eprintln!("Child process exited with status code: {:?}", status.code());
-                        std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                    }
-                    Err(err) => {
-                        eprintln!("Error waiting for child process: {}", err);
-                        std::process::exit(1); // Exit with an error code
-                    }
-                }
+                // match status {
+                //     Ok(status) => {
+                //         eprintln!("Child process exited with status code: {:?}", status.code());
+                //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                //     }
+                //     Err(err) => {
+                //         eprintln!("Error waiting for child process: {}", err);
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // }
             });
 
             // Wait for the thread to complete, but with a timeout
@@ -789,35 +777,35 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
                     std::process::exit(1); // Exit with an error code
                 });
 
-                // Lock global to store the child process
-                {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    *global = Some(child);
-                }
+                // // Lock global to store the child process
+                // {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     *global = Some(child);
+                // }
 
-                // Wait for the child process to complete
-                let status = {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    if let Some(mut child) = global.take() {
-                        child.wait()
-                    } else {
-                        // Handle missing child process
-                        eprintln!("Child process missing");
-                        std::process::exit(1); // Exit with an error code
-                    }
-                };
+                // // Wait for the child process to complete
+                // let status = {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     if let Some(mut child) = global.take() {
+                //         child.wait()
+                //     } else {
+                //         // Handle missing child process
+                //         eprintln!("Child process missing");
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // };
 
-                // Handle the child process exit status
-                match status {
-                    Ok(status) => {
-                        eprintln!("Child process exited with status code: {:?}", status.code());
-                        std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                    }
-                    Err(err) => {
-                        eprintln!("Error waiting for child process: {}", err);
-                        std::process::exit(1); // Exit with an error code
-                    }
-                }
+                // // Handle the child process exit status
+                // match status {
+                //     Ok(status) => {
+                //         eprintln!("Child process exited with status code: {:?}", status.code());
+                //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                //     }
+                //     Err(err) => {
+                //         eprintln!("Error waiting for child process: {}", err);
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // }
             });
 
             // Wait for the thread to complete, but with a timeout
