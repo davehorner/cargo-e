@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.8...cargo-e-v0.2.9) - 2025-04-05
+
+### Fixed
+
+- *(leptos)* cargo leptos executes in manifest path.
+
+### Other
+
+- set MSRV
+
 ## [0.2.8](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.7...cargo-e-v0.2.8) - 2025-04-03
 
 ### Added

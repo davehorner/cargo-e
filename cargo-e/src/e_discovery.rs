@@ -317,7 +317,7 @@ pub fn determine_target_kind_and_manifest(
 
     // leptos detection
     if file_contents.contains("leptos::") {
-        return (TargetKind::ManifestLeptos,new_manifest)
+        return (TargetKind::ManifestLeptos, new_manifest);
     }
 
     // Check if the file contains "fn main"

@@ -7,6 +7,13 @@ All notable changes to this project will be documented in this file.
 
 
 
+
+## [0.1.13](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.12...e_crate_version_checker-v0.1.13) - 2025-04-05
+
+### Other
+
+- set MSRV
+
 ## [0.1.12](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.11...e_crate_version_checker-v0.1.12) - 2025-03-29
 
 ### Other
