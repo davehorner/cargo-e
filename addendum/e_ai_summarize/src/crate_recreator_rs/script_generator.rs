@@ -31,7 +31,6 @@ fn make_raw_string_literal(input: &str) -> String {
 /// This function embeds each file's content as a raw string literal using a dynamic delimiter,
 /// and converts file paths to use forward slashes.
 ///
-
 pub fn generate_rust_script(
     files: &std::collections::HashMap<std::path::PathBuf, String>,
     crate_name: &str,

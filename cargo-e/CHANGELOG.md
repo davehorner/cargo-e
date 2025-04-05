@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.9...cargo-e-v0.2.10) - 2025-04-05
+
+### Added
+
+- *(scriptisto)* integrate scriptisto support with enhanced Ctrl+C handling
+
 ## [0.2.9](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.8...cargo-e-v0.2.9) - 2025-04-05
 
 ### Fixed

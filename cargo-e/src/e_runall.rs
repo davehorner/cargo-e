@@ -61,10 +61,6 @@ fn send_ctrl_c(child: &mut Child) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the prebuild step fails or if any child process fails to spawn or complete.
-///
-///
-///
-
 pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> Result<bool> {
     // Adjust RUSTFLAGS if --quiet was provided.
     set_rustflags_if_quiet(cli.quiet);

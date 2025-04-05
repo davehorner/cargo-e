@@ -18,7 +18,7 @@ pub fn gather_files(source_folder: &Path) -> Result<HashMap<PathBuf, String>> {
             !e.path().components().any(|comp| {
                 comp.as_os_str()
                     .to_str()
-                    .map_or(false, |s| excluded.contains(&s))
+                    .is_some_and(|s| excluded.contains(&s))
             })
         })
         .filter_map(|e| e.ok())

@@ -36,9 +36,9 @@ pub fn generate_py_script(files: &HashMap<PathBuf, String>, crate_name: &str) ->
         // Escape the file content so that it can be embedded safely.
         let escaped_content = content.escape_default().to_string();
         lines.push(format!(
-            "        {}: {} ,  # File: {}",
-            format!("{:?}", path_str),
-            format!("{:?}", escaped_content),
+            "        {:?}: {:?} ,  # File: {}",
+            path_str,
+            escaped_content,
             path_str
         ));
     }

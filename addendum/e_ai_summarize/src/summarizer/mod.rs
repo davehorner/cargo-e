@@ -338,7 +338,7 @@ pub fn generate_heredoc_output(
     for (path, content) in files {
         let rel_path = path.to_slash_lossy();
         out.push_str(&format!("//- ----- {}::{} -----\n", reference, rel_path));
-        out.push_str(&sanitize(&content));
+        out.push_str(&sanitize(content));
         out.push_str(&format!("\n//- ----- {}::{} -----\n", reference, rel_path));
     }
     out

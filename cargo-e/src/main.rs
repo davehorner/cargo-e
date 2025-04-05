@@ -19,8 +19,6 @@
 
 use cargo_e::e_cli::RunAll;
 use cargo_e::e_runner;
-use cargo_e::e_runner::is_active_rust_script;
-use cargo_e::e_runner::GLOBAL_CHILD;
 use cargo_e::e_target::CargoTarget;
 use cargo_e::e_target::TargetKind;
 #[cfg(feature = "tui")]
@@ -36,8 +34,6 @@ use clap::Parser;
 use std::os::unix::process;
 #[cfg(target_os = "windows")]
 use std::os::windows::process;
-use std::thread;
-use std::time::Duration;
 
 static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -114,7 +110,8 @@ pub fn main() -> anyhow::Result<()> {
         }
 
         // Now call run_rust_script_with_ctrlc_handling
-        run_rust_script_with_ctrlc_handling();
+        e_runner::run_scriptisto_with_ctrlc_handling(explicit.clone(), cli.extra.clone());
+        e_runner::run_rust_script_with_ctrlc_handling(explicit.clone(), cli.extra.clone());
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
@@ -920,104 +917,6 @@ fn cli_loop(
             Err(err) => {
                 eprintln!("Error: {:?}", err);
                 std::process::exit(1); // Exit with an error code
-            }
-        }
-    }
-}
-
-trait JoinTimeout {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
-}
-
-impl<T> JoinTimeout for thread::JoinHandle<T> {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
-        let result = thread::sleep(timeout);
-        match self.join() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
-    }
-}
-
-pub fn run_rust_script_with_ctrlc_handling() {
-    let explicit = {
-        let lock = EXPLICIT.lock().unwrap_or_else(|e| {
-            eprintln!("Failed to acquire lock: {}", e);
-            std::process::exit(1); // Exit the program if the lock cannot be obtained
-        });
-        lock.clone() // Clone the data to move it into the thread
-    };
-
-    let explicit_path = Path::new(&explicit); // Construct Path outside the lock
-
-    if explicit_path.exists() {
-        match is_active_rust_script(&explicit_path) {
-            Ok(true) => {}
-            Ok(false) | Err(_) => {
-                // Handle the error locally without propagating it
-                eprintln!("Failed to check if the file is a rust-script");
-                std::process::exit(1); // Exit with an error code
-            }
-        }
-
-        let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
-        let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
-
-        // Run the child process in a separate thread to allow Ctrl+C handling
-        let handle = thread::spawn(move || {
-            let extra_str_slice_cloned = extra_str_slice.clone();
-            let child = e_runner::run_rust_script(
-                &explicit,
-                &extra_str_slice_cloned
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>(),
-            )
-            .unwrap_or_else(|| {
-                eprintln!("Failed to run rust-script: {:?}", &explicit);
-                std::process::exit(1); // Exit with an error code
-            });
-
-            // Lock global to store the child process
-            {
-                let mut global = GLOBAL_CHILD.lock().unwrap();
-                *global = Some(child);
-            }
-
-            // Wait for the child process to complete
-            let status = {
-                let mut global = GLOBAL_CHILD.lock().unwrap();
-                if let Some(mut child) = global.take() {
-                    child.wait()
-                } else {
-                    // Handle missing child process
-                    eprintln!("Child process missing");
-                    std::process::exit(1); // Exit with an error code
-                }
-            };
-
-            // Handle the child process exit status
-            match status {
-                Ok(status) => {
-                    eprintln!("Child process exited with status code: {:?}", status.code());
-                    std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                }
-                Err(err) => {
-                    eprintln!("Error waiting for child process: {}", err);
-                    std::process::exit(1); // Exit with an error code
-                }
-            }
-        });
-
-        // Wait for the thread to complete, but with a timeout
-        let timeout = Duration::from_secs(10);
-        match handle.join_timeout(timeout) {
-            Ok(_) => {
-                println!("Child process finished successfully.");
-            }
-            Err(_) => {
-                eprintln!("Child process took too long to finish. Exiting...");
-                std::process::exit(1); // Exit if the process takes too long
             }
         }
     }

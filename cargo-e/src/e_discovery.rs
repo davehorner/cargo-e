@@ -7,139 +7,6 @@ use std::{
 use crate::e_target::{CargoTarget, TargetKind};
 use anyhow::{anyhow, Context, Result};
 
-/// Discover targets in the given directory.
-/// This function scans for a Cargo.toml and then looks for example files or subproject directories.
-// pub fn discover_targets(current_dir: &Path) -> Result<Vec<CargoTarget>> {
-//     let targets = Vec::new();
-//     return Ok(targets);
-//     let parent = current_dir.parent().expect("expected cwd to have a parent");
-//     // Check if a Cargo.toml exists in the current directory.
-//     let manifest_path = current_dir.join("Cargo.toml");
-//     // if manifest_path.exists() {
-//     //     // Check for Tauri: if "src-tauri" folder and "package.json" exist in the same directory.
-//     //     let tauri_folder = current_dir.join("src-tauri");
-//     //     let tauri_config = current_dir.join("tauri.conf.json");
-//     //     let target_kind = if tauri_folder.exists() || tauri_config.exists() {
-//     //         debug!("FOUND TAURI {}",manifest_path.display());
-//     //         TargetKind::ManifestTauri
-//     //     } else {
-//     //         // default kind for a manifest target (or you could use a different variant)
-//     //         TargetKind::Manifest
-//     //     };
-
-//     //     targets.push(CargoTarget {
-//     //         name: "default".to_string(),
-//     //         display_name: "Default Manifest".to_string(),
-//     //         manifest_path: manifest_path.to_string_lossy().to_string(),
-//     //         kind: target_kind,
-//     //         extended: false,
-//     //         origin: None,
-//     //     });
-//     // }
-
-//     // Scan the "examples" directory for example targets.
-//     let examples_dir = current_dir.join("examples");
-//     if examples_dir.exists() && examples_dir.is_dir() {
-//         for entry in fs::read_dir(&examples_dir)
-//             .with_context(|| format!("Reading directory {:?}", examples_dir))?
-//         {
-//             let entry = entry?;
-//             let path = entry.path();
-//             if path.is_file() {
-//                 // Assume that any .rs file in examples/ is an example.
-//                 if let Some(ext) = path.extension() {
-//                     if ext == "rs" {
-//                         if let Some(stem) = path.file_stem() {
-//                             // Read the file's contents
-//                             let file_contents = std::fs::read_to_string(&path).unwrap_or_default();
-
-//                             // Check for dioxus-specific markers
-//                             let target_kind = if file_contents.contains("dioxus::LaunchBuilder")
-//                                 || file_contents.contains("dioxus::launch")
-//                             {
-//                                 TargetKind::ManifestDioxusExample
-//                             } else if file_contents.contains("fn main") {
-//                                 TargetKind::Example
-//                             } else {
-//                                 continue;
-//                             };
-//                             targets.push(CargoTarget {
-//                                 name: stem.to_string_lossy().to_string(),
-//                                 display_name: stem.to_string_lossy().to_string(),
-//                                 manifest_path: current_dir.join("Cargo.toml"),
-//                                 kind: target_kind,
-//                                 extended: false,
-//                                 origin: Some(TargetOrigin::SingleFile(path)),
-//                             });
-//                         }
-//                     }
-//                 }
-//             } else if path.is_dir() {
-//                 // If the directory contains a Cargo.toml, treat it as an extended subproject.
-//                 let sub_manifest = path.join("Cargo.toml");
-//                 if sub_manifest.exists() {
-//                     let tauri_folder = path.join("src-tauri");
-//                     let tauri_config = path.join("tauri.conf.json");
-//                     let dioxus_config = path.join("Dioxus.toml");
-
-//                     let target_kind = if tauri_folder.exists() || tauri_config.exists() {
-//                         debug!("FOUND TAURI {}", manifest_path.display());
-//                         TargetKind::ManifestTauri
-//                     } else if dioxus_config.exists() {
-//                         debug!("FOUND DIOXUS {}", manifest_path.display());
-//                         TargetKind::ManifestDioxus
-//                     } else {
-//                         // default example aleady represented in prior scans
-//                         continue;
-//                     };
-
-//                     if let Some(name) = path.file_name() {
-//                         debug!("FOUND {:?} {:?}", name, target_kind);
-//                         targets.push(CargoTarget {
-//                             name: name.to_string_lossy().to_string(),
-//                             display_name: format!(
-//                                 "-examples/ {}",
-//                                 // sub_manifest.file_name().unwrap_or_default().to_string_lossy(),
-//                                 name.to_string_lossy()
-//                             ),
-//                             manifest_path: sub_manifest.clone(),
-//                             kind: target_kind,
-//                             extended: true,
-//                             origin: Some(TargetOrigin::SubProject(sub_manifest)),
-//                         });
-//                     }
-//                 }
-//                 // else {
-
-//                 //     let tauri_folder = path.join("src-tauri");
-//                 //     let tauri_config = path.join("tauri.conf.json");
-//                 //     if tauri_folder.exists() || tauri_config.exists() {
-//                 //         let target_kind=TargetKind::ManifestTauri;
-//                 //         if let Some(name) = path.file_name() {
-//                 //             targets.push(CargoTarget {
-//                 //                 name: name.to_string_lossy().to_string(),
-//                 //                 display_name: format!(
-//                 //                     "- examples/ {}",
-//                 //                     // parent.display(),
-//                 //                     name.to_string_lossy()
-//                 //                 ),
-//                 //                 manifest_path: sub_manifest.to_string_lossy().to_string(),
-//                 //                 kind: target_kind,
-//                 //                 extended: true,
-//                 //                 origin: Some(TargetOrigin::SubProject(sub_manifest)),
-//                 //             });
-//                 //     };
-//                 // }
-//                 //}
-//             }
-//         }
-//     }
-
-//     // Additional discovery for binaries or tests can be added here.
-
-//     Ok(targets)
-// }
-
 pub fn scan_tests_directory(manifest_path: &Path) -> Result<Vec<String>> {
     // Determine the project root from the manifest's parent directory.
     let project_root = manifest_path
@@ -322,23 +189,18 @@ pub fn determine_target_kind_and_manifest(
 
     // Check if the file contains "fn main"
     if file_contents.contains("fn main") {
-        if file_contents.contains("fn main") {
-            if example {
-                let kind = if extended {
-                    TargetKind::ExtendedExample
-                } else {
-                    TargetKind::Example
-                };
-                return (kind, new_manifest);
+        let kind = if example {
+            if extended {
+                TargetKind::ExtendedExample
             } else {
-                let kind = if extended {
-                    TargetKind::ExtendedBinary
-                } else {
-                    TargetKind::Binary
-                };
-                return (kind, new_manifest);
+                TargetKind::Example
             }
-        }
+        } else if extended {
+            TargetKind::ExtendedBinary
+        } else {
+            TargetKind::Binary
+        };
+        return (kind, new_manifest);
     }
     // Check if the file contains a #[test] attribute; if so, mark it as a test.
     if file_contents.contains("#[test]") {
@@ -348,69 +210,6 @@ pub fn determine_target_kind_and_manifest(
     // Default fallback.
     (TargetKind::Unknown, "errorNOfnMAIN".into())
 }
-
-/// Determines the target kind based on the manifest path and file contents.
-/// Returns Some(kind) if one of the conditions is met, or None if the file doesn’t appear runnable.
-// pub fn determine_target_kind(
-//     manifest_path: &Path,
-//     candidate: &Path,
-//     file_contents: &str,
-//     example: bool,
-//     extended: bool,
-// ) -> Option<TargetKind> {
-//     // Check if the manifest's parent is "src-tauri" or if a Tauri configuration exists.
-//  if manifest_path
-//     .parent()
-//     .and_then(|p| p.file_name())
-//     .map(|s| s.to_string_lossy().eq_ignore_ascii_case("src-tauri"))
-//     .unwrap_or(false)
-//     || manifest_path
-//         .parent()
-//         .map(|p| p.join("tauri.conf.json"))
-//         .map_or(false, |p| p.exists())
-//     || manifest_path
-//         .parent()
-//         .map(|p| p.join("src-tauri"))
-//         .map_or(false, |p| p.exists())
-//     || candidate
-//         .parent()
-//         .map(|p| p.join("tauri.conf.json"))
-//         .map_or(false, |p| p.exists())
-// {
-//     return Some(TargetKind::ManifestTauri);
-// }
-
-//     // Check for Dioxus markers.
-//     if file_contents.contains("LaunchBuilder::new")
-//         || file_contents.contains("dioxus::LaunchBuilder")
-//         || file_contents.contains("dioxus::launch")
-//     {
-//         return Some(if example {
-//             TargetKind::ManifestDioxusExample
-//         } else {
-//             TargetKind::ManifestDioxus
-//         });
-//     }
-
-//     // Check if the file is a runnable source file.
-//     if file_contents.contains("fn main") {
-//         if example {
-//             if extended {
-//                 return Some(TargetKind::ExtendedExample);
-//             } else {
-//                 return Some(TargetKind::Example);
-//             }
-//         } else {
-//             if extended {
-//                 return Some(TargetKind::ExtendedBinary);
-//             } else {
-//                 return Some(TargetKind::Binary);
-//             }
-//         }
-//     }
-
-//     None
-// }
 
 /// Returns true if the candidate file is not located directly in the project root.
 pub fn is_extended_target(manifest_path: &Path, candidate: &Path) -> bool {
