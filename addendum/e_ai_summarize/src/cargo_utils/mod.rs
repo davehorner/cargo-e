@@ -11,7 +11,7 @@ use toml::Value; // Add toml crate to Cargo.toml
 pub fn get_crate_name_and_version(
     crate_toml_path: &Path,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
-    let content = fs::read_to_string(&crate_toml_path)?;
+    let content = fs::read_to_string(crate_toml_path)?;
 
     // Parse the TOML content
     let toml: Value = toml::de::from_str(&content)?;
@@ -76,7 +76,6 @@ pub fn find_cargo_toml(start: &Path) -> Option<PathBuf> {
 ///   3. Otherwise, it uses the provided `crate_location` as the root.
 ///   4. If `src_only` is true, the file gathering will occur in the "src" subfolder;
 ///      otherwise, it gathers files from the entire crate root.
-/// This function is shared between the gen-script subcommands.
 pub fn gather_files_from_crate(
     crate_location: &str,
     src_only: bool,
@@ -84,7 +83,7 @@ pub fn gather_files_from_crate(
     // Use the file-gathering function from the file_gatherer module.
     use crate::file_gatherer::gather_files;
     let crate_location = if crate_location.is_empty() {
-        ".".into()
+        "."
     } else {
         crate_location
     };

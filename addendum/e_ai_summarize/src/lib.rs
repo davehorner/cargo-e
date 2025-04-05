@@ -108,16 +108,16 @@ pub fn preprocess_text(input: &str, config: &PreprocessConfig) -> String {
     }
 
     // Flush any remaining comment block
-    if in_comment {
-        if !config.remove_long_comments
-            || comment_block.len() <= config.max_comment_block_lines.unwrap_or(usize::MAX)
-        {
-            for comment_line in &comment_block {
-                output.push_str(comment_line);
-                output.push('\n');
-            }
-        }
+    if in_comment
+    && (!config.remove_long_comments
+        || comment_block.len() <= config.max_comment_block_lines.unwrap_or(usize::MAX))
+{
+    for comment_line in &comment_block {
+        output.push_str(comment_line);
+        output.push('\n');
     }
+}
+
 
     if config.collapse_blank_lines {
         // Optional: collapse multiple blank lines into one
@@ -126,7 +126,7 @@ pub fn preprocess_text(input: &str, config: &PreprocessConfig) -> String {
             .fold((String::new(), false), |(mut acc, mut last_blank), line| {
                 if line.trim().is_empty() {
                     if !last_blank {
-                        acc.push_str("\n");
+                        acc.push('\n');
                         last_blank = true;
                     }
                 } else {

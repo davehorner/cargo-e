@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 use which::which; // Adjust the import based on your project structure
 
 // Global shared container for the currently running child process.
@@ -48,7 +50,7 @@ pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     // Extract the origin path from the target (e.g. the manifest path).
     let _origin_path = match &target.origin {
         Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
-        _ => return (),
+        _ => return,
     };
 
     let exe_path = match which("cargoe_ai_summarize") {
@@ -451,6 +453,18 @@ pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
     }
 }
 
+/// Returns true if the file's a "scriptisto"
+pub fn is_active_scriptisto<P: AsRef<Path>>(path: P) -> io::Result<bool> {
+    let file = File::open(path)?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+    if !first_line.contains("scriptisto") || !first_line.starts_with("#") {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
 /// Returns true if the file's a "rust-script"
 pub fn is_active_rust_script<P: AsRef<Path>>(path: P) -> io::Result<bool> {
     let file = File::open(path)?;
@@ -461,6 +475,36 @@ pub fn is_active_rust_script<P: AsRef<Path>>(path: P) -> io::Result<bool> {
         return Ok(false);
     }
     Ok(true)
+}
+
+/// Checks if `scriptisto` is installed and suggests installation if it's not.
+pub fn check_scriptisto_installed() -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let r = which("scriptisto");
+    match r {
+        Ok(_) => {
+            // installed
+        }
+        Err(e) => {
+            // scriptisto is not found in the PATH
+            eprintln!("scriptisto is not installed.");
+            println!("Suggestion: To install scriptisto, run the following command:");
+            println!("cargo install scriptisto");
+            return Err(e.into());
+        }
+    }
+    Ok(r?)
+}
+
+pub fn run_scriptisto<P: AsRef<Path>>(script_path: P, args: &[&str]) -> Option<Child> {
+    let scriptisto = check_scriptisto_installed().ok()?;
+
+    let script: &std::path::Path = script_path.as_ref();
+    let child = Command::new(scriptisto)
+        .arg(script)
+        .args(args)
+        .spawn()
+        .ok()?;
+    Some(child)
 }
 
 /// Checks if `rust-script` is installed and suggests installation if it's not.
@@ -491,4 +535,203 @@ pub fn run_rust_script<P: AsRef<Path>>(script_path: P, args: &[&str]) -> Option<
         .spawn()
         .ok()?;
     Some(child)
+}
+
+pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<String>) {
+    // let explicit = {
+    //     let lock = EXPLICIT.lock().unwrap_or_else(|e| {
+    //         eprintln!("Failed to acquire lock: {}", e);
+    //         std::process::exit(1); // Exit the program if the lock cannot be obtained
+    //     });
+    //     lock.clone() // Clone the data to move it into the thread
+    // };
+
+    let explicit_path = Path::new(&explicit); // Construct Path outside the lock
+
+    if explicit_path.exists() {
+        is_active_scriptisto(&explicit_path).ok();
+
+        // let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
+        let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
+
+        if is_active_rust_script(&explicit_path).is_ok() {
+            // Run the child process in a separate thread to allow Ctrl+C handling
+            let handle = thread::spawn(move || {
+                let extra_str_slice_cloned = extra_str_slice.clone();
+                let child = run_rust_script(
+                    &explicit,
+                    &extra_str_slice_cloned
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_else(|| {
+                    eprintln!("Failed to run rust-script: {:?}", &explicit);
+                    std::process::exit(1); // Exit with an error code
+                });
+
+                // Lock global to store the child process
+                {
+                    let mut global = GLOBAL_CHILD.lock().unwrap();
+                    *global = Some(child);
+                }
+
+                // Wait for the child process to complete
+                let status = {
+                    let mut global = GLOBAL_CHILD.lock().unwrap();
+                    if let Some(mut child) = global.take() {
+                        child.wait()
+                    } else {
+                        // Handle missing child process
+                        eprintln!("Child process missing");
+                        std::process::exit(1); // Exit with an error code
+                    }
+                };
+
+                // Handle the child process exit status
+                match status {
+                    Ok(status) => {
+                        eprintln!("Child process exited with status code: {:?}", status.code());
+                        std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                    }
+                    Err(err) => {
+                        eprintln!("Error waiting for child process: {}", err);
+                        std::process::exit(1); // Exit with an error code
+                    }
+                }
+            });
+
+            // Wait for the thread to complete, but with a timeout
+            let timeout = Duration::from_secs(10);
+            match handle.join_timeout(timeout) {
+                Ok(_) => {
+                    println!("Child process finished successfully.");
+                }
+                Err(_) => {
+                    eprintln!("Child process took too long to finish. Exiting...");
+                    std::process::exit(1); // Exit if the process takes too long
+                }
+            }
+        }
+    }
+}
+
+pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<String>) {
+    let relative: String = make_relative(Path::new(&explicit)).unwrap_or_else(|e| {
+        eprintln!("Error computing relative path: {}", e);
+        std::process::exit(1);
+    });
+
+    let explicit_path = Path::new(&relative);
+    if explicit_path.exists() {
+        // let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
+        let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
+
+        if is_active_scriptisto(&explicit_path).is_ok() {
+            // Run the child process in a separate thread to allow Ctrl+C handling
+            let handle = thread::spawn(move || {
+                let extra_str_slice_cloned: Vec<String> = extra_str_slice.clone();
+                let child = run_scriptisto(
+                    &relative,
+                    &extra_str_slice_cloned
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_else(|| {
+                    eprintln!("Failed to run rust-script: {:?}", &explicit);
+                    std::process::exit(1); // Exit with an error code
+                });
+
+                // Lock global to store the child process
+                {
+                    let mut global = GLOBAL_CHILD.lock().unwrap();
+                    *global = Some(child);
+                }
+
+                // Wait for the child process to complete
+                let status = {
+                    let mut global = GLOBAL_CHILD.lock().unwrap();
+                    if let Some(mut child) = global.take() {
+                        child.wait()
+                    } else {
+                        // Handle missing child process
+                        eprintln!("Child process missing");
+                        std::process::exit(1); // Exit with an error code
+                    }
+                };
+
+                // Handle the child process exit status
+                match status {
+                    Ok(status) => {
+                        eprintln!("Child process exited with status code: {:?}", status.code());
+                        std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                    }
+                    Err(err) => {
+                        eprintln!("Error waiting for child process: {}", err);
+                        std::process::exit(1); // Exit with an error code
+                    }
+                }
+            });
+
+            // Wait for the thread to complete, but with a timeout
+            let timeout = Duration::from_secs(10);
+            match handle.join_timeout(timeout) {
+                Ok(_) => {
+                    println!("Child process finished successfully.");
+                }
+                Err(_) => {
+                    eprintln!("Child process took too long to finish. Exiting...");
+                    std::process::exit(1); // Exit if the process takes too long
+                }
+            }
+        }
+    }
+}
+/// Given any path, produce a relative path string starting with `./` (or `.\` on Windows).
+fn make_relative(path: &Path) -> std::io::Result<String> {
+    let cwd = env::current_dir()?;
+    // Try to strip the cwd prefix; if it isn’t under cwd, just use the original path.
+    let rel: PathBuf = match path.strip_prefix(&cwd) {
+        Ok(stripped) => stripped.to_path_buf(),
+        Err(_) => path.to_path_buf(),
+    };
+
+    let mut rel = if rel.components().count() == 0 {
+        // special case: the same directory
+        PathBuf::from(".")
+    } else {
+        rel
+    };
+
+    // Prepend "./" (or ".\") if it doesn’t already start with "." or ".."
+    let first = rel.components().next().unwrap();
+    match first {
+        std::path::Component::CurDir | std::path::Component::ParentDir => {}
+        _ => {
+            rel = PathBuf::from(".").join(rel);
+        }
+    }
+
+    // Convert back to a string with the correct separator
+    let s = rel
+        .to_str()
+        .expect("Relative path should be valid UTF-8")
+        .to_string();
+
+    Ok(s)
+}
+
+trait JoinTimeout {
+    fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
+}
+
+impl<T> JoinTimeout for thread::JoinHandle<T> {
+    fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
+        let _ = thread::sleep(timeout);
+        match self.join() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
 }
