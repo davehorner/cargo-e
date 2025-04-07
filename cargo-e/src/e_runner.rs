@@ -283,7 +283,7 @@ pub fn run_equivalent_example(
 }
 
 /// Runs the given example (or binary) target.
-pub fn run_example(manager: &ProcessManager,
+pub fn run_example(manager: Arc<ProcessManager>,
     cli: &crate::Cli,
     target: &crate::e_target::CargoTarget,
 ) -> anyhow::Result<Option<std::process::ExitStatus>> {
@@ -292,14 +292,13 @@ pub fn run_example(manager: &ProcessManager,
 
     // Avoid running our own binary.
     if target.kind == crate::e_target::TargetKind::Binary && target.name == current_bin {
-        return Err(anyhow::anyhow!(
-            "Skipping automatic run: {} is the same as the running binary",
-            target.name
-        ));
+            println!("Skipping automatic run: {} is the same as the running binary",
+            target.name);
+            return Ok(None);
     }
 
     // Build the command using the CargoCommandBuilder.
-    let mut builder = crate::e_command_builder::CargoCommandBuilder::new()
+    let mut builder = crate::e_command_builder::CargoCommandBuilder::new(&cli.subcommand)
         .with_target(target)
         .with_required_features(&target.manifest_path, target)
         .with_cli(cli);
@@ -339,8 +338,16 @@ pub fn run_example(manager: &ProcessManager,
     let pid = Arc::new(builder).run(|pid, handle| {
     manager.register(handle);
 })?;
-let ret=manager.wait(pid)?;
-println!("HERE IS THE RESULT!{} {:?}",pid,manager.get_terminal_error(pid));
+let result=manager.wait(pid, None)?;
+// println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
+// println!("\n\nHERE IS THE RESULT!{} {:?}",pid,result);
+result.print_exact();
+result.print_short();
+result.print_compact();
+
+        // manager.print_shortened_output();
+        manager.print_prefixed_summary();
+        // manager.print_compact();
 
 
 
@@ -365,7 +372,7 @@ println!("HERE IS THE RESULT!{} {:?}",pid,manager.get_terminal_error(pid));
         fs::write(&target.manifest_path, original)?;
     }
 
-    Ok(ret.exit_status)
+    Ok(result.exit_status)
 }
 // /// Runs an example or binary target, applying a temporary manifest patch if a workspace error is detected.
 // /// This function uses the same idea as in the collection helpers: if the workspace error is found,

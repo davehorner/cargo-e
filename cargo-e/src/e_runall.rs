@@ -78,7 +78,7 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
     let mut targets = filtered_targets.to_vec();
     targets.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
-    let manager = ProcessManager::new();
+    let manager = ProcessManager::new(&cli);
 
 
     let mut user_requested_quit = false;
@@ -92,7 +92,7 @@ pub fn run_all_examples(cli: &crate::Cli, filtered_targets: &[CargoTarget]) -> R
         }
 
         // Build the command using CargoCommandBuilder.
-        let builder = CargoCommandBuilder::new()
+        let builder = CargoCommandBuilder::new(&cli.subcommand)
             .with_target(&target)
             .with_required_features(&target.manifest_path, &target)
             .with_cli(cli)
