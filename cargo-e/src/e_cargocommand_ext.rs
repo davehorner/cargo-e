@@ -884,10 +884,11 @@ impl CargoCommandExt for Command {
 if let Some(ref disp) = stderr_disp_clone {
     // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
     let responses = disp.dispatch(&line);
-
+    let mut has_match = false;
     // Iterate over the responses.
     for ret in responses {
         if let Some(response) = ret {
+            has_match = true;
             if response.terminal_status == Some(TerminalError::NoTerminal) {
                 // If the response indicates a terminal error, set the flag.
                 *flag = TerminalError::NoTerminal;
@@ -925,11 +926,12 @@ if let Some(ref disp) = stderr_disp_clone {
                     // }
 
 
-        } else {
-            // If the line doesn't match any pattern, print it as is.
-            println!("{}: {}", pid, line);
         }
     }
+        if !has_match {
+            // If the line doesn't match any pattern, print it as is.
+            println!("nomatch {}: {}", pid, line);
+        }
 } else {
     
      println!("ALLLINES {}", line.trim());//all lines
