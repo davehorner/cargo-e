@@ -374,6 +374,23 @@ impl CargoTarget {
                 );
                 name = example_name.clone();
                 candidate_stem = example_name.into();
+            } else {
+                match &self.origin {
+                    Some(TargetOrigin::DefaultBinary(_path)) => {
+                        // Check for any [package] section.
+                        if let Some(pkg) = manifest_toml.get("package") {
+                            trace!("Found [package] section in manifest");
+                            if let Some(name_value) = pkg.get("name").and_then(|v| v.as_str()) {
+                                trace!("Using package name from manifest: {}", name_value);
+                                name = name_value.to_string();
+                                candidate_stem = name.clone();
+                            } else {
+                                trace!("No package name found in manifest; keeping name: {}", name);
+                            }
+                        }
+                    }
+                    _ => {}
+                };
             }
 
             // if let Some(bins) = manifest_toml.get("bin").and_then(|v| v.as_array()) {

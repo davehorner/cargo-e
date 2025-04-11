@@ -109,15 +109,14 @@ pub fn preprocess_text(input: &str, config: &PreprocessConfig) -> String {
 
     // Flush any remaining comment block
     if in_comment
-    && (!config.remove_long_comments
-        || comment_block.len() <= config.max_comment_block_lines.unwrap_or(usize::MAX))
-{
-    for comment_line in &comment_block {
-        output.push_str(comment_line);
-        output.push('\n');
+        && (!config.remove_long_comments
+            || comment_block.len() <= config.max_comment_block_lines.unwrap_or(usize::MAX))
+    {
+        for comment_line in &comment_block {
+            output.push_str(comment_line);
+            output.push('\n');
+        }
     }
-}
-
 
     if config.collapse_blank_lines {
         // Optional: collapse multiple blank lines into one
