@@ -150,7 +150,7 @@ impl CargoCommandBuilder {
     // }
 
         // Switch to passthrough mode when the terminal error is detected
-    fn switch_to_passthrough_mode(&self) {
+    fn switch_to_passthrough_mode(self: &Arc<Self>) {
         println!("Switching to passthrough mode...");
 
         let mut command = self.build_command();
