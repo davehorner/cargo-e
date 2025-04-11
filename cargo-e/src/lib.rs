@@ -40,6 +40,10 @@ pub mod e_runner;
 pub mod e_target;
 pub mod e_tui;
 pub mod e_workspace;
+pub mod e_cargocommand_ext;
+pub mod e_eventdispatcher;
+pub mod e_processmanager;
+pub mod e_fmt;
 
 #[allow(unused_macros)]
 macro_rules! doc_with_joke {

@@ -34,6 +34,13 @@ pub struct Cli {
     )]
     pub pre_build: bool,
 
+        /// Enable passthrough mode (no cargo output filtering, stdout is captured).
+    #[arg(
+        long = "filter",
+        short = 'f',
+        help = "Enable passthrough mode. No cargo output is filtered, and stdout is captured."
+    )]
+    pub filter: bool,
     /// Print version and feature flags in JSON format.
     #[arg(
         long,
@@ -103,7 +110,17 @@ pub struct Cli {
     )]
     pub wait: u64,
 
-    #[arg(help = "Specify an explicit example to run.")]
+    /// Subcommands to run (e.g., `build|b`, `test|t`).
+    #[arg(
+        long = "subcommand",
+        short = 's',
+        value_parser,
+        default_value = "run",
+        help = "Specify subcommands (e.g., `build|b`, `test|t`)."
+    )]
+    pub subcommand: String,
+
+    #[arg(help = "Specify an explicit target to run.")]
     pub explicit_example: Option<String>,
 
     #[arg(last = true, help = "Additional arguments passed to the command.")]
