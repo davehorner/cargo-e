@@ -38,12 +38,15 @@ pub fn scan_tests_directory(manifest_path: &Path) -> Result<Vec<String>> {
     Ok(tests)
 }
 
-pub fn scan_examples_directory(manifest_path: &Path) -> Result<Vec<CargoTarget>> {
+pub fn scan_examples_directory(
+    manifest_path: &Path,
+    examples_folder: &str,
+) -> Result<Vec<CargoTarget>> {
     // Determine the project root from the manifest's parent directory.
     let project_root = manifest_path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Unable to determine project root"))?;
-    let examples_dir = project_root.join("examples");
+    let examples_dir = project_root.join(examples_folder);
     let mut targets = Vec::new();
 
     if examples_dir.exists() && examples_dir.is_dir() {
@@ -76,34 +79,6 @@ pub fn scan_examples_directory(manifest_path: &Path) -> Result<Vec<CargoTarget>>
                     }
                     targets.push(target);
                 }
-                // If the directory contains a Cargo.toml, treat it as an extended subproject.
-                // let sub_manifest = path.join("Cargo.toml");
-                // if sub_manifest.exists() {
-                //     // Look for a Tauri or Dioxus configuration.
-                //     let tauri_folder = path.join("src-tauri");
-                //     let tauri_config = path.join("tauri.conf.json");
-                //     let dioxus_config = path.join("Dioxus.toml");
-
-                //     let target_kind = if tauri_folder.exists() || tauri_config.exists() {
-                //         TargetKind::ManifestTauri
-                //     } else if dioxus_config.exists() {
-                //         TargetKind::ManifestDioxus
-                //     } else {
-                //         // Skip directories that don't match known subproject configurations.
-                //         continue;
-                //     };
-
-                //     if let Some(name) = path.file_name() {
-                //         targets.push(CargoTarget {
-                //             name: name.to_string_lossy().to_string(),
-                //             display_name: format!("-examples/ {}", name.to_string_lossy()),
-                //             manifest_path: sub_manifest.clone(),
-                //             kind: target_kind,
-                //             extended: true,
-                //             origin: Some(TargetOrigin::SubProject(sub_manifest)),
-                //         });
-                //     }
-                // }
             }
         }
     }

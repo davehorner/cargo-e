@@ -37,9 +37,7 @@ pub fn generate_py_script(files: &HashMap<PathBuf, String>, crate_name: &str) ->
         let escaped_content = content.escape_default().to_string();
         lines.push(format!(
             "        {:?}: {:?} ,  # File: {}",
-            path_str,
-            escaped_content,
-            path_str
+            path_str, escaped_content, path_str
         ));
     }
     lines.push("    }".to_string());

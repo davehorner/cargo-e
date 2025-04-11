@@ -5,11 +5,11 @@
 
 use anyhow::Context;
 
-use genai::Client;
-use genai::chat::printer::PrintChatStreamOptions;
 use genai::chat::printer::print_chat_stream;
+use genai::chat::printer::PrintChatStreamOptions;
 use genai::chat::{ChatMessage, ChatRequest};
-use include_dir::{Dir, include_dir};
+use genai::Client;
+use include_dir::{include_dir, Dir};
 use path_slash::PathBufExt;
 use std::env;
 use std::fs;

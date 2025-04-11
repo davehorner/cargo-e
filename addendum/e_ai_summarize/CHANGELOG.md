@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.5...e_ai_summarize-v0.1.6) - 2025-04-11
+
+### Fixed
+
+- DefaultBinary will use package name if one exists.  Looking for
+
 ## [0.1.5](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.4...e_ai_summarize-v0.1.5) - 2025-04-05
 
 ### Added

@@ -646,6 +646,8 @@ pub fn get_runnable_targets(
                     false,
                 ) {
                     // Mark this as a default binary.
+                    // target.name = pkg.to_string();
+                    // target.display_name = pkg.to_string();
                     target.origin = Some(TargetOrigin::DefaultBinary(candidate));
                     bins.push(target);
                 }
@@ -706,7 +708,19 @@ pub fn get_runnable_targets(
         }
     }
     // Scan the examples directory for additional example targets.
-    let scanned_examples = crate::e_discovery::scan_examples_directory(manifest_path)?;
+    let scanned_examples = crate::e_discovery::scan_examples_directory(manifest_path, "examples")?;
+    for ex in scanned_examples {
+        if !examples.iter().any(|t| t.name == ex.name) {
+            let mut t = ex;
+            if is_extended {
+                t.kind = TargetKind::ExtendedExample;
+                t.extended = true;
+            }
+            examples.push(t);
+        }
+    }
+    let scanned_examples =
+        crate::e_discovery::scan_examples_directory(manifest_path, "experiments")?;
     for ex in scanned_examples {
         if !examples.iter().any(|t| t.name == ex.name) {
             let mut t = ex;
