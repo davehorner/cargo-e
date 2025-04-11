@@ -1,9 +1,9 @@
 
-use crate::e_command_builder::TerminalError;
+use crate::e_command_builder::{CargoCommandBuilder, TerminalError};
 use crate::e_eventdispatcher::{CargoDiagnosticLevel, EventDispatcher};
 use crate::e_runner::GLOBAL_CHILDREN;
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -227,7 +227,7 @@ pub struct CargoProcessResult {
 impl CargoProcessResult {
     /// Print every diagnostic in full detail.
     pub fn print_exact(&self) {
-        println!("--- Full Diagnostics for PID {} ---", self.pid);
+        println!("--- Full Diagnostics for PID {} --- {}", self.pid, self.diagnostics.len());
         for diag in &self.diagnostics {
             println!("{} {:?}: {} {}",diag.lineref, diag.level, diag.message,diag.suggestion.clone().unwrap_or_default());
         }
@@ -527,7 +527,7 @@ pub fn print_results(result: &CargoProcessResult) {
                     return ret;
                 }
             } else {
-                return format!("Process {} not found",(self.pid as usize));
+                // return format!("Process {} not found",(self.pid as usize));
                 return String::new()
             }
         } else {
@@ -549,6 +549,7 @@ pub trait CargoCommandExt {
     ) -> CargoProcessHandle;
     fn spawn_cargo_passthrough(
         &mut self,
+        builder: Arc<CargoCommandBuilder>,
     ) -> CargoProcessHandle;
 }
  
@@ -557,13 +558,14 @@ impl CargoCommandExt for Command {
 
         fn spawn_cargo_passthrough(
         &mut self,
+        builder: Arc<CargoCommandBuilder>,
     ) -> CargoProcessHandle {
         // Spawn the child process without redirecting stdout and stderr
         let child = self.spawn().expect("Failed to spawn cargo process");
 
         let pid = child.id();
         let start_time = SystemTime::now();
-        let diagnostics = Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new()));
+        let diagnostics = Arc::clone(&builder.diagnostics);
 
         let stats = Arc::new(Mutex::new(CargoStats::default()));
 
@@ -647,7 +649,7 @@ impl CargoCommandExt for Command {
         // Spawn a thread to process stdout.
         let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
         let stdout = child.stdout.take().expect("Failed to capture stdout");
-        println!("{}: Capturing stdout", pid);
+        // println!("{}: Capturing stdout", pid);
         let stdout_handle = thread::spawn(move || {
             let stdout_reader = BufReader::new(stdout);
             // This flag marks whether we are still in the build phase.
@@ -702,7 +704,7 @@ impl CargoCommandExt for Command {
                                     }
                                 }
                                 Message::CompilerMessage(msg) => {
-                            println!("parsed{}: {:?}", pid, msg);
+                            // println!("parsed{}: {:?}", pid, msg);
                                     let mut s = stats_clone.lock().unwrap();
                                     s.compiler_message_count += 1;
                                     if s.compiler_message_time.is_none() {
@@ -778,7 +780,7 @@ impl CargoCommandExt for Command {
                 }
             }
         }
-        });
+        }); // End of stdout thread
  
      let tflag = TerminalError::NoError;
         // Create a flag to indicate if the process is a terminal process.
@@ -793,19 +795,20 @@ impl CargoCommandExt for Command {
         let escape_sequence = "\u{1b}[1m\u{1b}[32m";  
         // let diagnostics_clone = Arc::clone(&diagnostics);
             let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
-            println!("{}: Capturing stderr", pid);
+            // println!("{}: Capturing stderr", pid);
+            let mut stderr_reader = BufReader::new(stderr);
         let stderr_handle = thread::spawn(move || {
 
             //    let mut msg_vec = stderr_compiler_msg_clone.lock().unwrap();
                        loop {
-                        println!("looping stderr thread {}", pid);
+                        // println!("looping stderr thread {}", pid);
             // Lock the deque and pop all messages available in a while loop
             while let Some(message) = {
                 let mut guard = stderr_compiler_msg_clone.lock().unwrap();
                 guard.pop_front()
             } {
 
-                println!("compiler:{}: {}", pid, message);
+                // println!("compiler:{}: {}", pid, message);
                         for line in message.lines() {
 
 
@@ -827,31 +830,27 @@ impl CargoCommandExt for Command {
             }
             // if let Some(ref msg) = response.message {
             //     println!("DISPATCH RESULT {} {}", pid, msg);
-            // }
-                    //     let diag = crate::e_eventdispatcher::convert_response_to_diagnostic(response, &line);
-                    //     // let mut diags = diagnostics_clone.lock().unwrap();
+            // // }
+            //             let diag = crate::e_eventdispatcher::convert_response_to_diagnostic(response, &line);
+            //             // let mut diags = diagnostics_clone.lock().unwrap();
 
-                    //     let in_multiline = disp.callbacks
-                    //     .lock().unwrap()
-                    //     .iter()
-                    //     .any(|cb| cb.is_reading_multiline.load(Ordering::Relaxed));
+            //             let in_multiline = disp.callbacks
+            //             .lock().unwrap()
+            //             .iter()
+            //             .any(|cb| cb.is_reading_multiline.load(Ordering::Relaxed));
                     
-                    // if !in_multiline {
-                    //     // start of a new diagnostic
-                    //     diags.push(diag);
-                    // } else {
-                    //     // continuation → child of the last diagnostic
-                    //     if let Some(parent) = diags.last_mut() {
-                    //         parent.children.push(diag);
-                    //     } else {
-                    //         // no parent yet (unlikely), just push
-                    //         diags.push(diag);
-                    //     }
-                    // }
-
-
-        } else {
-            println!("DISPATCH RESULT {} {}", pid, line);
+            //         if !in_multiline {
+            //             // start of a new diagnostic
+            //             diags.push(diag);
+            //         } else {
+            //             // continuation → child of the last diagnostic
+            //             if let Some(parent) = diags.last_mut() {
+            //                 parent.children.push(diag);
+            //             } else {
+            //                 // no parent yet (unlikely), just push
+            //                 diags.push(diag);
+            //             }
+            //         }
         }
     }
 }
@@ -861,13 +860,12 @@ impl CargoCommandExt for Command {
             }
             // Sleep briefly if no messages are available to avoid busy waiting
             thread::sleep(Duration::from_millis(100));
-            break;
-        }
+                // If still in build phase, add to the build counter.
+                // break;
 
-        println!("{}: dave stderr", pid);
+        // println!("{}: dave stderr", pid);
             let mut flag = terminal_flag_clone.lock().unwrap();
-            let stderr_reader = BufReader::new(stderr);
-            for line in stderr_reader.lines() {
+            for line in stderr_reader.by_ref().lines() {
                 if let Ok(line) = line {
 
 
@@ -883,7 +881,6 @@ impl CargoCommandExt for Command {
                     } else {
                         line // If it doesn't start with the escape sequence, leave it unchanged
                     };
-                    println!("{}", line.trim());//all lines
 if let Some(ref disp) = stderr_disp_clone {
     // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
     let responses = disp.dispatch(&line);
@@ -928,8 +925,14 @@ if let Some(ref disp) = stderr_disp_clone {
                     // }
 
 
+        } else {
+            // If the line doesn't match any pattern, print it as is.
+            println!("{}: {}", pid, line);
         }
     }
+} else {
+    
+     println!("ALLLINES {}", line.trim());//all lines
 }
                     // if let Some(ref disp) = stderr_disp_clone {
                     //     if let Some(ret) = disp.dispatch(&line) {
@@ -949,9 +952,14 @@ if let Some(ref disp) = stderr_disp_clone {
                     }
                 }
             }
-        });
+        }  //loop
+    });// End of stderr thread
 
  
+ let final_diagnostics = {
+    let diag_lock = diagnostics.lock().unwrap();
+    diag_lock.clone()
+};
         let pid = child.id();
     let result = CargoProcessResult {
         pid: pid,
@@ -965,7 +973,7 @@ if let Some(ref disp) = stderr_disp_clone {
         build_output_size: 0,
         runtime_output_size: 0,
         terminal_error: Some(tflag),
-        diagnostics: Vec::new(),
+        diagnostics: final_diagnostics,
     };
         CargoProcessHandle {
             child,

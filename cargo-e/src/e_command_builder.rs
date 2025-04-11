@@ -45,6 +45,7 @@ pub struct CargoCommandBuilder {
     pub stage_dispatcher: Option<Arc<EventDispatcher>>,
     pub terminal_error_flag: Arc<Mutex<bool>>,
     pub sender: Option<Arc<Mutex<Sender<TerminalError>>>>, 
+    pub diagnostics: Arc<Mutex<Vec<CargoDiagnostic>>>,
 }
 impl Default for CargoCommandBuilder {
     fn default() -> Self {
@@ -69,6 +70,7 @@ impl CargoCommandBuilder {
             stage_dispatcher: None,
             terminal_error_flag: Arc::new(Mutex::new(false)),
             sender: Some(sender),
+            diagnostics: Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new())),
         };
         builder.set_default_dispatchers();
 
@@ -154,8 +156,10 @@ impl CargoCommandBuilder {
         let mut command = self.build_command();
 
         // Now, spawn the cargo process in passthrough mode
-        let cargo_process_handle = command.spawn_cargo_passthrough();
-
+        let cargo_process_handle = command.spawn_cargo_passthrough(Arc::clone(self));
+        let diag_clone=Arc::clone(&cargo_process_handle.diagnostics);
+        let mut diagnostics = self.diagnostics.lock().unwrap();
+        diagnostics.append(&mut diag_clone.lock().unwrap());
         let pid = cargo_process_handle.pid;
 
         println!("Passthrough mode activated for PID {}", pid);
@@ -582,21 +586,38 @@ stderr_dispatcher.add_callback(
 }
 
     let pending_diag_clone = Arc::clone(&pending_diag);
+    let diagnostics_arc = Arc::clone(&self.diagnostics);
 // Callback for handling when an empty line or new diagnostic is received
 stderr_dispatcher.add_callback(
     r"^\s*$",  // Regex to capture empty line
     Box::new(move |line, _captures, _multiline_flag| {
         suggestion_mode.store(false, Ordering::Relaxed);
-        // Handle empty line scenario to end the current diagnostic processing
+                // End of current diagnostic: take and process it.
         if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
             println!("{:?}", pending_diag);
-            // Handle the saved PendingDiag and its CallbackResponse
-            // if let Some(callback_response) = pending_diag.callback_response {
-            //     println!("End of Diagnostic: {:?}", callback_response);
-            // }
+            // Use diagnostics_arc instead of self.diagnostics
+            let mut diags = diagnostics_arc.lock().unwrap();            
+            diags.push(pending_diag.clone());
         } else {
             println!("No pending diagnostic to process.");
         }
+        // Handle empty line scenario to end the current diagnostic processing
+        // if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
+        //     println!("{:?}", pending_diag);
+        //     let mut diags = self.diagnostics.lock().unwrap();            
+        //     diags.push(pending_diag.clone());
+        //                             // let diag = crate::e_eventdispatcher::convert_message_to_diagnostic(msg, &msg_str);
+        //                             // diags.push(diag.clone());
+        //                             // if let Some(ref sd) = stage_disp_clone {
+        //                             //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
+        //                             // }
+        //     // Handle the saved PendingDiag and its CallbackResponse
+        //     // if let Some(callback_response) = pending_diag.callback_response {
+        //     //     println!("End of Diagnostic: {:?}", callback_response);
+        //     // }
+        // } else {
+        //     println!("No pending diagnostic to process.");
+        // }
 
         None
     }),
@@ -796,19 +817,19 @@ stderr_dispatcher.add_callback(
         );
         self.stderr_dispatcher = Some(Arc::new(stderr_dispatcher));
 
-        let mut progress_dispatcher = EventDispatcher::new();
-        progress_dispatcher.add_callback(r"Progress", Box::new(|line, _captures,_state| {
-            println!("(Progress) {}", line);
-            None
-        }));
-        self.progress_dispatcher = Some(Arc::new(progress_dispatcher));
+        // let mut progress_dispatcher = EventDispatcher::new();
+        // progress_dispatcher.add_callback(r"Progress", Box::new(|line, _captures,_state| {
+        //     println!("(Progress) {}", line);
+        //     None
+        // }));
+        // self.progress_dispatcher = Some(Arc::new(progress_dispatcher));
 
-        let mut stage_dispatcher = EventDispatcher::new();
-        stage_dispatcher.add_callback(r"Stage:", Box::new(|line, _captures, _state| {
-            println!("(Stage) {}", line);
-            None
-        }));
-        self.stage_dispatcher = Some(Arc::new(stage_dispatcher));
+        // let mut stage_dispatcher = EventDispatcher::new();
+        // stage_dispatcher.add_callback(r"Stage:", Box::new(|line, _captures, _state| {
+        //     println!("(Stage) {}", line);
+        //     None
+        // }));
+        // self.stage_dispatcher = Some(Arc::new(stage_dispatcher));
     }
 
 
@@ -882,9 +903,15 @@ pub fn wait(self: Arc<Self>, pid: Option<u32>) -> anyhow::Result<CargoProcessRes
                         cargo_process_handle.result.terminal_error = Some(terminal_error);
                     }
 
+                     
+ let final_diagnostics = {
+    let diag_lock = self.diagnostics.lock().unwrap();
+    diag_lock.clone()
+};
+                    cargo_process_handle.result.diagnostics = final_diagnostics;
                     cargo_process_handle.result.exit_status = Some(status);
                     cargo_process_handle.result.end_time = Some( SystemTime::now() );
-                    println!("Process with PID {} finished {:?}", pid, status);
+                    println!("Process with PID {} finished {:?} {}", pid, status, self.diagnostics.lock().unwrap().len());
                     return Ok(cargo_process_handle.result.clone());
                     // return Ok(CargoProcessResult { exit_status: status, ..Default::default() });
                 }
