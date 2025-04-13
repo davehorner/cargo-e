@@ -676,7 +676,13 @@ pub mod tui_interactive {
                     true,
                     ProcessRefreshKind::nothing().with_cpu(),
                 );
-                let status_display = ProcessManager::format_process_status(pid, &handle, &system);
+                let status_display = ProcessManager::format_process_status(
+                    pid,
+                    &handle,
+                    &system,
+                    &target,
+                    (index + 1, examples.len()),
+                );
                 ProcessManager::update_status_line(&status_display, true).ok();
             }
         }
@@ -716,7 +722,7 @@ pub mod tui_interactive {
             } else {
                 "".to_string()
             };
-            let _ = crate::e_prompts::prompt(&message, cli.wait)?;
+            // PROMPT let _ = crate::e_prompts::prompt(&message, cli.wait)?;
         }
 
         reinit_terminal(terminal)?; // Reinitialize the terminal after running the target.

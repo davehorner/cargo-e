@@ -2,6 +2,7 @@
 
 use crate::e_cargocommand_ext::{CargoProcessHandle, CargoProcessResult};
 use crate::e_command_builder::TerminalError;
+use crate::e_target::CargoTarget;
 use crate::Cli;
 use chrono::Local;
 use std::collections::HashMap;
@@ -20,7 +21,12 @@ use crossterm::{
 };
 use std::io::{self, Write};
 use std::sync::atomic::Ordering;
-
+#[cfg(unix)]
+use {
+    nix::sys::signal::{kill as nix_kill, Signal},
+    nix::unistd::Pid,
+    std::os::unix::process::ExitStatusExt,
+};
 impl ProcessObserver for ProcessManager {
     fn on_spawn(&self, pid: u32, handle: CargoProcessHandle) {
         self.processes
@@ -188,103 +194,355 @@ impl ProcessManager {
         }
     }
 
+    // /// Attempts to kill the process corresponding to the provided PID.
+    // /// Returns Ok(true) if the process was found and successfully killed (or had already exited),
+    // /// Ok(false) if the process was not found or did not exit within the maximum attempts,
+    // /// or an error if something went wrong.
+    // pub fn kill_by_pid(&self, pid: u32) -> anyhow::Result<bool> {
+    //     // Retrieve a clone of the handle (Arc) for the given PID without removing it.
+    //     let handle = {
+    //         let processes = self.processes.lock().unwrap();
+    //         processes.get(&pid).cloned()
+    //     };
+
+    //     if let Some(handle) = handle {
+    //         eprintln!("Attempting to kill PID: {}", pid);
+
+    //         let max_attempts = 3;
+    //         let mut attempts = 0;
+    //         let mut process_exited = false;
+
+    //         loop {
+    //             // Lock the process handle for this iteration.
+    //             if let Ok(mut h) = handle.lock() {
+    //                 // Check if the process has already exited.
+    //                 match h.child.try_wait() {
+    //                     Ok(Some(status)) => {
+    //                         eprintln!("Process {} already exited with status: {:?}", pid, status);
+    //                         process_exited = true;
+    //                         break;
+    //                     }
+    //                     Ok(None) => {
+    //                         // Process is still running.
+    //                         if attempts == 0 {
+    //                             #[cfg(not(target_os = "windows"))] {
+    //                                 eprintln!("Sending initial Ctrl+C signal to PID: {}", pid);
+    //                                 crate::e_runall::send_ctrl_c(&mut h.child)?;
+    //                             }
+    //                             #[cfg(target_os = "windows")] {
+    //                                 eprintln!("Sending initial kill signal to PID: {}", pid);
+    //                             }
+    //                         } else {
+    //                             eprintln!("Attempt {}: Forcing kill for PID: {}", attempts, pid);
+    //                         }
+    //                         // Attempt to kill the process.
+    //                         if let Err(e) = h.kill() {
+    //                             eprintln!("Failed to send kill signal to PID {}: {}", pid, e);
+    //                         }
+    //                         // Mark that an exit was requested.
+    //                         h.requested_exit = true;
+    //                     }
+    //                     Err(e) => {
+    //                         eprintln!("Error checking exit status for PID {}: {}", pid, e);
+    //                         break;
+    //                     }
+    //                 }
+    //             } else {
+    //                 eprintln!("Could not lock process handle for PID {}", pid);
+    //                 break;
+    //             }
+
+    //             attempts += 1;
+    //             // Allow some time for the process to exit.
+    //             sleep(Duration::from_millis(2000));
+
+    //             // Re-check if the process has exited.
+    //             if let Ok(mut h) = handle.lock() {
+    //                 match h.child.try_wait() {
+    //                     Ok(Some(status)) => {
+    //                         eprintln!("Process {} exited with status: {:?}", pid, status);
+    //                         process_exited = true;
+    //                         break;
+    //                     }
+    //                     Ok(None) => {
+    //                         eprintln!("Process {} still running after attempt {}.", pid, attempts);
+    //                     }
+    //                     Err(e) => {
+    //                         eprintln!("Error rechecking process {}: {}", pid, e);
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+
+    //             if attempts >= max_attempts {
+    //                 eprintln!("Maximum kill attempts reached for PID {}.", pid);
+    //                 break;
+    //             }
+    //         }
+
+    //         // If the process exited, remove it from the map.
+    //         if process_exited {
+    //             let mut processes = self.processes.lock().unwrap();
+    //             processes.remove(&pid);
+    //             eprintln!("Process {} removed from map after exit.", pid);
+    //         } else {
+    //             eprintln!(
+    //                 "Process {} did not exit after {} attempts; it remains in the map for future handling.",
+    //                 pid, attempts
+    //             );
+    //         }
+    //         Ok(process_exited)
+    //     } else {
+    //         eprintln!("Process handle with PID {} not found.", pid);
+    //         Ok(false)
+    //     }
+    // }
+
     /// Attempts to kill the process corresponding to the provided PID.
-    /// Returns Ok(true) if the process was found and successfully killed (or had already exited),
-    /// Ok(false) if the process was not found or did not exit within the maximum attempts,
-    /// or an error if something went wrong.
+    /// Returns Ok(true) if the process was found and exited (even via signal),
+    /// Ok(false) if the process wasn’t found or didn’t exit after trying
+    /// all signals (in which case we drop the handle), or Err if something went wrong.
     pub fn kill_by_pid(&self, pid: u32) -> anyhow::Result<bool> {
-        // Retrieve a clone of the handle (Arc) for the given PID without removing it.
-        let handle = {
-            let processes = self.processes.lock().unwrap();
-            processes.get(&pid).cloned()
+        // Grab the handle, if any.
+        let handle_opt = {
+            let procs = self.processes.lock().unwrap();
+            procs.get(&pid).cloned()
         };
 
-        if let Some(handle) = handle {
+        if let Some(handle) = handle_opt {
             eprintln!("Attempting to kill PID: {}", pid);
 
-            let max_attempts = 3;
-            let mut attempts = 0;
-            let mut process_exited = false;
+            #[cfg(unix)]
+            let signals = [
+                Signal::SIGHUP,
+                Signal::SIGINT,
+                Signal::SIGQUIT,
+                Signal::SIGABRT,
+                Signal::SIGKILL,
+                Signal::SIGALRM,
+                Signal::SIGTERM,
+            ];
+            #[cfg(unix)]
+            let max_attempts = signals.len();
 
-            loop {
-                // Lock the process handle for this iteration.
+            #[cfg(windows)]
+            let max_attempts = 3; // arbitrary, since Child::kill() is always SIGKILL
+
+            let mut attempts = 0;
+            let mut did_exit = false;
+
+            while attempts < max_attempts {
+                // 1) Check status
                 if let Ok(mut h) = handle.lock() {
-                    // Check if the process has already exited.
                     match h.child.try_wait() {
                         Ok(Some(status)) => {
-                            eprintln!("Process {} already exited with status: {:?}", pid, status);
-                            process_exited = true;
+                            // Child has exited—report how.
+                            #[cfg(unix)]
+                            {
+                                if let Some(sig) = status.signal() {
+                                    eprintln!("Process {} terminated by signal {}", pid, sig);
+                                } else if let Some(code) = status.code() {
+                                    eprintln!("Process {} exited with code {}", pid, code);
+                                } else {
+                                    eprintln!(
+                                        "Process {} exited with unknown status: {:?}",
+                                        pid, status
+                                    );
+                                }
+                            }
+                            #[cfg(not(unix))]
+                            {
+                                if let Some(code) = status.code() {
+                                    eprintln!("Process {} exited with code {}", pid, code);
+                                } else {
+                                    eprintln!(
+                                        "Process {} exited with unknown status: {:?}",
+                                        pid, status
+                                    );
+                                }
+                            }
+                            did_exit = true;
                             break;
                         }
                         Ok(None) => {
-                            // Process is still running.
-                            if attempts == 0 {
-                                eprintln!("Sending initial kill signal to PID: {}", pid);
-                            } else {
-                                eprintln!("Attempt {}: Forcing kill for PID: {}", attempts, pid);
+                            // Still running → send the next signal
+                            #[cfg(unix)]
+                            {
+                                let sig = signals[attempts];
+                                eprintln!(
+                                    "Attempt {}: sending {:?} to PID {}",
+                                    attempts + 1,
+                                    sig,
+                                    pid
+                                );
+                                nix_kill(Pid::from_raw(pid as i32), sig)?;
                             }
-                            // Attempt to kill the process.
-                            if let Err(e) = h.kill() {
-                                eprintln!("Failed to send kill signal to PID {}: {}", pid, e);
+                            #[cfg(windows)]
+                            {
+                                eprintln!("Attempt {}: killing PID {}", attempts + 1, pid);
+                                if let Err(e) = h.child.kill() {
+                                    eprintln!("Failed to kill PID {}: {}", pid, e);
+                                }
                             }
-                            // Mark that an exit was requested.
                             h.requested_exit = true;
                         }
                         Err(e) => {
-                            eprintln!("Error checking exit status for PID {}: {}", pid, e);
+                            eprintln!("Error checking status for PID {}: {}", pid, e);
                             break;
                         }
                     }
                 } else {
-                    eprintln!("Could not lock process handle for PID {}", pid);
+                    eprintln!("Could not lock handle for PID {}", pid);
                     break;
                 }
 
                 attempts += 1;
-                // Allow some time for the process to exit.
-                sleep(Duration::from_millis(200));
-
-                // Re-check if the process has exited.
-                if let Ok(mut h) = handle.lock() {
-                    match h.child.try_wait() {
-                        Ok(Some(status)) => {
-                            eprintln!("Process {} exited with status: {:?}", pid, status);
-                            process_exited = true;
-                            break;
-                        }
-                        Ok(None) => {
-                            eprintln!("Process {} still running after attempt {}.", pid, attempts);
-                        }
-                        Err(e) => {
-                            eprintln!("Error rechecking process {}: {}", pid, e);
-                            break;
-                        }
-                    }
-                }
-
-                if attempts >= max_attempts {
-                    eprintln!("Maximum kill attempts reached for PID {}.", pid);
+                if did_exit {
                     break;
                 }
+
+                // Give it a moment before retrying
+                thread::sleep(Duration::from_secs(2));
             }
 
-            // If the process exited, remove it from the map.
-            if process_exited {
-                let mut processes = self.processes.lock().unwrap();
-                processes.remove(&pid);
+            // Remove the handle so it drops (and on Windows that will kill if still alive)
+            {
+                let mut procs = self.processes.lock().unwrap();
+                procs.remove(&pid);
+            }
+
+            if did_exit {
                 eprintln!("Process {} removed from map after exit.", pid);
             } else {
                 eprintln!(
-                    "Process {} did not exit after {} attempts; it remains in the map for future handling.",
+                    "Dropped handle for PID {} after {} attempts (process may still be running).",
                     pid, attempts
                 );
             }
-            Ok(process_exited)
+
+            Ok(did_exit)
         } else {
             eprintln!("Process handle with PID {} not found.", pid);
             Ok(false)
         }
     }
+
+    //     /// Attempts to kill the process corresponding to the provided PID.
+    // /// Returns Ok(true) if the process was found and successfully killed
+    // /// (or had already exited), Ok(false) if the process was not found
+    // /// or did not exit within the maximum attempts (in which case we drop
+    // /// the handle), or an error if something went wrong.
+    // pub fn kill_by_pid(&self, pid: u32) -> anyhow::Result<bool> {
+    //     // Grab a clone of the Arc<Mutex<ProcessHandle>> if it exists
+    //     let handle_opt = {
+    //         let processes = self.processes.lock().unwrap();
+    //         processes.get(&pid).cloned()
+    //     };
+
+    //     if let Some(handle) = handle_opt {
+    //         eprintln!("Attempting to kill PID: {}", pid);
+
+    //         let max_attempts = 3;
+    //         let mut attempts = 0;
+    //         let mut process_exited = false;
+
+    //         loop {
+    //             // 1) Check status / send signal
+    //             if let Ok(mut h) = handle.lock() {
+    //                 match h.child.try_wait() {
+    //                     Ok(Some(status)) => {
+    //                         // Already exited
+    //                         eprintln!(
+    //                             "Process {} already exited with status: {:?}",
+    //                             pid, status
+    //                         );
+    //                         process_exited = true;
+    //                         break;
+    //                     }
+    //                     Ok(None) => {
+    //                         // Still running → send signal
+    //                         if attempts == 0 {
+    //                             #[cfg(not(target_os = "windows"))]
+    //                             {
+    //                                 eprintln!("Sending initial Ctrl+C to PID: {}", pid);
+    //                                 crate::e_runall::send_ctrl_c(&mut h.child)?;
+    //                             }
+    //                             #[cfg(target_os = "windows")]
+    //                             {
+    //                                 eprintln!("Sending initial kill to PID: {}", pid);
+    //                             }
+    //                         } else {
+    //                             eprintln!("Attempt {}: Forcing kill for PID: {}", attempts, pid);
+    //                         }
+
+    //                         if let Err(e) = h.kill() {
+    //                             eprintln!("Failed to send kill to PID {}: {}", pid, e);
+    //                         }
+    //                         h.requested_exit = true;
+    //                     }
+    //                     Err(e) => {
+    //                         eprintln!("Error checking status for PID {}: {}", pid, e);
+    //                         break;
+    //                     }
+    //                 }
+    //             } else {
+    //                 eprintln!("Could not lock handle for PID {}", pid);
+    //                 break;
+    //             }
+
+    //             attempts += 1;
+    //             if attempts >= max_attempts {
+    //                 eprintln!("Maximum kill attempts reached for PID {}. Dropping handle.", pid);
+    //                 break;
+    //             }
+
+    //             // 2) Wait a bit before re-checking
+    //             thread::sleep(Duration::from_millis(2_000));
+
+    //             // 3) Re-check exit status
+    //             if let Ok(mut h) = handle.lock() {
+    //                 match h.child.try_wait() {
+    //                     Ok(Some(status)) => {
+    //                         eprintln!("Process {} exited with status: {:?}", pid, status);
+    //                         process_exited = true;
+    //                         break;
+    //                     }
+    //                     Ok(None) => {
+    //                         eprintln!(
+    //                             "Process {} still running after attempt {}.",
+    //                             pid, attempts
+    //                         );
+    //                     }
+    //                     Err(e) => {
+    //                         eprintln!("Error rechecking process {}: {}", pid, e);
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+
+    //         // Remove the handle (dropping it) whether or not the process exited
+    //         {
+    //             let mut processes = self.processes.lock().unwrap();
+    //             processes.remove(&pid);
+    //         }
+
+    //         if process_exited {
+    //             eprintln!("Process {} removed from map after exit.", pid);
+    //         } else {
+    //             eprintln!(
+    //                 "Dropped handle for PID {} after {} attempts (process may still be running).",
+    //                 pid, attempts
+    //             );
+    //         }
+
+    //         Ok(process_exited)
+    //     } else {
+    //         eprintln!("Process handle with PID {} not found.", pid);
+    //         Ok(false)
+    //     }
+    // }
+
     /// Attempts to kill one process.
     /// Returns Ok(true) if a process was found and killed, Ok(false) if none found,
     /// or an error if something went wrong.
@@ -315,6 +573,7 @@ impl ProcessManager {
                         Ok(Some(status)) => {
                             eprintln!("Process {} already exited with status: {:?}", pid, status);
                             process_exited = true;
+                            sleep(Duration::from_millis(3_000));
                             break;
                         }
                         Ok(None) => {
@@ -324,38 +583,45 @@ impl ProcessManager {
                             } else {
                                 eprintln!("Attempt {}: Forcing kill for PID: {}", attempts, pid);
                             }
+                            sleep(Duration::from_millis(3_000));
                             // Try to kill the process. Handle errors by printing a debug message.
                             if let Err(e) = h.kill() {
                                 eprintln!("Failed to send kill signal to PID {}: {}", pid, e);
+                                sleep(Duration::from_millis(3_000));
                             }
                         }
                         Err(e) => {
                             eprintln!("Error checking exit status for PID {}: {}", pid, e);
+                            sleep(Duration::from_millis(3_000));
                             break;
                         }
                     }
                 } else {
                     eprintln!("Could not lock process handle for PID {}", pid);
+                    sleep(Duration::from_millis(3_000));
                     break;
                 }
 
                 attempts += 1;
                 // Allow some time for the process to exit.
-                sleep(Duration::from_millis(200));
+                sleep(Duration::from_millis(3_000));
 
                 // Check again after the sleep.
                 if let Ok(mut h) = handle.lock() {
                     match h.child.try_wait() {
                         Ok(Some(status)) => {
                             eprintln!("Process {} exited with status: {:?}", pid, status);
+                            sleep(Duration::from_millis(3_000));
                             process_exited = true;
                             break;
                         }
                         Ok(None) => {
                             eprintln!("Process {} still running after attempt {}.", pid, attempts);
+                            sleep(Duration::from_millis(3_000));
                         }
                         Err(e) => {
                             eprintln!("Error rechecking process {}: {}", pid, e);
+                            sleep(Duration::from_millis(3_000));
                             break;
                         }
                     }
@@ -363,24 +629,29 @@ impl ProcessManager {
 
                 if attempts >= max_attempts {
                     eprintln!("Maximum kill attempts reached for PID {}.", pid);
+                    sleep(Duration::from_millis(3_000));
                     break;
                 }
             }
 
-            // After the loop, if the process has exited, remove it from the map.
-            let mut processes = self.processes.lock().unwrap();
+            // 4) In all cases, remove the handle so it drops
+            {
+                let mut ps = self.processes.lock().unwrap();
+                ps.remove(&pid);
+            }
             if process_exited {
-                processes.remove(&pid);
                 eprintln!("Process {} removed from map after exit.", pid);
             } else {
                 eprintln!(
-                "Process {} did not exit after {} attempts; it remains in the map for future handling.",
-                pid, attempts
-            );
+                    "Dropped handle for PID {} after {} attempts (process may still be running).",
+                    pid, attempts
+                );
             }
+            sleep(Duration::from_millis(3_000));
             Ok(process_exited)
         } else {
             println!("No processes to kill.");
+            sleep(Duration::from_millis(3_000));
             Ok(false)
         }
     }
@@ -761,6 +1032,8 @@ impl ProcessManager {
         pid: u32,
         handle: &Arc<Mutex<CargoProcessHandle>>,
         system: &System,
+        target: &CargoTarget,
+        target_dimensions: (usize, usize),
     ) -> String {
         // Assume start_time has been initialized.
         let start_time = handle
@@ -770,7 +1043,7 @@ impl ProcessManager {
             .start_time;
         let start_dt: chrono::DateTime<Local> = start_time.into();
         let start_str = start_dt.format("%H:%M:%S").to_string();
-        let colored_start = nu_ansi_term::Color::Green.paint(&start_str).to_string();
+        let colored_start = nu_ansi_term::Color::LightCyan.paint(&start_str).to_string();
         let plain_start = start_str;
 
         // Refresh the system stats and look up the process.
@@ -787,14 +1060,35 @@ impl ProcessManager {
             let now = SystemTime::now();
             let runtime_duration = now.duration_since(start_time).unwrap();
             let runtime_str = crate::e_fmt::format_duration(runtime_duration);
-
+            // compute the max number of digits in either dimension:
+            let max_digits = target_dimensions
+                .0
+                .max(target_dimensions.1)
+                .to_string()
+                .len();
             let left_display = format!(
-                "{} | PID: {} | CPU: {:.2}% | Mem: {}",
-                colored_start, pid, cpu_usage, mem_human
+                "{:0width$}of{:0width$} | {} | {} | PID: {} | CPU: {:.2}% | Mem: {}",
+                target_dimensions.0,
+                target_dimensions.1,
+                nu_ansi_term::Color::Green
+                    .paint(target.display_name.clone())
+                    .to_string(),
+                colored_start,
+                pid,
+                cpu_usage,
+                mem_human,
+                width = max_digits,
             );
             let left_plain = format!(
-                "{} | PID: {} | CPU: {:.2}% | Mem: {}",
-                plain_start, pid, cpu_usage, mem_human
+                "{:0width$}of{:0width$} | {} | {} | PID: {} | CPU: {:.2}% | Mem: {}",
+                target_dimensions.0,
+                target_dimensions.1,
+                target.display_name,
+                plain_start,
+                pid,
+                cpu_usage,
+                mem_human,
+                width = max_digits,
             );
 
             // Get terminal width.

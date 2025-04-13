@@ -1,13 +1,15 @@
 use crate::e_command_builder::CargoCommandBuilder;
 use crate::e_processmanager::ProcessManager;
 // use crate::e_runner::GLOBAL_CHILD;
+use crate::e_cli::RunAll;
 use crate::e_target::{CargoTarget, TargetKind};
-use crate::{e_cli::RunAll, e_prompts::prompt};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+use std::process::Child;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
@@ -39,7 +41,7 @@ use nix::unistd::Pid;
 // }
 
 #[cfg(not(target_os = "windows"))]
-fn send_ctrl_c(child: &mut Child) -> Result<()> {
+pub fn send_ctrl_c(child: &mut Child) -> Result<()> {
     // On Unix, send SIGINT to the child.
     kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).context("Failed to send SIGINT")?;
     // Wait briefly to allow graceful shutdown.
@@ -82,8 +84,9 @@ pub fn run_all_examples(
 
     // let manager = ProcessManager::new(&cli);
 
-    let mut user_requested_quit = false;
-    for target in targets {
+    let user_requested_quit = false;
+    //for target in targets {
+    for (idx, target) in targets.iter().enumerate() {
         println!("\nRunning target: {}", target.name);
 
         let current_bin = env!("CARGO_PKG_NAME");
@@ -106,12 +109,12 @@ pub fn run_all_examples(
             builder.alternate_cmd.as_deref().unwrap_or("cargo"),
             builder.args.join(" ")
         );
-        let key = crate::e_prompts::prompt(&format!("Full command: {}", cmd_debug), 2)?;
-        if let Some('q') = key {
-            user_requested_quit = true;
-            println!("User requested quit.");
-            break;
-        }
+        // PROMPT let key = crate::e_prompts::prompt(&format!("Full command: {}", cmd_debug), 2)?;
+        // if let Some('q') = key {
+        //     user_requested_quit = true;
+        //     println!("User requested quit.");
+        //     break;
+        // }
 
         // Build the std::process::Command.
         // let mut command = builder.build_command();
@@ -128,7 +131,14 @@ pub fn run_all_examples(
 
         //        let pid = Arc::new(builder).run(|pid, handle| {
         //     manager.register(handle);
-
+        let mut system = System::new_all();
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+        // Refresh CPU usage to get actual value.
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_cpu(),
+        );
         // })?;
         let pid = Arc::new(builder).run({
             let manager_ref = Arc::clone(&manager);
@@ -149,12 +159,12 @@ pub fn run_all_examples(
         // Let the target run for the specified duration.
         let run_duration = Duration::from_secs(cli.wait);
         // thread::sleep(run_duration);
-        let key = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
-        if let Some('q') = key {
-            user_requested_quit = true;
-            println!("User requested quit.");
-            break;
-        }
+        // PROMPT let key = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
+        // if let Some('q') = key {
+        //     user_requested_quit = true;
+        //     println!("User requested quit.");
+        //     break;
+        // }
 
         let _output = {
             // let mut global = crate::e_runner::GLOBAL_CHILD.lock().unwrap();
@@ -180,9 +190,9 @@ pub fn run_all_examples(
                 .lock()
                 .unwrap()
                 .build_finished_time;
-            println!("Runtime start time: {:?}", runtime_start);
+            //println!("Runtime start time: {:?}", runtime_start);
             loop {
-                println!("Checking process status for PID: {}", pid);
+                //println!("Checking process status for PID: {}", pid);
                 match manager.try_wait(pid) {
                     Ok(Some(status)) => {
                         // Process finished naturally.
@@ -191,7 +201,7 @@ pub fn run_all_examples(
                     }
                     _ => {
                         // Process is still running.
-                        println!("Process is still running.");
+                        //println!("Process is still running.");
                     }
                 }
                 if manager.has_signalled() > 0 {
@@ -203,22 +213,22 @@ pub fn run_all_examples(
                 }
                 // Here, use your non-blocking prompt function if available.
                 // For illustration, assume prompt_nonblocking returns Ok(Some(key)) if a key was pressed.
-                if let Ok(Some(key)) = prompt("waiting press q to quit", 0) {
-                    // Wait on the child process.
-                    if key == 'q' {
-                        println!("User requested stop {}. pid {}", target.name, pid);
-                        manager.kill_by_pid(pid).ok();
-                        // let mut global = GLOBAL_CHILDREN.lock().unwrap();
-                        // if let Some(cargo_process_handle) = global.remove(&pid) {
-                        //     let mut cargo_process_handle = cargo_process_handle.lock().unwrap();
-                        //     send_ctrl_c(&mut cargo_process_handle.child)?;
-                        //     let _ = cargo_process_handle.kill(); // Attempt to kill the process
-                        //     // Ignore errors if the process has already terminated.
-                        //     // cargo_process_handle.wait_with_output().ok();
-                        // }
-                        break;
-                    }
-                }
+                // PROMPT if let Ok(Some(key)) = prompt("waiting press q to quit", 0) {
+                //     // Wait on the child process.
+                //     if key == 'q' {
+                //         println!("User requested stop {}. pid {}", target.name, pid);
+                //         manager.kill_by_pid(pid).ok();
+                //         // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+                //         // if let Some(cargo_process_handle) = global.remove(&pid) {
+                //         //     let mut cargo_process_handle = cargo_process_handle.lock().unwrap();
+                //         //     send_ctrl_c(&mut cargo_process_handle.child)?;
+                //         //     let _ = cargo_process_handle.kill(); // Attempt to kill the process
+                //         //     // Ignore errors if the process has already terminated.
+                //         //     // cargo_process_handle.wait_with_output().ok();
+                //         // }
+                //         break;
+                //     }
+                // }
 
                 // Check if the child process has already finished.
                 // if let Some(_status) = child.try_wait()? {
@@ -233,20 +243,37 @@ pub fn run_all_examples(
                 // let stats = handle.stats.lock().unwrap().clone();
                 // // let runtime_start = manager.get(pid).unwrap().lock().unwrap().stats.lock().unwrap().build_finished_time;
                 // let runtime_start = stats.build_finished_time;
-                let (_stats, runtime_start, end_time) = {
+                let (_stats, runtime_start, end_time, status_display) = {
                     // Acquire the process handle from the manager.
                     let process_handle = manager.get(pid).unwrap();
                     // Lock the process handle to gain mutable or safe read access.
                     let handle = process_handle.lock().unwrap();
+
                     // Lock the stats and clone them.
                     let stats = handle.stats.lock().unwrap().clone();
                     // Extract the build_finished_time from the cloned stats.
                     let runtime_start = stats.build_finished_time;
                     let end_time = handle.result.end_time;
+                    drop(handle);
+                    let status_display = ProcessManager::format_process_status(
+                        pid,
+                        &process_handle,
+                        &system,
+                        &target,
+                        (idx + 1, targets.len()),
+                    );
                     // Return both the stats and runtime_start.
-                    (stats, runtime_start, end_time)
+                    (stats, runtime_start, end_time, status_display)
                 };
-                println!("start time: {:?} endtime {:?}", runtime_start, end_time);
+                // Refresh CPU usage to get actual value.
+                system.refresh_processes_specifics(
+                    ProcessesToUpdate::All,
+                    true,
+                    ProcessRefreshKind::nothing().with_cpu(),
+                );
+
+                ProcessManager::update_status_line(&status_display, true).ok();
+                // println!("start time: {:?} endtime {:?}", runtime_start, end_time);
                 if runtime_start.is_some() {
                     if start.is_none() {
                         start = Some(Instant::now());
@@ -280,9 +307,9 @@ pub fn run_all_examples(
                 } else if end_time.is_some() {
                     println!("Process finished naturally.");
                     break;
-                } else {
-                    // Process is still running.
-                    println!("Process is still running.");
+                    // } else {
+                    //     // Process is still running.
+                    //     println!("Process is still running.");
                 }
 
                 std::thread::sleep(Duration::from_millis(100));
@@ -323,7 +350,7 @@ pub fn run_all_examples(
         // If using a timeout/run_all mechanism, sleep or prompt as needed.
         // For simplicity, we wait for a fixed duration here.
         let run_duration = Duration::from_secs(cli.wait);
-        let _ = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
+        // PROMPT let _ = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
     }
 
     Ok(user_requested_quit)

@@ -11,6 +11,7 @@ use genai::chat::{ChatMessage, ChatRequest};
 use genai::Client;
 use include_dir::{include_dir, Dir};
 use path_slash::PathBufExt;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -197,7 +198,8 @@ pub async fn summarize_source_session(
             contents,
             path.display()
         ));
-            let resolved=crate::resolver::resolve_local_modules(&crate_name,&crate_toml_path,&path);
+        let mut visited = HashSet::new();
+            let resolved=crate::resolver::resolve_local_modules(&crate_name,&crate_toml_path,&path,&mut visited,Some(4));
                 // 3. For each resolved module, read it and append with your markers
     for module_path in resolved {
         let module_src = fs::read_to_string(&module_path).unwrap_or_default();

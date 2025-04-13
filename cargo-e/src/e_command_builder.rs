@@ -1019,8 +1019,16 @@ impl CargoCommandBuilder {
                 return self;
             }
             TargetKind::Bench => {
-                // To run benchmarks, use the "bench" command.
-                self.alternate_cmd = Some("bench".to_string());
+                // // To run benchmarks, use the "bench" command.
+                //  let exe_path = match which("bench") {
+                //     Ok(path) => path,
+                //     Err(err) => {
+                //         eprintln!("Error: 'trunk' not found in PATH: {}", err);
+                //         return self;
+                //     }
+                // };
+                // self.alternate_cmd = Some("bench".to_string())
+                self.args.push("bench".into());
                 self.args.push(target.name.clone());
             }
             TargetKind::Test => {

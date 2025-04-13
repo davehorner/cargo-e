@@ -177,7 +177,7 @@ pub fn main() -> anyhow::Result<()> {
                     explicit
                 );
                 if cli.run_all != RunAll::NotSpecified {
-                    cargo_e::e_prompts::prompt(&"", 2).ok();
+                    //PROMPT cargo_e::e_prompts::prompt(&"", 2).ok();
                     // Pass in your default packages, which are now generic.
                     cargo_e::e_runall::run_all_examples(manager, &cli, &fuzzy_matches)?;
                     return Ok(());
@@ -814,7 +814,7 @@ fn process_input(
             } else {
                 "".to_string()
             };
-            let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
+            //PROMPT let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
 
             Ok(LoopResult::Run(
                 status.unwrap_or(<std::process::ExitStatus as process::ExitStatusExt>::from_raw(0)),

@@ -623,7 +623,10 @@ pub trait CargoCommandExt {
 impl CargoCommandExt for Command {
     fn spawn_cargo_passthrough(&mut self, builder: Arc<CargoCommandBuilder>) -> CargoProcessHandle {
         // Spawn the child process without redirecting stdout and stderr
-        let child = self.spawn().expect("Failed to spawn cargo process");
+        let child = self.spawn().expect(&format!(
+            "Failed to spawn cargo process {:?} {:?}",
+            &builder.alternate_cmd, builder.args
+        ));
 
         let pid = child.id();
         let start_time = SystemTime::now();
