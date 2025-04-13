@@ -34,7 +34,7 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
     }
     use std::io::IsTerminal;
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        println!("Non-interactive mode detected; skipping prompt.");
+        // println!("Non-interactive mode detected; skipping prompt.");
         return Ok(None);
     }
 
@@ -42,15 +42,18 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
     #[cfg(feature = "tui")]
     {
         let timeout = Duration::from_secs(wait_secs);
-        // Clear any pending events.
-        while poll(Duration::from_millis(0))? {
-            let _ = read()?;
-        }
-        // Enable raw mode and ensure it will be disabled when the guard is dropped.
+        drain_events().ok(); // Clear any pending events.
+                             // Enable raw mode and ensure it will be disabled when the guard is dropped.
         let _raw_guard = RawModeGuard::new()?;
+        println!("timeout: {:?}", timeout);
         let result = if poll(timeout)? {
             if let Event::Key(key_event) = read()? {
                 if let KeyCode::Char(c) = key_event.code {
+                    // Check if it's the Ctrl+C character, which is often '\x03'
+                    if c == '\x03' {
+                        // Ctrl+C
+                        return Err(anyhow::anyhow!("Ctrl+C pressed").into()); // Propagate as error to handle
+                    }
                     Some(c.to_ascii_lowercase())
                 } else {
                     None
@@ -95,7 +98,7 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
     }
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
-        println!("Non-interactive mode detected; skipping prompt.");
+        // println!("Non-interactive mode detected; skipping prompt.");
         return Ok(None);
     }
 
@@ -133,6 +136,7 @@ pub fn prompt_line(message: &str, wait_secs: u64) -> Result<Option<String>, Box<
         loop {
             let elapsed = start.elapsed().as_secs();
             if elapsed >= wait_secs {
+                println!("Timeout reached; no input received.");
                 return Ok(None);
             }
             let remaining = Duration::from_secs(wait_secs - elapsed);
@@ -255,7 +259,6 @@ pub fn prompt_line_with_poll_opts(
     #[cfg(feature = "tui")]
     {
         let timeout = Duration::from_secs(wait_secs);
-        #[cfg(feature = "tui")]
         let _raw_guard = RawModeGuard::new()?;
         let start = std::time::Instant::now();
         let mut input = String::new();
@@ -273,11 +276,15 @@ pub fn prompt_line_with_poll_opts(
                         continue;
                     }
                     match code {
-                        KeyCode::Enter => break, // End input on Enter.
+                        KeyCode::Enter => {
+                            drain_events().ok();
+                            break;
+                        } // End input on Enter.
                         KeyCode::Char(c) => {
                             // Check quick exit keys (case-insensitive)
                             if quick_exit.iter().any(|&qe| qe.eq_ignore_ascii_case(&c)) {
                                 input.push(c);
+                                drain_events().ok(); // Clear any pending events.
                                 return Ok(Some(input.to_string()));
                             }
                             // If allowed_chars is provided, only accept those.
@@ -310,7 +317,7 @@ pub fn prompt_line_with_poll_opts(
                 }
             }
         }
-        println!();
+        // println!();
         Ok(Some(input.trim().to_string()))
     }
 
@@ -318,4 +325,15 @@ pub fn prompt_line_with_poll_opts(
     {
         return Ok(read_line_with_timeout(wait_secs).unwrap_or_default());
     }
+}
+
+/// Drain *all* pending input events so that the next `poll` really waits
+#[allow(dead_code)]
+fn drain_events() -> Result<()> {
+    // keep pulling until there’s nothing left
+    #[cfg(feature = "tui")]
+    while poll(Duration::from_millis(0))? {
+        let _ = read()?;
+    }
+    Ok(())
 }

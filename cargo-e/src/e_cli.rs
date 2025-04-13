@@ -22,7 +22,11 @@ pub struct Cli {
 
     #[arg(long, help = "Build and run in release mode.")]
     pub release: bool,
-    #[arg(long, help = "Suppress cargo output when running the sample.")]
+    #[arg(
+        long,
+        short = 'q',
+        help = "Suppress cargo output when running the sample."
+    )]
     pub quiet: bool,
     // /// Comma-separated list of package names.
     // #[clap(long, value_delimiter = ',', help = "Optional list of package names to run examples for. If omitted, defaults to ALL_PACKAGES.")]
@@ -34,6 +38,13 @@ pub struct Cli {
     )]
     pub pre_build: bool,
 
+    /// Enable passthrough mode (no cargo output filtering, stdout is captured).
+    #[arg(
+        long = "filter",
+        short = 'f',
+        help = "Enable passthrough mode. No cargo output is filtered, and stdout is captured."
+    )]
+    pub filter: bool,
     /// Print version and feature flags in JSON format.
     #[arg(
         long,
@@ -98,12 +109,22 @@ pub struct Cli {
     #[arg(
         long = "wait",
         short = 'W',
-        default_value_t = 5,
-        help = "Set wait time in seconds (default: 5)."
+        default_value_t = 15,
+        help = "Set wait time in seconds (default: 15)."
     )]
     pub wait: u64,
 
-    #[arg(help = "Specify an explicit example to run.")]
+    /// Subcommands to run (e.g., `build|b`, `test|t`).
+    #[arg(
+        long = "subcommand",
+        short = 's',
+        value_parser,
+        default_value = "run",
+        help = "Specify subcommands (e.g., `build|b`, `test|t`)."
+    )]
+    pub subcommand: String,
+
+    #[arg(help = "Specify an explicit target to run.")]
     pub explicit_example: Option<String>,
 
     #[arg(last = true, help = "Additional arguments passed to the command.")]

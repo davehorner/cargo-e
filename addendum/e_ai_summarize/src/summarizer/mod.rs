@@ -11,9 +11,11 @@ use genai::chat::{ChatMessage, ChatRequest};
 use genai::Client;
 use include_dir::{include_dir, Dir};
 use path_slash::PathBufExt;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 
 use crate::cargo_utils::find_cargo_toml;
 use crate::cargo_utils::get_crate_name_and_version;
@@ -157,16 +159,23 @@ pub async fn summarize_source_session(
 ) -> Result<(String, ChatSession), Box<dyn std::error::Error>> {
     let mut crate_name = env!("CARGO_PKG_NAME").to_string();
     let mut crate_version = env!("CARGO_PKG_VERSION").to_string();
-
+    let mut crate_toml_path = PathBuf::new();
     let exe_path = env::current_exe().expect("Failed to get current exe path");
     // Read the content from the provided file or fallback to this file's own source.
     let content = if let Some(fp) = file_path {
+        let mut combined_source = String::new();
         let possible_toml = find_cargo_toml(Path::new(fp));
-        if let Some(crate_toml_path) = possible_toml {
+        if let Some(toml_path) = possible_toml {
             let (name, version) =
-                get_crate_name_and_version(&crate_toml_path.to_path_buf()).unwrap_or_default();
+                get_crate_name_and_version(&toml_path.to_path_buf()).unwrap_or_default();
             crate_name = name;
             crate_version = version;
+            crate_toml_path = toml_path.clone();
+            let cargo_toml = fs::read_to_string(crate_toml_path.clone()).unwrap_or_default();
+            combined_source.push_str(&format!(
+            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+            crate_toml_path.display(),cargo_toml, crate_toml_path.display()
+        ));
         }
         let path = Path::new(fp);
         if path.is_dir() {
@@ -179,10 +188,31 @@ pub async fn summarize_source_session(
                 })?;
             generate_heredoc_output(&crate_name, &crate_version, &files)
         } else if path.is_file() {
-            fs::read_to_string(path).unwrap_or_else(|err| {
+            let contents=fs::read_to_string(path).unwrap_or_else(|err| {
                 eprintln!("Error reading {}: {}", fp, err);
                 std::process::exit(1);
-            })
+            });
+            combined_source.push_str(&format!(
+            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+            path.display(),
+            contents,
+            path.display()
+        ));
+        let mut visited = HashSet::new();
+            let resolved=crate::resolver::resolve_local_modules(&crate_name,&crate_toml_path,&path,&mut visited,Some(4));
+                // 3. For each resolved module, read it and append with your markers
+    for module_path in resolved {
+        let module_src = fs::read_to_string(&module_path).unwrap_or_default();
+
+        combined_source.push_str(&format!(
+            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+            module_path.display(),
+            module_src,
+            module_path.display()
+        ));
+    }
+
+            combined_source
         } else {
             eprintln!("Error reading {}", fp);
             std::process::exit(1);

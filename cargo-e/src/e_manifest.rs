@@ -203,9 +203,6 @@ pub fn get_required_features_from_manifest(
     None
 }
 
-/// Finds a candidate name from the manifest using the specified table key.
-/// For example, if `table_key` is "bin", it checks for `[[bin]]` entries; if it is "example",
-/// it checks for `[[example]]` entries.
 pub fn find_candidate_name(
     manifest_toml: &Value,
     table_key: &str,
@@ -215,59 +212,117 @@ pub fn find_candidate_name(
     manifest_toml
         .get(table_key)
         .and_then(|v| v.as_array())
-        .map(|entries| {
-            let manifest_parent = manifest_path
-                .parent()
-                .unwrap_or_else(|| std::path::Path::new(""));
+        .and_then(|entries| {
+            let manifest_parent = manifest_path.parent().unwrap_or_else(|| Path::new(""));
             let candidate_abs = std::fs::canonicalize(candidate).ok();
-            // First, try to find an explicit match using the provided "path"
-            entries
-                .iter()
-                .find_map(|entry| {
-                    entry
-                        .get("path")
-                        .and_then(|p| p.as_str())
-                        .and_then(|rel_path_str| {
-                            entry.get("name").and_then(|n| n.as_str()).and_then(|name| {
-                                candidate_abs.as_ref().and_then(|candidate_abs| {
-                                    std::fs::canonicalize(manifest_parent.join(rel_path_str))
-                                        .ok()
-                                        .and_then(|expected_path| {
-                                            trace!(
-                                                "\nCandidate: {}\nExpected: {:?}\nActual: {:?}",
-                                                candidate.display(),
-                                                expected_path,
-                                                candidate_abs
-                                            );
-                                            if expected_path == *candidate_abs {
-                                                trace!(
-                                                    "{} Found matching {} with name: {}",
-                                                    candidate.display(),
-                                                    table_key,
-                                                    name
-                                                );
-                                                Some(name.to_string())
-                                            } else {
-                                                None
-                                            }
-                                        })
+
+            // Precompute the file‑stem (filename without extension), if any
+            let candidate_stem = candidate.file_stem().and_then(|s| s.to_str());
+
+            // 1) Try explicit path match
+            let explicit = entries.iter().find_map(|entry| {
+                entry.get("path").and_then(|p| p.as_str()).and_then(|rel| {
+                    entry.get("name").and_then(|n| n.as_str()).and_then(|name| {
+                        candidate_abs.as_ref().and_then(|abs| {
+                            std::fs::canonicalize(manifest_parent.join(rel))
+                                .ok()
+                                .and_then(|expected| {
+                                    if expected == *abs {
+                                        Some(name.to_string())
+                                    } else {
+                                        None
+                                    }
                                 })
-                            })
                         })
+                    })
                 })
-                // If no explicit match is found, use the last entry with no "path" as the default
-                .or_else(|| {
-                    entries
-                        .iter()
-                        .filter(|entry| entry.get("path").is_none())
-                        .filter_map(|entry| {
-                            entry.get("name").and_then(|n| n.as_str()).map(String::from)
+            });
+
+            // 2) If no explicit match, try matching the file‑stem to a name
+            let stem_match = explicit.clone().or_else(|| {
+                candidate_stem.and_then(|stem| {
+                    entries.iter().find_map(|entry| {
+                        entry.get("name").and_then(|n| n.as_str()).and_then(|name| {
+                            if name == stem {
+                                Some(name.to_string())
+                            } else {
+                                None
+                            }
                         })
-                        .last()
+                    })
                 })
+            });
+
+            // Only explicit or stem match—no default fallback
+            stem_match
         })
-        .flatten()
 }
+
+// /// Finds a candidate name from the manifest using the specified table key.
+// /// For example, if `table_key` is "bin", it checks for `[[bin]]` entries; if it is "example",
+// /// it checks for `[[example]]` entries.
+// pub fn find_candidate_name(
+//     manifest_toml: &Value,
+//     table_key: &str,
+//     candidate: &Path,
+//     manifest_path: &Path,
+// ) -> Option<String> {
+//     manifest_toml
+//         .get(table_key)
+//         .and_then(|v| v.as_array())
+//         .map(|entries| {
+//             let manifest_parent = manifest_path
+//                 .parent()
+//                 .unwrap_or_else(|| std::path::Path::new(""));
+//             let candidate_abs = std::fs::canonicalize(candidate).ok();
+//             // First, try to find an explicit match using the provided "path"
+//             entries
+//                 .iter()
+//                 .find_map(|entry| {
+//                     entry
+//                         .get("path")
+//                         .and_then(|p| p.as_str())
+//                         .and_then(|rel_path_str| {
+//                             entry.get("name").and_then(|n| n.as_str()).and_then(|name| {
+//                                 candidate_abs.as_ref().and_then(|candidate_abs| {
+//                                     std::fs::canonicalize(manifest_parent.join(rel_path_str))
+//                                         .ok()
+//                                         .and_then(|expected_path| {
+//                                             trace!(
+//                                                 "\nCandidate: {}\nExpected: {:?}\nActual: {:?}",
+//                                                 candidate.display(),
+//                                                 expected_path,
+//                                                 candidate_abs
+//                                             );
+//                                             if expected_path == *candidate_abs {
+//                                                 trace!(
+//                                                     "{} Found matching {} with name: {}",
+//                                                     candidate.display(),
+//                                                     table_key,
+//                                                     name
+//                                                 );
+//                                                 Some(name.to_string())
+//                                             } else {
+//                                                 None
+//                                             }
+//                                         })
+//                                 })
+//                             })
+//                         })
+//                 })
+//                 // If no explicit match is found, use the last entry with no "path" as the default
+//                 .or_else(|| {
+//                     entries
+//                         .iter()
+//                         .filter(|entry| entry.get("path").is_none())
+//                         .filter_map(|entry| {
+//                             entry.get("name").and_then(|n| n.as_str()).map(String::from)
+//                         })
+//                         .last()
+//                 })
+//         })
+//         .flatten()
+// }
 
 /// Returns the runnable targets (bins, examples, benches, and tests) from the Cargo.toml.
 /// For tests, it uses `scan_tests_directory` to list integration test files.
