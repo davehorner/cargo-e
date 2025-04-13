@@ -51,6 +51,7 @@ pub enum CargoDiagnosticLevel {
 /// Our callback type enum.
 #[derive(Debug, Clone)]
 pub enum CallbackType {
+LevelMessage,
     Warning,
     Error,
     Help,
@@ -58,6 +59,7 @@ pub enum CallbackType {
     Location,
     OpenedUrl,
     Unspecified,
+    Suggestion,
 }
 
 /// The callback response produced by our event dispatcher.
@@ -114,29 +116,35 @@ impl EventDispatcher {
 
     /// Add a new callback with a regex pattern.
     pub fn add_callback(&mut self, pattern: &str, callback: Box<dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse> + Send + Sync>) {
-        let mut callbacks = self.callbacks.lock().unwrap();
-        callbacks.push(PatternCallback::new(pattern, callback));
+        if let Ok(mut callbacks) = self.callbacks.lock() {
+            callbacks.push(PatternCallback::new(pattern, callback));
+        } else {
+            eprintln!("Failed to acquire lock on callbacks in add_callback");
+        }
     }
 
     /// Dispatch a line to all callbacks that match, and collect their responses.
     pub fn dispatch(&self, line: &str) -> Vec<Option<CallbackResponse>> {
-        let callbacks = self.callbacks.lock().unwrap();
         let mut responses = Vec::new();
-        for cb in callbacks.iter() {
-            let state = Arc::clone(&cb.is_reading_multiline);
-            if state.load(Ordering::Relaxed) {
-                // The callback is in multiline mode. Call it with no captures.
-                let response = (cb.callback)(line, None, state);
-                responses.push(response);
-            } else if let Some(captures) = cb.pattern.captures(line) {
-                // The line matches the callback's pattern.
-                let response = (cb.callback)(line, Some(captures), state);
-                responses.push(response);
-        } else if cb.pattern.is_match(line) {
-            // If there are no captures but there's a match, pass None to the callback
-            let response = (cb.callback)(line, None, state);
-            responses.push(response);
-        }
+        if let Ok(callbacks) = self.callbacks.lock() {
+            for cb in callbacks.iter() {
+                let state = Arc::clone(&cb.is_reading_multiline);
+                if state.load(Ordering::Relaxed) {
+                    // The callback is in multiline mode. Call it with no captures.
+                    let response = (cb.callback)(line, None, state);
+                    responses.push(response);
+                } else if let Some(captures) = cb.pattern.captures(line) {
+                    // The line matches the callback's pattern.
+                    let response = (cb.callback)(line, Some(captures), state);
+                    responses.push(response);
+                } else if cb.pattern.is_match(line) {
+                    // If there are no captures but there's a match, pass None to the callback
+                    let response = (cb.callback)(line, None, state);
+                    responses.push(response);
+                }
+            }
+        } else {
+            eprintln!("Failed to acquire lock on callbacks in dispatch");
         }
         responses
     }

@@ -46,15 +46,16 @@ pub struct CargoCommandBuilder {
     pub terminal_error_flag: Arc<Mutex<bool>>,
     pub sender: Option<Arc<Mutex<Sender<TerminalError>>>>, 
     pub diagnostics: Arc<Mutex<Vec<CargoDiagnostic>>>,
+    pub is_filter: bool,
 }
 impl Default for CargoCommandBuilder {
     fn default() -> Self {
-        Self::new("run".into())
+        Self::new("run".into(), false)
     }
 }
 impl CargoCommandBuilder {
     /// Creates a new, empty builder.
-    pub fn new(subcommand: &str) -> Self {
+    pub fn new(subcommand: &str, is_filter: bool) -> Self {
         let (sender, receiver) = channel::<TerminalError>();
         let sender = Arc::new(Mutex::new(sender));
         let mut builder =CargoCommandBuilder {
@@ -71,119 +72,58 @@ impl CargoCommandBuilder {
             terminal_error_flag: Arc::new(Mutex::new(false)),
             sender: Some(sender),
             diagnostics: Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new())),
+            is_filter: is_filter,
         };
         builder.set_default_dispatchers();
 
         builder
     }
 
-        /// Lazily creates a default stdout dispatcher if not already set.
-    fn get_stdout_dispatcher(&mut self) -> &mut Arc<EventDispatcher> {
-        if self.stdout_dispatcher.is_none() {
-            self.stdout_dispatcher = Some(Arc::new(EventDispatcher::new()));
-        }
-        self.stdout_dispatcher.as_mut().unwrap()
-    }
-
-    /// Lazily creates a default stderr dispatcher if not already set.
-    fn get_stderr_dispatcher(&mut self) -> &mut Arc<EventDispatcher> {
-        if self.stderr_dispatcher.is_none() {
-            self.stderr_dispatcher = Some(Arc::new(EventDispatcher::new()));
-        }
-        self.stderr_dispatcher.as_mut().unwrap()
-    }
-
-    /// Lazily creates a default progress dispatcher if not already set.
-    fn get_progress_dispatcher(&mut self) -> &mut Arc<EventDispatcher> {
-        if self.progress_dispatcher.is_none() {
-            self.progress_dispatcher = Some(Arc::new(EventDispatcher::new()));
-        }
-        self.progress_dispatcher.as_mut().unwrap()
-    }
-
-    /// Lazily creates a default stage dispatcher if not already set.
-    fn get_stage_dispatcher(&mut self) -> &mut Arc<EventDispatcher> {
-        if self.stage_dispatcher.is_none() {
-            self.stage_dispatcher = Some(Arc::new(EventDispatcher::new()));
-        }
-        self.stage_dispatcher.as_mut().unwrap()
-    }
-
-    // /// Configures the command based on the provided CargoTarget.
-    // pub fn with_target(mut self, target: &CargoTarget) -> Self {
-    //     match target.kind {
-    //         CargoTargetKind::Example => {
-    //             self.args.push("run".into());
-    //             self.args.push("--example".into());
-    //             self.args.push(target.name.clone());
-    //         }
-    //         CargoTargetKind::Binary => {
-    //             self.args.push("run".into());
-    //             self.args.push("--bin".into());
-    //             self.args.push(target.name.clone());
-    //         }
-    //         CargoTargetKind::Test => {
-    //             self.args.push("test".into());
-    //             self.args.push(target.name.clone());
-    //         }
-    //         CargoTargetKind::Manifest => {
-    //             // For a manifest target, you might simply want to open or browse it.
-    //             // Adjust the behavior as needed.
-    //             self.args.push("manifest".into());
-    //         }
-    //     }
-
-    //     // If the target is "extended", add a --manifest-path flag
-    //     if target.extended {
-    //         self.args.push("--manifest-path".into());
-    //         self.args.push(target.manifest_path.clone());
-    //     }
-
-    //     // Optionally use the origin information if available.
-
-    //     if let Some(TargetOrigin::SubProject(ref path)) = target.origin {
-    //         self.args.push("--manifest-path".into());
-    //         self.args.push(path.display().to_string());
-    //     }
-
-    //     self
-    // }
-
-        // Switch to passthrough mode when the terminal error is detected
-    fn switch_to_passthrough_mode(self: &Arc<Self>) {
-        println!("Switching to passthrough mode...");
-
+    // Switch to passthrough mode when the terminal error is detected
+    fn switch_to_passthrough_mode<F>(self: Arc<Self>, on_spawn: F) -> anyhow::Result<u32>
+where
+    F: FnOnce(u32, CargoProcessHandle)
+{
         let mut command = self.build_command();
 
         // Now, spawn the cargo process in passthrough mode
-        let cargo_process_handle = command.spawn_cargo_passthrough(Arc::clone(self));
-        let diag_clone=Arc::clone(&cargo_process_handle.diagnostics);
-        let mut diagnostics = self.diagnostics.lock().unwrap();
-        diagnostics.append(&mut diag_clone.lock().unwrap());
+        let cargo_process_handle = command.spawn_cargo_passthrough(Arc::clone(&self));
         let pid = cargo_process_handle.pid;
+        // Notify observer
+        on_spawn(pid,cargo_process_handle);
 
-        println!("Passthrough mode activated for PID {}", pid);
+        Ok(pid)
     }
 
     // Set up the default dispatchers, which includes error detection
     fn set_default_dispatchers(&mut self) {
+        if !self.is_filter {
+            // If this is a filter, we don't need to set up dispatchers
+            return;
+        }   
         let sender = self.sender.clone().unwrap();
 
         let mut stdout_dispatcher = EventDispatcher::new();
         stdout_dispatcher.add_callback(r"listening on", Box::new(|line, _captures, _state| {
             println!("(STDOUT) Dispatcher caught: {}", line);
-                // Use a regex to capture a URL from the line.
-                let url_regex = Regex::new(r"(http://[^\s]+)").unwrap();
-                if let Some(url_caps) = url_regex.captures(line) {
-                    let url = url_caps.get(1).unwrap().as_str();
-                    // Call open::that on the captured URL.
-                    match open::that(url) {
-                        Ok(_) => println!("Opened URL: {}", url),
-                        Err(e) => eprintln!("Failed to open URL: {}. Error: {}", url, e),
-                    }
+            // Use a regex to capture a URL from the line.
+            if let Ok(url_regex) = Regex::new(r"(http://[^\s]+)") {
+            if let Some(url_caps) = url_regex.captures(line) {
+                if let Some(url_match) = url_caps.get(1) {
+                let url = url_match.as_str();
+                // Call open::that on the captured URL.
+                if let Err(e) = open::that(url) {
+                    eprintln!("Failed to open URL: {}. Error: {}", url, e);
+                } else {
+                    println!("Opened URL: {}", url);
                 }
+                }
+            }
+            } else {
+            eprintln!("Failed to create URL regex");
+            }
             None
-        })); 
+        }));
         stdout_dispatcher.add_callback(r"BuildFinished", Box::new(|line, _captures, _state| {
             println!("******* {}", line);
             None
@@ -208,7 +148,13 @@ impl CargoCommandBuilder {
                 // We are in multiline mode; process subsequent lines.
                 println!("Multiline callback received: {}", line);
                 // Use a regex to capture a URL from the line.
-                let url_regex = Regex::new(r"(http://[^\s]+)").unwrap();
+                let url_regex = match Regex::new(r"(http://[^\s]+)") {
+                    Ok(regex) => regex,
+                    Err(e) => {
+                        eprintln!("Failed to create URL regex: {}", e);
+                        return None;
+                    }
+                };
                 if let Some(url_caps) = url_regex.captures(line) {
                     let url = url_caps.get(1).unwrap().as_str();
                     // Call open::that on the captured URL.
@@ -252,6 +198,7 @@ stderr_dispatcher.add_callback(
     r"^(?P<level>\w+):\s+(?P<msg>.+)$",  // Regex for diagnostic line
     Box::new(move |_line, caps, _multiline_flag| {
         if let Some(caps) = caps {
+            // println!("Diagnostic line: {}", _line);
             let level = caps["level"].to_string();  // e.g., "warning", "error"
             let message = caps["msg"].to_string();
                 let mut counts = counts.lock().unwrap();
@@ -296,6 +243,15 @@ stderr_dispatcher.add_callback(
             *pending_diag = Some(diag);
 
                             // Track the count of diagnostics for each level
+                    return Some(CallbackResponse {
+                        callback_type: CallbackType::LevelMessage, // Treat subsequent lines as warnings
+                        message: None,
+                        file: None,
+                        line: None,
+                        column: None,
+                        suggestion: None,  // This is the suggestion part
+                        terminal_status: None,
+                    });
 
             None
         } else {
@@ -305,71 +261,120 @@ stderr_dispatcher.add_callback(
     }),
 );
 
-// {
-//     // Regex for suggestions (handles lines starting with spaces, escape characters, or `|`)
-
-//     let pending_diag = Arc::clone(&pending_diag);
-//     let location_lock = Arc::clone(&warning_location);
-//     let location_lock_clone = Arc::clone(&warning_location);
-
-
-//     let suggestion_m = Arc::clone(&suggestion_mode);
-
-// // Suggestion callback that adds subsequent lines as suggestions
-// stderr_dispatcher.add_callback(
-//     r"^(?P<msg>.*)$",  // Capture all lines following the location
-//     Box::new(move |line, _captures, _multiline_flag| {
-//         if suggestion_m.load(Ordering::Relaxed) {
-//             // Only process lines that match the suggestion format
-//             if let Some(caps) = suggestion_regex.captures(line.trim()) {
-//                 // Capture the line number and code from the suggestion line
-//                 let line_num = caps[1].parse::<usize>().unwrap_or(0);
-//                 let code = caps[2].to_string();
-
-//                 // Lock the pending_diag to add the suggestion
-//                 if let Some(mut loc) = location_lock_clone.lock().unwrap().take() {
-//                     let file = loc.file.clone().unwrap_or_default();
-//                     let col = loc.column.unwrap_or(0);
-
-//                     // Concatenate the suggestion line to the message
-//                     let mut msg = loc.message.unwrap_or_default();
-//                     msg.push_str(&format!("\n{}", code));
-
-//                     // Print the concatenated suggestion for debugging
-//                     println!("Suggestion for {}:{}:{} - {}", file, line_num, col, msg);
-
-//                     // Update the location with the new concatenated message
-//                     loc.message = Some(msg.clone());
-
-//                     // Save the updated location back to shared state
-//                     location_lock_clone.lock().unwrap().replace(loc);
-
-//                     return Some(CallbackResponse {
-//                         callback_type: CallbackType::Warning, // Treat subsequent lines as warnings
-//                         message: Some(msg.clone()),
-//                         file: Some(file),
-//                         line: Some(line_num),
-//                         column: Some(col),
-//                         suggestion: Some(msg),  // This is the suggestion part
-//                         terminal_status: None,
-//                     });
-//                 }
-//             }
-//         }
-
-//         None
-//     }),
-// );
-// }
-
-
-
-
 {
+    // Regex for suggestions (handles lines starting with spaces, escape characters, or `|`)
+
     let pending_diag = Arc::clone(&pending_diag);
     let location_lock = Arc::clone(&warning_location);
+    let location_lock_clone = Arc::clone(&warning_location);
+
+
     let suggestion_m = Arc::clone(&suggestion_mode);
 
+// Suggestion callback that adds subsequent lines as suggestions
+stderr_dispatcher.add_callback(
+    r"^(?P<msg>.*)$",  // Capture all lines following the location
+    Box::new(move |line, _captures, _multiline_flag| {
+        if suggestion_m.load(Ordering::Relaxed) {
+            // Only process lines that match the suggestion format
+            if let Some(caps) = suggestion_regex.captures(line.trim()) {
+                // Capture the line number and code from the suggestion line
+                let line_num = caps[1].parse::<usize>().unwrap_or(0);
+                let code = caps[2].to_string();
+
+                // Lock the pending_diag to add the suggestion
+                if let Ok(mut lock) = location_lock_clone.lock() {
+                    if let Some(mut loc) = lock.take() {
+                    let file = loc.file.clone().unwrap_or_default();
+                    let col = loc.column.unwrap_or(0);
+
+                    // Concatenate the suggestion line to the message
+                    let mut msg = loc.message.unwrap_or_default();
+                    msg.push_str(&format!("\n{}", code));
+
+                    // Print the concatenated suggestion for debugging
+                    // println!("daveSuggestion for {}:{}:{} - {}", file, line_num, col, msg);
+
+                    // Update the location with the new concatenated message
+                    loc.message = Some(msg.clone());
+                        // println!("Updating location lock with new suggestion: {}", msg);
+                    // Save the updated location back to shared state
+                    // if let Ok(mut lock) = location_lock_clone.lock() {
+                        // println!("Updating location lock with new suggestion: {}", msg);
+                        lock.replace(loc);
+                    // } else {
+                    //     eprintln!("Failed to acquire lock for location_lock_clone");
+                    // }
+                }
+                    // return Some(CallbackResponse {
+                    //     callback_type: CallbackType::Warning, // Treat subsequent lines as warnings
+                    //     message: Some(msg.clone()),
+                    //     file: Some(file),
+                    //     line: Some(line_num),
+                    //     column: Some(col),
+                    //     suggestion: Some(msg),  // This is the suggestion part
+                    //     terminal_status: None,
+                    // });
+                }
+            }
+        } else {
+            // println!("Suggestion mode is not active. Ignoring line: {}", line);
+        }
+
+        None
+    }),
+);
+}
+{
+    let suggestion_m = Arc::clone(&suggestion_mode);
+    let pending_diag_clone = Arc::clone(&pending_diag);
+    let diagnostics_arc = Arc::clone(&self.diagnostics);
+// Callback for handling when an empty line or new diagnostic is received
+stderr_dispatcher.add_callback(
+    r"^\s*$",  // Regex to capture empty line
+    Box::new(move |line, _captures, _multiline_flag| {
+        // println!("Empty line detected: {}", line);
+        suggestion_m.store(false, Ordering::Relaxed);
+                // End of current diagnostic: take and process it.
+        if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
+            println!("{:?}", pending_diag);
+            // Use diagnostics_arc instead of self.diagnostices
+            let mut diags = diagnostics_arc.lock().unwrap();            
+            diags.push(pending_diag.clone());
+        } else {
+            // println!("No pending diagnostic to process.");
+        }
+        // Handle empty line scenario to end the current diagnostic processing
+        // if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
+        //     println!("{:?}", pending_diag);
+        //     let mut diags = self.diagnostics.lock().unwrap();            
+        //     diags.push(pending_diag.clone());
+        //                             // let diag = crate::e_eventdispatcher::convert_message_to_diagnostic(msg, &msg_str);
+        //                             // diags.push(diag.clone());
+        //                             // if let Some(ref sd) = stage_disp_clone {
+        //                             //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
+        //                             // }
+        //     // Handle the saved PendingDiag and its CallbackResponse
+        //     // if let Some(callback_response) = pending_diag.callback_response {
+        //     //     println!("End of Diagnostic: {:?}", callback_response);
+        //     // }
+        // } else {
+        //     println!("No pending diagnostic to process.");
+        // }
+
+        None
+    }),
+);
+
+    }
+
+
+// {
+//     let pending_diag = Arc::clone(&pending_diag);
+//     let location_lock = Arc::clone(&warning_location);
+//     let suggestion_m = Arc::clone(&suggestion_mode);
+
+// let suggestion_regex = Regex::new(r"^\s*(\d+)\s*\|\s*(.*)$").unwrap();
 
 //     stderr_dispatcher.add_callback(
 //     r"^\s*(\d+)\s*\|\s*(.*)$",  // Match suggestion line format
@@ -383,6 +388,7 @@ stderr_dispatcher.add_callback(
 
 //                 // Lock the pending_diag to add the suggestion
 //                 if let Some(mut loc) = location_lock.lock().unwrap().take() {
+//                     println!("Suggestion line: {}", line);
 //                     let file = loc.file.clone().unwrap_or_default();
 //                     let col = loc.column.unwrap_or(0);
 
@@ -399,32 +405,41 @@ stderr_dispatcher.add_callback(
 //                     // Save the updated location back to shared state
 //                     location_lock.lock().unwrap().replace(loc);
 
-//                     return Some(CallbackResponse {
-//                         callback_type: CallbackType::Warning, // Treat subsequent lines as warnings
-//                         message: Some(msg.clone()),
-//                         file: Some(file),
-//                         line: Some(line_num),
-//                         column: Some(col),
-//                         suggestion: Some(msg),  // This is the suggestion part
-//                         terminal_status: None,
-//                     });
+//                     // return Some(CallbackResponse {
+//                     //     callback_type: CallbackType::Warning, // Treat subsequent lines as warnings
+//                     //     message: Some(msg.clone()),
+//                     //     file: Some(file),
+//                     //     line: Some(line_num),
+//                     //     column: Some(col),
+//                     //     suggestion: Some(msg),  // This is the suggestion part
+//                     //     terminal_status: None,
+//                     // });
+//                 } else {
+//                     println!("No location information available for suggestion line: {}", line); 
 //                 }
+//             } else {
+//                 println!("Suggestion line does not match expected format: {}", line);
 //             }
+//         } else {
+//             println!("Suggestion mode is not active. Ignoring line: {}", line);
 //         }
 
 //         None
 //     }),
 // );
 
+// }
 
-
-
+{
+    let location_lock = Arc::clone(&warning_location);
+    let pending_diag = Arc::clone(&pending_diag);
+    let suggestion_mode = Arc::clone(&suggestion_mode);
 stderr_dispatcher.add_callback(
     r"^(?P<msg>.*)$",  // Capture all lines following the location
     Box::new(move |line, _captures, _multiline_flag| {
-        // println!("TEST: Suggestion line: {}", line);
         // Lock the location to fetch the original diagnostic info
-        if let Some(loc) = location_lock.lock().unwrap().as_ref() {
+        if let Ok(location_guard) = location_lock.lock() {
+            if let Some(loc) = location_guard.as_ref() {
             let file = loc.file.clone().unwrap_or_default();
             let line_num = loc.line.unwrap_or(0);
             let col = loc.column.unwrap_or(0);
@@ -439,7 +454,13 @@ stderr_dispatcher.add_callback(
                 // println!("Suggestion for {}:{}:{} - {}", file, line_num, col, suggestion);
 
                 // Lock the pending_diag and update its callback_response field
-                let mut pending_diag = pending_diag.lock().unwrap();
+                let mut pending_diag = match pending_diag.lock() {
+                    Ok(lock) => lock,
+                    Err(e) => {
+                        eprintln!("Failed to acquire lock: {}", e);
+                        return None; // Handle the error appropriately
+                    }
+                };
                 if let Some(diag) = pending_diag.take() {
                     // If a PendingDiag already exists, update the existing callback response with the new suggestion
                     let mut diag = diag;
@@ -452,17 +473,32 @@ stderr_dispatcher.add_callback(
                     }
 
                     // Update the shared state with the new PendingDiag
-                    *pending_diag = Some(diag);
+                    *pending_diag = Some(diag.clone());
+                    return Some(CallbackResponse {
+                        callback_type: CallbackType::Suggestion, // Treat subsequent lines as warnings
+                        message: Some(diag.clone().suggestion.clone().unwrap().clone()),
+                        file: Some(file),
+                        line: Some(line_num),
+                        column: Some(col),
+                        suggestion: diag.clone().suggestion.clone(),  // This is the suggestion part
+                        terminal_status: None,
+                    });
+                } else {
+                   // println!("No pending diagnostic to process for suggestion line: {}", line);
                 }
             } else {
                 // If the line doesn't match the suggestion format, just return it as is
                 if line.trim().is_empty() {
                     // Ignore empty lines
+                    suggestion_mode.store(false, Ordering::Relaxed);
                     return None;
                 }
-                // println!("Non-suggestion line: {}", line);
             }
+        } else {
+            // println!("No location information available for suggestion line: {}", line); 
+            
         }
+    }
         None
     }),
 );
@@ -506,6 +542,8 @@ stderr_dispatcher.add_callback(
                     // Set suggestion mode to true as we've encountered a location line
                     suggestion_mode.store(true, Ordering::Relaxed);
                     return Some(resp.clone());
+                } else {
+                    println!("No captures found in line: {}", _line);
                 }
             // }
             None
@@ -542,23 +580,6 @@ stderr_dispatcher.add_callback(
 }
 
 // 4) Help callback — attach help to pending_diag
-// {
-//     let pending_diag = Arc::clone(&pending_diag);
-//     stderr_dispatcher.add_callback(
-//         // r"^\s*=\s*help:\s*(?P<msg>.+)$",
-//         r"^\s*(?:\=|\|)\s*help:\s*(?P<msg>.+)$",
-//         Box::new(move |_line, caps, _state| {
-//             if let Some(caps) = caps {
-//                 let mut pending_diag = pending_diag.lock().unwrap();
-//                 if let Some(ref mut resp) = *pending_diag {
-//                     resp.help = Some(caps["msg"].to_string());
-//                 } 
-//             }
-//             None
-//         }),
-//     );
-// }
-
 {
     let pending_diag = Arc::clone(&pending_diag);
 stderr_dispatcher.add_callback(
@@ -585,43 +606,7 @@ stderr_dispatcher.add_callback(
 );
 }
 
-    let pending_diag_clone = Arc::clone(&pending_diag);
-    let diagnostics_arc = Arc::clone(&self.diagnostics);
-// Callback for handling when an empty line or new diagnostic is received
-stderr_dispatcher.add_callback(
-    r"^\s*$",  // Regex to capture empty line
-    Box::new(move |line, _captures, _multiline_flag| {
-        suggestion_mode.store(false, Ordering::Relaxed);
-                // End of current diagnostic: take and process it.
-        if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
-            println!("{:?}", pending_diag);
-            // Use diagnostics_arc instead of self.diagnostics
-            let mut diags = diagnostics_arc.lock().unwrap();            
-            diags.push(pending_diag.clone());
-        } else {
-            println!("No pending diagnostic to process.");
-        }
-        // Handle empty line scenario to end the current diagnostic processing
-        // if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
-        //     println!("{:?}", pending_diag);
-        //     let mut diags = self.diagnostics.lock().unwrap();            
-        //     diags.push(pending_diag.clone());
-        //                             // let diag = crate::e_eventdispatcher::convert_message_to_diagnostic(msg, &msg_str);
-        //                             // diags.push(diag.clone());
-        //                             // if let Some(ref sd) = stage_disp_clone {
-        //                             //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
-        //                             // }
-        //     // Handle the saved PendingDiag and its CallbackResponse
-        //     // if let Some(callback_response) = pending_diag.callback_response {
-        //     //     println!("End of Diagnostic: {:?}", callback_response);
-        //     // }
-        // } else {
-        //     println!("No pending diagnostic to process.");
-        // }
 
-        None
-    }),
-);
  
 
 
@@ -840,16 +825,20 @@ where
     F: FnOnce(u32, CargoProcessHandle)
 
     {
+        if !self.is_filter {
+            return self.switch_to_passthrough_mode(on_spawn);
+        }
         let mut command = self.build_command();
 
-        let cargo_process_handle = command.spawn_cargo_capture(
+        let mut cargo_process_handle = command.spawn_cargo_capture(
+            self.clone(),
             self.stdout_dispatcher.clone(),
             self.stderr_dispatcher.clone(),
             self.progress_dispatcher.clone(),
             self.stage_dispatcher.clone(),
             None,
         );
-
+ cargo_process_handle.diagnostics = Arc::clone(&self.diagnostics);
         let pid = cargo_process_handle.pid;
 
         // Notify observer
@@ -908,10 +897,10 @@ pub fn wait(self: Arc<Self>, pid: Option<u32>) -> anyhow::Result<CargoProcessRes
     let diag_lock = self.diagnostics.lock().unwrap();
     diag_lock.clone()
 };
-                    cargo_process_handle.result.diagnostics = final_diagnostics;
+                    cargo_process_handle.result.diagnostics = final_diagnostics.clone();
                     cargo_process_handle.result.exit_status = Some(status);
                     cargo_process_handle.result.end_time = Some( SystemTime::now() );
-                    println!("Process with PID {} finished {:?} {}", pid, status, self.diagnostics.lock().unwrap().len());
+                    println!("Process with PID {} finished {:?} {}", pid, status, final_diagnostics.len());
                     return Ok(cargo_process_handle.result.clone());
                     // return Ok(CargoProcessResult { exit_status: status, ..Default::default() });
                 }
@@ -1296,14 +1285,13 @@ pub fn wait(self: Arc<Self>, pid: Option<u32>) -> anyhow::Result<CargoProcessRes
             is_cargo = true;
             Command::new("cargo")
         };
-        if is_cargo {
-                if let Some(pos) = new_args.iter().position(|arg| supported_subcommands.contains(&arg.as_str())) {
-
-        // If the command is "cargo run", insert the JSON output format and color options.
-        new_args.insert(pos + 1, "--message-format=json".into());
-        new_args.insert(pos + 2, "--color".into());
-        new_args.insert(pos + 3, "always".into());
-    }
+        if is_cargo && self.is_filter {
+           if let Some(pos) = new_args.iter().position(|arg| supported_subcommands.contains(&arg.as_str())) {
+                   // If the command is "cargo run", insert the JSON output format and color options.
+                 new_args.insert(pos + 1, "--message-format=json".into());
+                 new_args.insert(pos + 2, "--color".into());
+               new_args.insert(pos + 3, "always".into());
+           }
         }
         cmd.args(new_args);
         if let Some(dir) = &self.execution_dir {
@@ -1336,7 +1324,7 @@ mod tests {
 
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
 
-        let args = CargoCommandBuilder::new(&"run".to_string())
+        let args = CargoCommandBuilder::new(&"run".to_string(), false)
             .with_target(&target)
             .with_extra_args(&extra_args)
             .build();

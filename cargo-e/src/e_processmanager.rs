@@ -8,6 +8,7 @@ use chrono::Local;
 use nu_ansi_term::{Color, Style};
 use once_cell::sync::Lazy;
 use sysinfo::System;
+use tracing::Instrument;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -60,7 +61,7 @@ impl ProcessManager {
     }
 
     pub fn has_signalled(&self) -> usize {
-        self.signalled_count.load(Ordering::Relaxed)
+         self.signalled_count.load(Ordering::SeqCst)
     }
 
     fn install_handler(self_: Arc<Self>, rx: Receiver<()>) {
@@ -74,8 +75,8 @@ impl ProcessManager {
                 println!("ctrlc> Ctrl+C handler installed.");
                 thread::spawn(move || {
                     while rx.recv().is_ok() {
-                        self_.signalled_count.fetch_add(1, Ordering::Relaxed);
-                        println!("ctrlc> signal received.");
+                        self_.signalled_count.fetch_add(1, Ordering::SeqCst);
+                        println!("ctrlc> signal received.  {}", self_.signalled_count.load(Ordering::SeqCst));
                         self_.handle_signal();
                     }
                 });
@@ -237,33 +238,52 @@ pub fn update_status_line(output: &str, raw_mode: bool) -> io::Result<()> {
             .unwrap();
 
         // 3. Interactive polling loop
-        let mut system = System::new_all();
+        let mut system = if handle.is_filter { Some(System::new_all()) } else { None };
         const POLL: Duration = Duration::from_secs(1);
+        let mut loop_cnter = 0;
         loop {
-            system.refresh_all();
-            let status = handle.format_status(Some(&system));
-            if !status.is_empty() {
-                print!("\r{}", status);
+            loop_cnter += 1;
+            if handle.is_filter && loop_cnter % 2 == 0 {
+            if let Some(ref mut sys) = system {
+                sys.refresh_all();
+            }
+            }
+
+            if handle.is_filter {
+            if let Some(ref sys) = system {
+                if let Some(process) = sys.process((pid as usize).into()) {
+                let status = handle.format_status(Some(process));
+                if !status.is_empty() {
+                    print!("\r{}", status);
+                }
+                }
             }
             std::io::stdout().flush().unwrap();
+            }
 
             if let Some(es) = handle.child.try_wait()? {
-                handle.result.exit_status = Some(es);
-                handle.result.end_time = Some(SystemTime::now());
-                println!("\nProcess with PID {} finished", pid);
-                break;
+            let final_diagnostics = {
+                let diag_lock = handle.diagnostics.lock().unwrap();
+                diag_lock.clone()
+            };
+            handle.result.diagnostics = final_diagnostics.clone();
+            handle.result.exit_status = Some(es);
+            handle.result.end_time = Some(SystemTime::now());
+            println!("\nProcess with PID {} finished {:?} {}", pid, es, handle.result.diagnostics.len());
+            break;
             }
             std::thread::sleep(POLL);
         }
 
-        // 4. Extract diagnostics out of Arc<Mutex<_>>
-        let diagnostics = Arc::try_unwrap(handle.diagnostics)
+        if handle.is_filter {
+            // 4. Extract diagnostics out of Arc<Mutex<_>>
+            let diagnostics = Arc::try_unwrap(handle.diagnostics)
             .map(|m| m.into_inner().unwrap())
             .unwrap_or_else(|arc| arc.lock().unwrap().clone());
 
-        // 5. Move them into the final result
-        handle.result.diagnostics = diagnostics;
-
+            // 5. Move them into the final result
+            handle.result.diagnostics = diagnostics;
+        }
         Ok(handle.result)
     }
 
@@ -524,8 +544,8 @@ pub fn format_process_status(
         let runtime_str = crate::e_fmt::format_duration(runtime_duration);
 
         let left_display =
-            format!("{} | CPU: {:.2}% | Mem: {}", colored_start, cpu_usage, mem_human);
-        let left_plain = format!("{} | CPU: {:.2}% | Mem: {}", plain_start, cpu_usage, mem_human);
+            format!("{} | PID: {} | CPU: {:.2}% | Mem: {}", colored_start,pid, cpu_usage, mem_human);
+        let left_plain = format!("{} | PID: {} | CPU: {:.2}% | Mem: {}", plain_start,pid, cpu_usage, mem_human);
 
         // Get terminal width.
         let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
@@ -606,6 +626,7 @@ pub fn format_process_status(
             let handle_lock = handle.1.lock().unwrap();
             let diags = handle_lock.diagnostics.lock().unwrap();
             for diag in diags.iter() {
+                println!("{}: {} {}", diag.level, diag.lineref, diag.message.trim());
             }
         }
     }
@@ -669,16 +690,4 @@ impl Drop for CursorGuard {
         let mut stdout = std::io::stdout();
         let _ = crossterm::execute!(stdout, crossterm::cursor::Show);
     }
-}
-    /// Clean up a raw string by:
-/// 1. Removing any leading/trailing dashes (`-`)
-/// 2. Removing all `\r` and `\n`
-/// 3. Trimming whitespace
-fn clean<S: AsRef<str>>(s: S) -> String {
-    s.as_ref()
-     .trim_matches('-')       // strip - from start/end
-     .replace('\r', "")       // remove carriage returns
-     .replace('\n', "")       // remove newlines
-     .trim()                  // remove surrounding whitespace
-     .to_string()
 }

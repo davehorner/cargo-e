@@ -25,7 +25,7 @@ pub mod tui_interactive {
         widgets::{Block, Borders, List, ListItem, ListState},
         Terminal,
     };
-    use sysinfo::System;
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
     use std::{collections::HashSet, thread, time::Duration};
 
     /// Flushes the input event queue, ignoring any stray Enter key events.
@@ -525,7 +525,7 @@ pub mod tui_interactive {
         terminal.show_cursor()?;
 
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder = CargoCommandBuilder::new(&cli.subcommand)
+        let builder = CargoCommandBuilder::new(&cli.subcommand,cli.filter)
             .with_target(target)
             .with_required_features(&manifest_path, target)
             .with_cli(cli);
@@ -585,6 +585,13 @@ pub mod tui_interactive {
         let mut detached = false;
         let shared_child = handle.clone();
         let mut system = System::new_all();
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+// Refresh CPU usage to get actual value.
+system.refresh_processes_specifics(
+    ProcessesToUpdate::All,
+    true,
+    ProcessRefreshKind::nothing().with_cpu()
+);
         // Now we enter an event loop, periodically checking if the child has exited
         // and polling for keyboard input.
             {
@@ -655,7 +662,15 @@ loop {
 
                 // Only update the status display every SAMPLE_INTERVAL iterations.
     if sample_count % SAMPLE_INTERVAL == 0 {
-        system.refresh_all();
+        // system.refresh_all();
+
+
+// Refresh CPU usage to get actual value.
+system.refresh_processes_specifics(
+    ProcessesToUpdate::All,
+    true,
+    ProcessRefreshKind::nothing().with_cpu()
+);
         let status_display = ProcessManager::format_process_status(pid, &handle, &system);
         ProcessManager::update_status_line(&status_display, true).ok();
     }

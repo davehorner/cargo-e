@@ -2,7 +2,7 @@
 
 fn main() {
     use cargo_e::a_funny_docs::guide;
-    use cargo_e::a_funny_docs::ATrait;sdasdasd
+    use cargo_e::a_funny_docs::ATrait;
     println!("Testing humorous docs...");
     /// Demonstrates the art of appeasing the compiler:
     ///

@@ -173,7 +173,7 @@ pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
 /// It builds the command using the target's manifest path as the "origin" argument.
 pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     // Extract the origin path from the target (e.g. the manifest path).
-    let _origin_path = match &target.origin {
+    let origin_path = match &target.origin {
         Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
         _ => return,
     };
@@ -199,8 +199,8 @@ pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     let mut cmd = Command::new(exe_path);
     cmd.arg("--streaming");
     cmd.arg("--stdin");
-    cmd.arg(".");
-    //    cmd.arg(origin_path);
+    // cmd.arg(".");
+    cmd.arg(origin_path);
     // command
     // };
 
@@ -287,6 +287,7 @@ pub fn run_example(manager: Arc<ProcessManager>,
     cli: &crate::Cli,
     target: &crate::e_target::CargoTarget,
 ) -> anyhow::Result<Option<std::process::ExitStatus>> {
+    crate::e_runall::set_rustflags_if_quiet(cli.quiet);
     // Retrieve the current package name at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
@@ -298,7 +299,7 @@ pub fn run_example(manager: Arc<ProcessManager>,
     }
 
     // Build the command using the CargoCommandBuilder.
-    let mut builder = crate::e_command_builder::CargoCommandBuilder::new(&cli.subcommand)
+    let mut builder = crate::e_command_builder::CargoCommandBuilder::new(&cli.subcommand, cli.filter)
         .with_target(target)
         .with_required_features(&target.manifest_path, target)
         .with_cli(cli);
@@ -341,6 +342,7 @@ pub fn run_example(manager: Arc<ProcessManager>,
 let result=manager.wait(pid, None)?;
 // println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
 // println!("\n\nHERE IS THE RESULT!{} {:?}",pid,result);
+if result.is_filter {
 result.print_exact();
 result.print_short();
 result.print_compact();
@@ -348,6 +350,7 @@ result.print_compact();
         // manager.print_shortened_output();
         manager.print_prefixed_summary();
         // manager.print_compact();
+}
 
 
 
@@ -869,6 +872,7 @@ trait JoinTimeout {
 
 impl<T> JoinTimeout for thread::JoinHandle<T> {
     fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
+        println!("Waiting for thread to finish...{}", timeout.as_secs());
         let _ = thread::sleep(timeout);
         match self.join() {
             Ok(_) => Ok(()),

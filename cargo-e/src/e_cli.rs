@@ -22,7 +22,9 @@ pub struct Cli {
 
     #[arg(long, help = "Build and run in release mode.")]
     pub release: bool,
-    #[arg(long, help = "Suppress cargo output when running the sample.")]
+    #[arg(long,
+        short = 'q',
+         help = "Suppress cargo output when running the sample.")]
     pub quiet: bool,
     // /// Comma-separated list of package names.
     // #[clap(long, value_delimiter = ',', help = "Optional list of package names to run examples for. If omitted, defaults to ALL_PACKAGES.")]
@@ -93,6 +95,7 @@ pub struct Cli {
         help = "Enable or disable paging (default: enabled)."
     )]
     pub paging: bool,
+
 
     #[arg(
         long,

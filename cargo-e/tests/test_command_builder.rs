@@ -18,7 +18,7 @@ fn integration_test_builder() {
         ))),
     };
 
-    let args = CargoCommandBuilder::new(&"run".to_string())
+    let args = CargoCommandBuilder::new(&"run".to_string(), false)
         .with_target(&target)
         .with_extra_args(&["--flag".to_string(), "value".to_string()])
         .build();
