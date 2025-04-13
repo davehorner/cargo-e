@@ -9,6 +9,13 @@ All notable changes to this project will be documented in this file.
 
 
 
+
+## [0.1.15](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.14...e_crate_version_checker-v0.1.15) - 2025-04-13
+
+### Added
+
+- *(cargo-e)* add realtime filtering for cargo stdout and stderr
+
 ## [0.1.14](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.13...e_crate_version_checker-v0.1.14) - 2025-04-11
 
 ### Other

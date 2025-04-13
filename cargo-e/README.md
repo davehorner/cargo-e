@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.11</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.12</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -62,9 +62,11 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 - **interactive terminal UI (TUI):** Optionally launch a feature-rich, interactive interface for browsing and selecting targets. (-t option)
 - **[vscode](https://github.com/microsoft/vscode) integration:** Jump directly into your source `code` and navigate to the `fn main` entry point automatically. ('e' key in TUI)
 - **[bacon](https://github.com/Canop/bacon) integration:** Run `bacon` on your project/example. ('b' key in TUI)
-- **Workspace integration:** Automatically detects and uses workspace manifests for multi-crate projects. (-w option)
-- **Configurable behavior** – Optional equivalent mode – `cargo-e` can behave identically to `cargo run --example` with bare minimum dependency.
-
+- **workspace integration:** Automatically detects and uses workspace manifests for multi-crate projects. (-w option)
+- **configurable behavior:** – Optional equivalent mode – `cargo-e` can behave identically to `cargo run --example` with bare minimum dependency
+- **cargo and target stderr and stdout filtering:** `-f` sends all output from cargo and the target through a filter to determine accurate timing when `--run-all` is specified.  cargo warnings and errors are rewritten to be more concise, numbered, and timed format. Errors are written in realtime and a table of errors is displayed conviently at the end of output,  file references are all absolute and fully specified so your ctrl+clicks take you there.  If you require a terminal, don't use `-f`, and your output will be unfiltered.
+- **subcommands:** you may find that you like the rewritten cargo output and the additional detail provided in `-f` filtering.  Specify a `-s` subcommand to run a subcommand other than the default `run` that `cargo-e` uses normally.
+  
 ## Introduction
 
 When using `cargo run --example` in a project with a single example, Cargo does not execute the example. Instead of running the obvious example, it displays that there is one example available. This behavior differs from that of `cargo run`, which automatically runs the default build target without requiring additional arguments.
@@ -296,7 +298,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.11</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.12</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 

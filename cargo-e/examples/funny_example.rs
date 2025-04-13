@@ -4,7 +4,6 @@ fn main() {
     use cargo_e::a_funny_docs::guide;
     use cargo_e::a_funny_docs::ATrait;
     println!("Testing humorous docs...");
-
     /// Demonstrates the art of appeasing the compiler:
     ///
     /// Instead of just calling `guide::A_CONST` (which would trigger a "path statement with no effect"

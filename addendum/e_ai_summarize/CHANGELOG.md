@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.6...e_ai_summarize-v0.1.7) - 2025-04-13
+
+### Added
+
+- *(cargo-e)* add realtime filtering for cargo stdout and stderr
+
 ## [0.1.6](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.5...e_ai_summarize-v0.1.6) - 2025-04-11
 
 ### Fixed

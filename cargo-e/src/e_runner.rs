@@ -1,54 +1,213 @@
+use crate::e_processmanager::ProcessManager;
 use crate::{e_target::TargetOrigin, prelude::*};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
+use crate::e_cargocommand_ext::CargoProcessHandle;
 use crate::e_target::CargoTarget;
+use anyhow::Result;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::Duration;
 use which::which; // Adjust the import based on your project structure
 
+// lazy_static! {
+//     pub static ref GLOBAL_CHILDREN: Arc<Mutex<Vec<Arc<CargoProcessHandle>>>> = Arc::new(Mutex::new(Vec::new()));
+//     static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
+// }
+
+// pub static GLOBAL_CHILDREN:     Lazy<Arc<Mutex<Vec<Arc<Mutex<CargoProcessHandle>>>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+pub static GLOBAL_CHILDREN: Lazy<Arc<Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+static CTRL_C_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 // Global shared container for the currently running child process.
-pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
+// pub static GLOBAL_CHILD: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+// static CTRL_C_COUNT: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
 
-/// Registers a global Ctrl+C handler once.
-/// The handler checks GLOBAL_CHILD and kills the child process if present.
-pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+// pub static GLOBAL_CHILDREN: Lazy<Arc<Mutex<VecDeque<CargoProcessHandle>>>> = Lazy::new(|| Arc::new(Mutex::new(VecDeque::new())));
+/// Resets the Ctrl+C counter.
+/// This can be called to reset the count when starting a new program or at any other point.
+pub fn reset_ctrl_c_count() {
+    CTRL_C_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+// pub fn kill_last_process() -> Result<()> {
+//     let mut global = GLOBAL_CHILDREN.lock().unwrap();
+
+//     if let Some(mut child_handle) = global.pop_back() {
+//         // Kill the most recent process
+//         eprintln!("Killing the most recent child process...");
+//         let _ = child_handle.kill();
+//         Ok(())
+//     } else {
+//         eprintln!("No child processes to kill.");
+//         Err(anyhow::anyhow!("No child processes to kill").into())
+//     }
+// }
+
+pub fn take_process_results(pid: u32) -> Option<CargoProcessHandle> {
+    let mut global = GLOBAL_CHILDREN.lock().ok()?;
+    // Take ownership
+    // let handle = global.remove(&pid)?;
+    // let mut handle = handle.lock().ok()?;
+    let handle = global.remove(&pid)?;
+    // global.remove(&pid)
+    // This will succeed only if no other Arc exists
+    Arc::try_unwrap(handle)
+        .ok()? // fails if other Arc exists
+        .into_inner()
+        .ok() // fails if poisoned
+}
+
+pub fn get_process_results_in_place(
+    pid: u32,
+) -> Option<crate::e_cargocommand_ext::CargoProcessResult> {
+    let global = GLOBAL_CHILDREN.lock().ok()?; // MutexGuard<HashMap>
+    let handle = global.get(&pid)?.clone(); // Arc<Mutex<CargoProcessHandle>>
+    let handle = handle.lock().ok()?; // MutexGuard<CargoProcessHandle>
+    Some(handle.result.clone()) // ✅ return the result field
+}
+
+// /// Registers a global Ctrl+C handler that interacts with the `GLOBAL_CHILDREN` process container.
+// pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+//     println!("Registering Ctrl+C handler...");
+//     ctrlc::set_handler(move || {
+//          let count = CTRL_C_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+//         {
+//             eprintln!("Ctrl+C pressed");
+
+//     // lock only ONE mutex safely
+//     if let Ok(mut global) = GLOBAL_CHILDREN.try_lock() {
+//             // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+//             eprintln!("Ctrl+C got lock on global container");
+
+//             // If there are processes in the global container, terminate the most recent one
+//             if let Some((pid, child_handle)) = global.iter_mut().next() {
+//                 eprintln!("Ctrl+C pressed, terminating the child process with PID: {}", pid);
+
+//                 // Lock the child process and kill it
+//                 let mut child_handle = child_handle.lock().unwrap();
+//                 if child_handle.requested_exit {
+//                     eprintln!("Child process is already requested kill...");
+//                 } else {
+//                     eprintln!("Child process is not running, no need to kill.");
+//                     child_handle.requested_exit=true;
+//                     println!("Killing child process with PID: {}", pid);
+//                     let _ = child_handle.kill();  // Attempt to kill the process
+//                     println!("Killed child process with PID: {}", pid);
+
+//                     reset_ctrl_c_count();
+//                     return;  // Exit after successfully terminating the process
+//                 }
+
+//                 // Now remove the process from the global container
+//                 // let pid_to_remove = *pid;
+
+//                 // // Reacquire the lock after killing and remove the process from global
+//                 // drop(global);  // Drop the first borrow
+
+//                 // // Re-lock global and safely remove the entry using the pid
+//                 // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+//                 // global.remove(&pid_to_remove); // Remove the process entry by PID
+//                 // println!("Removed process with PID: {}", pid_to_remove);
+//             }
+
+//     } else {
+//         eprintln!("Couldn't acquire GLOBAL_CHILDREN lock safely");
+//     }
+
+/// Registers a global Ctrl+C handler that uses the process manager.
+pub fn register_ctrlc_handler(process_manager: Arc<ProcessManager>) -> Result<(), Box<dyn Error>> {
+    println!("Registering Ctrl+C handler...");
     ctrlc::set_handler(move || {
-        let mut count_lock = CTRL_C_COUNT.lock().unwrap();
-        *count_lock += 1;
+        let count = CTRL_C_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+        eprintln!("Ctrl+C pressed");
 
-        let count = *count_lock;
+        // Use the process manager's API to handle killing
+        match process_manager.kill_one() {
+            Ok(true) => {
+                eprintln!("Process was successfully terminated.");
+                reset_ctrl_c_count();
+                return; // Exit handler early after a successful kill.
+            }
+            Ok(false) => {
+                eprintln!("No process was killed this time.");
+            }
+            Err(e) => {
+                eprintln!("Error killing process: {:?}", e);
+            }
+        }
 
-        // If there is no child process and Ctrl+C is pressed 3 times, exit the program
+        // Handle Ctrl+C count logic for exiting the program.
         if count == 3 {
             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
-            exit(0);
+            std::process::exit(0);
+        } else if count == 2 {
+            eprintln!("Ctrl+C pressed 2 times, press one more to exit.");
         } else {
-            let mut child_lock = GLOBAL_CHILD.lock().unwrap();
-            if let Some(child) = child_lock.as_mut() {
-                eprintln!(
-                    "Ctrl+C pressed {} times, terminating running child process...",
-                    count
-                );
-                let _ = child.kill();
-            } else {
-                eprintln!("Ctrl+C pressed {} times, no child process running.", count);
-            }
+            eprintln!("Ctrl+C pressed {} times, no child process running.", count);
         }
     })?;
     Ok(())
 }
 
+//         }
+
+//         // Now handle the Ctrl+C count and display messages
+//         // If Ctrl+C is pressed 3 times without any child process, exit the program.
+//         if count == 3 {
+//             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
+//             std::process::exit(0);
+//         } else if count == 2 {
+//             // Notify that one more Ctrl+C will exit the program.
+//             eprintln!("Ctrl+C pressed 2 times, press one more to exit.");
+//         } else {
+//             eprintln!("Ctrl+C pressed {} times, no child process running.", count);
+//         }
+//     })?;
+//     Ok(())
+// }
+
+// /// Registers a global Ctrl+C handler once.
+// /// The handler checks GLOBAL_CHILD and kills the child process if present.
+// pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+//     ctrlc::set_handler(move || {
+//         let mut count_lock = CTRL_C_COUNT.lock().unwrap();
+//         *count_lock += 1;
+
+//         let count = *count_lock;
+
+//         // If there is no child process and Ctrl+C is pressed 3 times, exit the program
+//         if count == 3 {
+//             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
+//             exit(0);
+//         } else {
+//             let mut child_lock = GLOBAL_CHILD.lock().unwrap();
+//             if let Some(child) = child_lock.as_mut() {
+//                 eprintln!(
+//                     "Ctrl+C pressed {} times, terminating running child process...",
+//                     count
+//                 );
+//                 let _ = child.kill();
+//             } else {
+//                 eprintln!("Ctrl+C pressed {} times, no child process running.", count);
+//             }
+//         }
+//     })?;
+//     Ok(())
+// }
+
 /// Asynchronously launches the GenAI summarization example for the given target.
 /// It builds the command using the target's manifest path as the "origin" argument.
 pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     // Extract the origin path from the target (e.g. the manifest path).
-    let _origin_path = match &target.origin {
+    let origin_path = match &target.origin {
         Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
         _ => return,
     };
@@ -74,8 +233,8 @@ pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     let mut cmd = Command::new(exe_path);
     cmd.arg("--streaming");
     cmd.arg("--stdin");
-    cmd.arg(".");
-    //    cmd.arg(origin_path);
+    // cmd.arg(".");
+    cmd.arg(origin_path);
     // command
     // };
 
@@ -159,25 +318,33 @@ pub fn run_equivalent_example(
 
 /// Runs the given example (or binary) target.
 pub fn run_example(
+    manager: Arc<ProcessManager>,
     cli: &crate::Cli,
     target: &crate::e_target::CargoTarget,
-) -> anyhow::Result<std::process::ExitStatus> {
+) -> anyhow::Result<Option<std::process::ExitStatus>> {
+    crate::e_runall::set_rustflags_if_quiet(cli.quiet);
     // Retrieve the current package name at compile time.
     let current_bin = env!("CARGO_PKG_NAME");
 
     // Avoid running our own binary.
     if target.kind == crate::e_target::TargetKind::Binary && target.name == current_bin {
-        return Err(anyhow::anyhow!(
+        println!(
             "Skipping automatic run: {} is the same as the running binary",
             target.name
-        ));
+        );
+        return Ok(None);
     }
 
+    let manifest_path = PathBuf::from(target.manifest_path.clone());
     // Build the command using the CargoCommandBuilder.
-    let mut builder = crate::e_command_builder::CargoCommandBuilder::new()
-        .with_target(target)
-        .with_required_features(&target.manifest_path, target)
-        .with_cli(cli);
+    let mut builder = crate::e_command_builder::CargoCommandBuilder::new(
+        &manifest_path,
+        &cli.subcommand,
+        cli.filter,
+    )
+    .with_target(target)
+    .with_required_features(&target.manifest_path, target)
+    .with_cli(cli);
 
     if !cli.extra.is_empty() {
         builder = builder.with_extra_args(&cli.extra);
@@ -189,7 +356,7 @@ pub fn run_example(
     // Before spawning, determine the directory to run from.
     // If a custom execution directory was set (e.g. for Tauri targets), that is used.
     // Otherwise, if the target is extended, run from its parent directory.
-    if let Some(exec_dir) = builder.execution_dir {
+    if let Some(ref exec_dir) = builder.execution_dir {
         cmd.current_dir(exec_dir);
     } else if target.extended {
         if let Some(dir) = target.manifest_path.parent() {
@@ -211,27 +378,44 @@ pub fn run_example(
     // Check if the manifest triggers the workspace error.
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
 
-    // Spawn the process.
-    let child = cmd.spawn()?;
-    {
-        let mut global = GLOBAL_CHILD.lock().unwrap();
-        *global = Some(child);
+    let pid = Arc::new(builder).run(|_pid, handle| {
+        manager.register(handle);
+    })?;
+    let result = manager.wait(pid, None)?;
+    // println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
+    // println!("\n\nHERE IS THE RESULT!{} {:?}",pid,result);
+    if result.is_filter {
+        result.print_exact();
+        result.print_short();
+        result.print_compact();
+
+        // manager.print_shortened_output();
+        manager.print_prefixed_summary();
+        // manager.print_compact();
     }
-    let status = {
-        let mut global = GLOBAL_CHILD.lock().unwrap();
-        if let Some(mut child) = global.take() {
-            child.wait()?
-        } else {
-            return Err(anyhow::anyhow!("Child process missing"));
-        }
-    };
+
+    // let handle=    Arc::new(builder).run_wait()?;
+    // Spawn the process.
+    // let child = cmd.spawn()?;
+    // {
+    //     let mut global = GLOBAL_CHILD.lock().unwrap();
+    //     *global = Some(child);
+    // }
+    // let status = {
+    //     let mut global = GLOBAL_CHILD.lock().unwrap();
+    //     if let Some(mut child) = global.take() {
+    //         child.wait()?
+    //     } else {
+    //         return Err(anyhow::anyhow!("Child process missing"));
+    //     }
+    // };
 
     // Restore the manifest if we patched it.
     if let Some(original) = maybe_backup {
         fs::write(&target.manifest_path, original)?;
     }
 
-    Ok(status)
+    Ok(result.exit_status)
 }
 // /// Runs an example or binary target, applying a temporary manifest patch if a workspace error is detected.
 // /// This function uses the same idea as in the collection helpers: if the workspace error is found,
@@ -436,21 +620,21 @@ pub fn run_example(
 /// Helper function to spawn a cargo process.
 /// On Windows, this sets the CREATE_NEW_PROCESS_GROUP flag.
 pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        let child = Command::new("cargo")
-            .args(args)
-            .creation_flags(CREATE_NEW_PROCESS_GROUP)
-            .spawn()?;
-        Ok(child)
-    }
-    #[cfg(not(windows))]
-    {
-        let child = Command::new("cargo").args(args).spawn()?;
-        Ok(child)
-    }
+    // #[cfg(windows)]
+    // {
+    //     use std::os::windows::process::CommandExt;
+    //     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    //     let child = Command::new("cargo")
+    //         .args(args)
+    //         .creation_flags(CREATE_NEW_PROCESS_GROUP)
+    //         .spawn()?;
+    //     Ok(child)
+    // }
+    // #[cfg(not(windows))]
+    // {
+    let child = Command::new("cargo").args(args).spawn()?;
+    Ok(child)
+    // }
 }
 
 /// Returns true if the file's a "scriptisto"
@@ -558,7 +742,7 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned = extra_str_slice.clone();
-                let child = run_rust_script(
+                let mut child = run_rust_script(
                     &explicit,
                     &extra_str_slice_cloned
                         .iter()
@@ -570,40 +754,41 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
                     std::process::exit(1); // Exit with an error code
                 });
 
-                // Lock global to store the child process
-                {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    *global = Some(child);
-                }
+                // // Lock global to store the child process
+                // {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     *global = Some(child);
+                // }
 
-                // Wait for the child process to complete
-                let status = {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    if let Some(mut child) = global.take() {
-                        child.wait()
-                    } else {
-                        // Handle missing child process
-                        eprintln!("Child process missing");
-                        std::process::exit(1); // Exit with an error code
-                    }
-                };
+                // // Wait for the child process to complete
+                // let status = {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     if let Some(mut child) = global.take() {
+                child.wait()
+                //     } else {
+                //         // Handle missing child process
+                //         eprintln!("Child process missing");
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // };
 
                 // Handle the child process exit status
-                match status {
-                    Ok(status) => {
-                        eprintln!("Child process exited with status code: {:?}", status.code());
-                        std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                    }
-                    Err(err) => {
-                        eprintln!("Error waiting for child process: {}", err);
-                        std::process::exit(1); // Exit with an error code
-                    }
-                }
+                // match status {
+                //     Ok(status) => {
+                //         eprintln!("Child process exited with status code: {:?}", status.code());
+                //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                //     }
+                //     Err(err) => {
+                //         eprintln!("Error waiting for child process: {}", err);
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // }
             });
 
             // Wait for the thread to complete, but with a timeout
-            let timeout = Duration::from_secs(10);
-            match handle.join_timeout(timeout) {
+            // let timeout = Duration::from_secs(10);
+            // match handle.join_timeout(timeout) {
+            match handle.join() {
                 Ok(_) => {
                     println!("Child process finished successfully.");
                 }
@@ -631,7 +816,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned: Vec<String> = extra_str_slice.clone();
-                let child = run_scriptisto(
+                let mut child = run_scriptisto(
                     &relative,
                     &extra_str_slice_cloned
                         .iter()
@@ -643,40 +828,40 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
                     std::process::exit(1); // Exit with an error code
                 });
 
-                // Lock global to store the child process
-                {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    *global = Some(child);
-                }
+                // // Lock global to store the child process
+                // {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     *global = Some(child);
+                // }
 
-                // Wait for the child process to complete
-                let status = {
-                    let mut global = GLOBAL_CHILD.lock().unwrap();
-                    if let Some(mut child) = global.take() {
-                        child.wait()
-                    } else {
-                        // Handle missing child process
-                        eprintln!("Child process missing");
-                        std::process::exit(1); // Exit with an error code
-                    }
-                };
+                // // Wait for the child process to complete
+                // let status = {
+                //     let mut global = GLOBAL_CHILD.lock().unwrap();
+                //     if let Some(mut child) = global.take() {
+                child.wait()
+                //     } else {
+                //         // Handle missing child process
+                //         eprintln!("Child process missing");
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // };
 
-                // Handle the child process exit status
-                match status {
-                    Ok(status) => {
-                        eprintln!("Child process exited with status code: {:?}", status.code());
-                        std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                    }
-                    Err(err) => {
-                        eprintln!("Error waiting for child process: {}", err);
-                        std::process::exit(1); // Exit with an error code
-                    }
-                }
+                // // Handle the child process exit status
+                // match status {
+                //     Ok(status) => {
+                //         eprintln!("Child process exited with status code: {:?}", status.code());
+                //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
+                //     }
+                //     Err(err) => {
+                //         eprintln!("Error waiting for child process: {}", err);
+                //         std::process::exit(1); // Exit with an error code
+                //     }
+                // }
             });
 
             // Wait for the thread to complete, but with a timeout
-            let timeout = Duration::from_secs(10);
-            match handle.join_timeout(timeout) {
+            // let timeout = Duration::from_secs(10);
+            match handle.join() {
                 Ok(_) => {
                     println!("Child process finished successfully.");
                 }
@@ -722,16 +907,17 @@ fn make_relative(path: &Path) -> std::io::Result<String> {
     Ok(s)
 }
 
-trait JoinTimeout {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
-}
+// trait JoinTimeout {
+//     fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
+// }
 
-impl<T> JoinTimeout for thread::JoinHandle<T> {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
-        let _ = thread::sleep(timeout);
-        match self.join() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
-    }
-}
+// impl<T> JoinTimeout for thread::JoinHandle<T> {
+//     fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
+//         println!("Waiting for thread to finish...{}", timeout.as_secs());
+//         let _ = thread::sleep(timeout);
+//         match self.join() {
+//             Ok(_) => Ok(()),
+//             Err(_) => Err(()),
+//         }
+//     }
+// }

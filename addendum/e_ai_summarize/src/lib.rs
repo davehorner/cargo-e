@@ -5,6 +5,7 @@ pub mod crate_recreator_py;
 pub mod crate_recreator_rs;
 pub mod file_gatherer;
 pub mod summarizer;
+pub mod resolver;
 //raw input → preprocess → sanitize → literal encode
 //[filesystem traversal] --> [per-file processor] --> [per-line or per-comment processor] --> [emit events]
 
