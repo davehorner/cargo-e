@@ -25,8 +25,8 @@ pub mod tui_interactive {
         widgets::{Block, Borders, List, ListItem, ListState},
         Terminal,
     };
-    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
     use std::{collections::HashSet, thread, time::Duration};
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
     /// Flushes the input event queue, ignoring any stray Enter key events.
     pub fn flush_input() -> Result<(), Box<dyn std::error::Error>> {
@@ -84,7 +84,8 @@ pub mod tui_interactive {
     }
 
     /// Launches an interactive terminal UI for selecting an example.
-    pub fn launch_tui(manager: Arc<ProcessManager>,
+    pub fn launch_tui(
+        manager: Arc<ProcessManager>,
         cli: &Cli,
         examples: &[CargoTarget],
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -122,8 +123,6 @@ pub mod tui_interactive {
         list_state.select(Some(0));
         let mut exit_hover = false;
         let mut run_history_map = crate::e_parser::read_run_history(&history_path);
-
-        let manager_clone = Arc::clone(&manager);
         'main_loop: loop {
             terminal.draw(|f| {
                 let size = f.area();
@@ -195,17 +194,20 @@ pub mod tui_interactive {
                 f.render_stateful_widget(list, list_area, &mut list_state);
             })?;
 
-                                         {
+            {
                 match event::read()? {
                     Event::Key(key) => {
                         // Only process key-press events.
                         if key.kind == KeyEventKind::Press {
-                                if key.code == KeyCode::Char('c') &&
-       key.modifiers.contains(event::KeyModifiers::CONTROL) {
-        eprintln!("CTRL-C detected within TUI event loop. Terminating processes.");
-        manager.kill_all();
-        // Optionally, exit the TUI or perform additional cleanup.
-    }
+                            if key.code == KeyCode::Char('c')
+                                && key.modifiers.contains(event::KeyModifiers::CONTROL)
+                            {
+                                eprintln!(
+                                    "CTRL-C detected within TUI event loop. Terminating processes."
+                                );
+                                manager.kill_all();
+                                // Optionally, exit the TUI or perform additional cleanup.
+                            }
                             // Check if we might be starting an escape sequence for an arrow key.
                             if key.code == KeyCode::Esc {
                                 // Try to collect the rest of the sequence.
@@ -363,7 +365,8 @@ pub mod tui_interactive {
                                 // }
                                 KeyCode::Enter => {
                                     if let Some(selected) = list_state.selected() {
-                                        run_piece(manager.clone(),
+                                        run_piece(
+                                            manager.clone(),
                                             &exs,
                                             selected,
                                             &history_path,
@@ -450,7 +453,8 @@ pub mod tui_interactive {
                                     let index = (mouse_event.row - inner_y) as usize;
                                     if index < exs.len() {
                                         list_state.select(Some(index));
-                                        run_piece(manager.clone(),
+                                        run_piece(
+                                            manager.clone(),
                                             &exs.clone(),
                                             index,
                                             &history_path,
@@ -525,11 +529,11 @@ pub mod tui_interactive {
         terminal.show_cursor()?;
 
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder = CargoCommandBuilder::new(&cli.subcommand,cli.filter)
+        let builder = CargoCommandBuilder::new(&manifest_path, &cli.subcommand, cli.filter)
             .with_target(target)
             .with_required_features(&manifest_path, target)
             .with_cli(cli);
-        let mut cmd = builder.build_command();
+        let cmd = builder.build_command();
 
         // Set current directory appropriately.
         // if target.kind == TargetKind::ManifestTauri {
@@ -571,60 +575,58 @@ pub mod tui_interactive {
         // // let args_ref: Vec<&str> = args.iter().map(|s| &**s).collect();
         // let mut child = crate::e_runner::spawn_cargo_process(&args_ref)?;
 
-    let pid = Arc::new(builder).run(|pid, handle| {
-    manager.register(handle);
-    })?;
-// let ret=manager.wait(pid, None)?;
-    let handle = manager.get(pid).unwrap().clone();
+        let pid = Arc::new(builder).run(|_pid, handle| {
+            manager.register(handle);
+        })?;
+        // let ret=manager.wait(pid, None)?;
+        let handle = manager.get(pid).unwrap().clone();
         // let mut child = cmd.spawn()?;
         // if cli.print_instruction {
         //     println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
         // }
         let mut update_history = true;
-        let mut status_code: i32=-255;
+        let mut status_code: i32 = -255;
         let mut detached = false;
         let shared_child = handle.clone();
         let mut system = System::new_all();
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-// Refresh CPU usage to get actual value.
-system.refresh_processes_specifics(
-    ProcessesToUpdate::All,
-    true,
-    ProcessRefreshKind::nothing().with_cpu()
-);
+        // Refresh CPU usage to get actual value.
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_cpu(),
+        );
         // Now we enter an event loop, periodically checking if the child has exited
         // and polling for keyboard input.
-            {
-        let mut stdout = std::io::stdout();
-        crossterm::execute!(stdout, crossterm::cursor::Hide)?;
-    }
-    let _cursor_guard = crate::e_processmanager::CursorGuard;
-
-const POLL_DURATION: Duration = Duration::from_secs(1);
-const SAMPLE_INTERVAL: usize = 10; // Update status every 10 iterations
-
-let mut sample_count: usize = 0;
-loop {
-    sample_count += 1;
-
-
-                // Check if the process has finished.
-    {
-        let mut child_guard = shared_child.lock().unwrap();
-        if let Some(status) = child_guard.child.try_wait()? {
-            let status_code = status.code().unwrap_or(1);
-            println!("Process exited with status: {}", status_code);
-            break;
+        {
+            let mut stdout = std::io::stdout();
+            crossterm::execute!(stdout, crossterm::cursor::Hide)?;
         }
-    }
+        let _cursor_guard = crate::e_processmanager::CursorGuard;
+
+        const SAMPLE_INTERVAL: usize = 10; // Update status every 10 iterations
+
+        let mut sample_count: usize = 0;
+        loop {
+            sample_count += 1;
+
+            // Check if the process has finished.
+            {
+                let mut child_guard = shared_child.lock().unwrap();
+                if let Some(status) = child_guard.child.try_wait()? {
+                    let status_code = status.code().unwrap_or(1);
+                    println!("Process exited with status: {}", status_code);
+                    break;
+                }
+            }
             // // Check if the child process has finished.
             if let Some(status) = handle.clone().lock().unwrap().child.try_wait()? {
                 status_code = status.code().unwrap_or(1);
 
                 println!("Process exited with status: {}", status_code);
-// println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
-        // manager.print_shortened_output();
-        manager.print_compact();
+                // println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
+                // manager.print_shortened_output();
+                manager.print_compact();
                 break;
             }
             // Poll for input events with a 100ms timeout.
@@ -639,7 +641,11 @@ loop {
                         shared_child.lock().expect("expected child").child.kill()?;
                         update_history = false; // do not update history if cancelled
                                                 // Optionally, you can also wait for the child after killing.
-                        let status = shared_child.lock().expect("shared child can't lock").child.wait()?;
+                        let status = shared_child
+                            .lock()
+                            .expect("shared child can't lock")
+                            .child
+                            .wait()?;
                         status_code = status.code().unwrap_or(1);
                         break;
                     } else if key_event.code == KeyCode::Char('d') && key_event.modifiers.is_empty()
@@ -660,21 +666,19 @@ loop {
                 }
             }
 
-                // Only update the status display every SAMPLE_INTERVAL iterations.
-    if sample_count % SAMPLE_INTERVAL == 0 {
-        // system.refresh_all();
+            // Only update the status display every SAMPLE_INTERVAL iterations.
+            if sample_count % SAMPLE_INTERVAL == 0 {
+                // system.refresh_all();
 
-
-// Refresh CPU usage to get actual value.
-system.refresh_processes_specifics(
-    ProcessesToUpdate::All,
-    true,
-    ProcessRefreshKind::nothing().with_cpu()
-);
-        let status_display = ProcessManager::format_process_status(pid, &handle, &system);
-        ProcessManager::update_status_line(&status_display, true).ok();
-    }
-
+                // Refresh CPU usage to get actual value.
+                system.refresh_processes_specifics(
+                    ProcessesToUpdate::All,
+                    true,
+                    ProcessRefreshKind::nothing().with_cpu(),
+                );
+                let status_display = ProcessManager::format_process_status(pid, &handle, &system);
+                ProcessManager::update_status_line(&status_display, true).ok();
+            }
         }
         // Restore the manifest if it was patched.
         if let Some(original) = backup {

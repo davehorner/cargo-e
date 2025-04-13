@@ -22,9 +22,11 @@ pub struct Cli {
 
     #[arg(long, help = "Build and run in release mode.")]
     pub release: bool,
-    #[arg(long,
+    #[arg(
+        long,
         short = 'q',
-         help = "Suppress cargo output when running the sample.")]
+        help = "Suppress cargo output when running the sample."
+    )]
     pub quiet: bool,
     // /// Comma-separated list of package names.
     // #[clap(long, value_delimiter = ',', help = "Optional list of package names to run examples for. If omitted, defaults to ALL_PACKAGES.")]
@@ -36,7 +38,7 @@ pub struct Cli {
     )]
     pub pre_build: bool,
 
-        /// Enable passthrough mode (no cargo output filtering, stdout is captured).
+    /// Enable passthrough mode (no cargo output filtering, stdout is captured).
     #[arg(
         long = "filter",
         short = 'f',
@@ -96,7 +98,6 @@ pub struct Cli {
     )]
     pub paging: bool,
 
-
     #[arg(
         long,
         short = 'r',
@@ -108,8 +109,8 @@ pub struct Cli {
     #[arg(
         long = "wait",
         short = 'W',
-        default_value_t = 5,
-        help = "Set wait time in seconds (default: 5)."
+        default_value_t = 15,
+        help = "Set wait time in seconds (default: 15)."
     )]
     pub wait: u64,
 

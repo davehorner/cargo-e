@@ -1,23 +1,19 @@
-
 use crate::e_command_builder::{CargoCommandBuilder, TerminalError};
-use crate::e_eventdispatcher::{CargoDiagnosticLevel, EventDispatcher};
-use crate::e_runner::GLOBAL_CHILDREN;
+use crate::e_eventdispatcher::EventDispatcher;
+#[allow(unused_imports)]
+use cargo_metadata::Message;
+use nu_ansi_term::{Color, Style};
+#[cfg(feature = "uses_serde")]
+use serde_json;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
-use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{fmt, thread};
-use std::time::{SystemTime, Duration};
 use std::process::ExitStatus;
-use cargo_metadata::Message;
-use clap::builder;
-use nu_ansi_term::{AnsiGenericString, Color, Style};
-use regex::Regex;
-use serde_json;
-use tracing::instrument::WithSubscriber;
-use std::io::{self, Write};
-use crossterm::{execute, cursor, terminal::{Clear, ClearType}};
+use std::process::{Child, Command, Stdio};
+#[allow(unused_imports)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
+use std::{fmt, thread};
 // enum CaptureMode {
 //     Filtering(DispatcherSet),
 //     Passthrough { stdout: std::io::Stdout, stderr: std::io::Stderr },
@@ -42,12 +38,13 @@ pub struct CargoStats {
     pub build_script_executed_time: Option<SystemTime>,
     pub build_finished_time: Option<SystemTime>,
 }
- 
+
 #[derive(Clone)]
 pub struct CargoDiagnostic {
-    pub lineref: String, 
+    pub lineref: String,
     pub level: String,
     pub message: String,
+    pub error_code: Option<String>,
     pub suggestion: Option<String>,
     pub note: Option<String>,
     pub help: Option<String>,
@@ -58,7 +55,7 @@ pub struct CargoDiagnostic {
 
 impl CargoDiagnostic {
     pub fn print_short(&self) {
-                // Render the full Debug output
+        // Render the full Debug output
         let full = format!("{:?}", self);
         // Grab only the first line (or an empty string if somehow there isn't one)
         let first = full.lines().next().unwrap_or("");
@@ -70,6 +67,7 @@ impl CargoDiagnostic {
         lineref: String,
         level: String,
         message: String,
+        error_code: Option<String>,
         suggestion: Option<String>,
         note: Option<String>,
         help: Option<String>,
@@ -81,6 +79,7 @@ impl CargoDiagnostic {
             lineref,
             level,
             message,
+            error_code,
             suggestion,
             note,
             help,
@@ -90,8 +89,12 @@ impl CargoDiagnostic {
         }
     }
 
-
-    fn update_suggestion_with_lineno(&self, suggestion: &str, file: String, line_number: usize) -> String {
+    fn update_suggestion_with_lineno(
+        &self,
+        suggestion: &str,
+        file: String,
+        line_number: usize,
+    ) -> String {
         // Regex to match line number in the suggestion (e.g., "79 | fn clean<S: AsRef<str>>(s: S) -> String {")
         let suggestion_regex = regex::Regex::new(r"(?P<line>\d+)\s*\|\s*(.*)").unwrap();
 
@@ -99,25 +102,27 @@ impl CargoDiagnostic {
         suggestion
             .lines()
             .filter_map(|line| {
-                                let binding = line.replace(|c: char| c == '|' || c == '^', "");
-                                let cleaned_line = binding.trim();
-                
+                let binding = line.replace(|c: char| c == '|' || c == '^', "");
+                let cleaned_line = binding.trim();
+
                 // If the line becomes empty after removing | and ^, skip it
                 if cleaned_line.is_empty() {
                     return None; // Skip empty lines
                 }
                 if let Some(caps) = suggestion_regex.captures(line.trim()) {
-                    let suggestion_line: usize = caps["line"]
-                        .parse()
-                        .unwrap_or_else(|_| line_number); // If parsing fails, use the default line number
-                    // Replace the line number if it doesn't match the diagnostic's line number
+                    let suggestion_line: usize =
+                        caps["line"].parse().unwrap_or_else(|_| line_number); // If parsing fails, use the default line number
+                                                                              // Replace the line number if it doesn't match the diagnostic's line number
                     if suggestion_line != line_number {
                         return Some(format!(
                             "{}:{} | {}",
-                           file,
+                            file,
                             suggestion_line, // Replace with the actual diagnostic line number
                             caps.get(2).map_or("", |m| m.as_str())
                         ));
+                    } else {
+                        // If the line number matches, return the original suggestion line without line number
+                        return Some(format!("{}", caps.get(2).map_or("", |m| m.as_str())));
                     }
                 }
                 Some(line.to_string())
@@ -130,23 +135,31 @@ impl CargoDiagnostic {
 impl fmt::Debug for CargoDiagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Capitalize the first letter of the level
-        let struct_name = self.level.chars().next().unwrap_or(' ').to_uppercase().to_string();
+        // let struct_name = self
+        //     .level
+        //     .chars()
+        //     .next()
+        //     .unwrap_or(' ')
+        //     .to_uppercase()
+        //     .to_string();
 
         // Extract the file and line number from lineref (e.g., "cargo-e\src\e_command_builder.rs:79:8")
         let lineref_regex = regex::Regex::new(r"(?P<file>.*):(?P<line>\d+):(?P<col>\d+)").unwrap();
         let lineref_caps = lineref_regex.captures(&self.lineref);
 
         let file = lineref_caps
-                    .as_ref()
-                    .and_then(|caps| caps.name("file").map(|m| m.as_str().to_string()))
-                    .unwrap_or_else(|| "unknown file".to_string());
+            .as_ref()
+            .and_then(|caps| caps.name("file").map(|m| m.as_str().to_string()))
+            .unwrap_or_else(|| "unknown file".to_string());
         let line_number: usize = lineref_caps
-                    .as_ref()
-                    .and_then(|caps| caps.name("line").map(|m| m.as_str().parse().unwrap_or(0))).unwrap_or(0);
+            .as_ref()
+            .and_then(|caps| caps.name("line").map(|m| m.as_str().parse().unwrap_or(0)))
+            .unwrap_or(0);
 
-                // Print the diagnostic number and level (e.g., W01: or E001:)
+        // Print the diagnostic number and level (e.g., W01: or E001:)
         let diag_number = if let Some(dn) = &self.diag_number {
-            format!("{:0width$}", dn, width = self.diag_num_padding.unwrap_or(0)) // Apply padding to the number
+            format!("{:0width$}", dn, width = self.diag_num_padding.unwrap_or(0))
+        // Apply padding to the number
         } else {
             String::new()
         };
@@ -155,6 +168,7 @@ impl fmt::Debug for CargoDiagnostic {
         let diag_number_colored = match self.level.as_str() {
             "warning" => Color::Yellow.paint(format!("W{}:", diag_number)),
             "error" => Color::Red.paint(format!("E{}:", diag_number)),
+            "help" => Color::Purple.paint(format!("H{}:", diag_number)),
             _ => Color::Green.paint(format!("N{}:", diag_number)), // Default to green for notes
         };
 
@@ -216,10 +230,8 @@ impl fmt::Debug for CargoDiagnostic {
     }
 }
 
-
-
 /// CargoProcessResult is returned when the cargo process completes.
-#[derive(Debug,Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct CargoProcessResult {
     pub pid: u32,
     pub terminal_error: Option<TerminalError>,
@@ -229,6 +241,7 @@ pub struct CargoProcessResult {
     pub end_time: Option<SystemTime>,
     pub build_elapsed: Option<Duration>,
     pub runtime_elapsed: Option<Duration>,
+    pub elapsed_time: Option<Duration>,
     pub stats: CargoStats,
     pub build_output_size: usize,
     pub runtime_output_size: usize,
@@ -239,13 +252,13 @@ pub struct CargoProcessResult {
 impl CargoProcessResult {
     /// Print every diagnostic in full detail.
     pub fn print_exact(&self) {
-        println!("--- Full Diagnostics for PID {} --- {}", self.pid, self.diagnostics.len());
+        println!(
+            "--- Full Diagnostics for PID {} --- {}",
+            self.pid,
+            self.diagnostics.len()
+        );
         for diag in &self.diagnostics {
-            if diag.level.eq("warning") {
-            } else if diag.level.eq("error") {
-            println!("{:?}",diag);
-            } else {
-            }
+            println!("{:?}", diag);
         }
     }
 
@@ -254,7 +267,9 @@ impl CargoProcessResult {
         // let warnings: Vec<_> = self.diagnostics.iter()
         //     .filter(|d| d.level.eq("warning"))
         //     .collect();
-        let errors: Vec<_> = self.diagnostics.iter()
+        let errors: Vec<_> = self
+            .diagnostics
+            .iter()
             .filter(|d| d.level.eq("error"))
             .collect();
 
@@ -273,13 +288,18 @@ impl CargoProcessResult {
     pub fn print_compact(&self) {
         let total = self.diagnostics.len();
         println!("--- All Diagnostics ({} total) ---", total);
-                    for diag in self.diagnostics.iter() {
-                println!("{}: {} {}", diag.level, diag.lineref, diag.message.trim());
-            }
+        for diag in self.diagnostics.iter() {
+            println!(
+                "{} {}: {} {}",
+                diag.level,
+                diag.diag_number.unwrap_or_default(),
+                diag.lineref,
+                diag.message.trim()
+            );
+        }
     }
 }
 
- 
 /// CargoProcessHandle holds the cargo process and related state.
 #[derive(Debug)]
 pub struct CargoProcessHandle {
@@ -303,36 +323,62 @@ pub struct CargoProcessHandle {
     pub diagnostics: Arc<Mutex<Vec<CargoDiagnostic>>>,
     pub is_filter: bool,
 }
- 
-impl CargoProcessHandle {
 
-pub fn print_results(result: &CargoProcessResult) {
-    let start_time = result.start_time.unwrap_or(SystemTime::now());
-    println!("-------------------------------------------------");
-    println!("Process started at: {:?}", result.start_time);
-    if let Some(build_time) = result.build_finished_time {
-        println!("Build phase ended at: {:?}", build_time);
-        println!("Build phase elapsed:  {}", crate::e_fmt::format_duration(build_time.duration_since(start_time).unwrap_or_else(|_| Duration::new(0, 0))));
-    } else {
-        println!("No BuildFinished timestamp recorded.");
+impl CargoProcessHandle {
+    pub fn print_results(result: &CargoProcessResult) {
+        let start_time = result.start_time.unwrap_or(SystemTime::now());
+        println!("-------------------------------------------------");
+        println!("Process started at: {:?}", result.start_time);
+        if let Some(build_time) = result.build_finished_time {
+            println!("Build phase ended at: {:?}", build_time);
+            println!(
+                "Build phase elapsed:  {}",
+                crate::e_fmt::format_duration(
+                    build_time
+                        .duration_since(start_time)
+                        .unwrap_or_else(|_| Duration::new(0, 0))
+                )
+            );
+        } else {
+            println!("No BuildFinished timestamp recorded.");
+        }
+        println!("Process ended at:   {:?}", result.end_time);
+        if let Some(runtime_dur) = result.runtime_elapsed {
+            println!(
+                "Runtime phase elapsed: {}",
+                crate::e_fmt::format_duration(runtime_dur)
+            );
+        }
+        if let Some(build_dur) = result.build_elapsed {
+            println!(
+                "Build phase elapsed:   {}",
+                crate::e_fmt::format_duration(build_dur)
+            );
+        }
+        if let Some(total_elapsed) = result
+            .end_time
+            .and_then(|end| end.duration_since(start_time).ok())
+        {
+            println!(
+                "Total elapsed time:   {}",
+                crate::e_fmt::format_duration(total_elapsed)
+            );
+        } else {
+            println!("No total elapsed time available.");
+        }
+        println!(
+            "Build output size:  {} ({} bytes)",
+            crate::e_fmt::format_bytes(result.build_output_size),
+            result.build_output_size
+        );
+        println!(
+            "Runtime output size: {} ({} bytes)",
+            crate::e_fmt::format_bytes(result.runtime_output_size),
+            result.runtime_output_size
+        );
+        println!("-------------------------------------------------");
     }
-    println!("Process ended at:   {:?}", result.end_time);
-    if let Some(runtime_dur) = result.runtime_elapsed {
-        println!("Runtime phase elapsed: {}", crate::e_fmt::format_duration(runtime_dur));
-    }
-    if let Some(build_dur) = result.build_elapsed {
-        println!("Build phase elapsed:   {}", crate::e_fmt::format_duration(build_dur));
-    }
-    if let Some(total_elapsed) = result.end_time.and_then(|end| end.duration_since(start_time).ok()) {
-        println!("Total elapsed time:   {}", crate::e_fmt::format_duration(total_elapsed));
-    } else {
-        println!("No total elapsed time available.");
-    }
-    println!("Build output size:  {} ({} bytes)", crate::e_fmt::format_bytes(result.build_output_size), result.build_output_size);
-    println!("Runtime output size: {} ({} bytes)", crate::e_fmt::format_bytes(result.runtime_output_size), result.runtime_output_size);
-    println!("-------------------------------------------------");
-}
- 
+
     /// Kill the cargo process if needed.
     pub fn kill(&mut self) -> std::io::Result<()> {
         self.child.kill()
@@ -349,7 +395,7 @@ pub fn print_results(result: &CargoProcessResult) {
     //     let status = self.child.wait()?;  // Call wait on the child process
 
     //     println!("Cargo process finished with status: {:?}", status);
-        
+
     //     let end_time = SystemTime::now();
 
     //     // Retrieve the statistics from the process handle
@@ -391,77 +437,77 @@ pub fn print_results(result: &CargoProcessResult) {
     //     //     runtime_output_size: runtime_out,
     //     // })
     // }
- 
-//  pub fn wait(self: Arc<Self>) -> std::io::Result<CargoProcessResult> {
-//     let mut global = GLOBAL_CHILDREN.lock().unwrap();
-    
-//     // Lock and access the CargoProcessHandle inside the Mutex
-//     if let Some(cargo_process_handle) = global.iter_mut().find(|handle| {
-//         handle.lock().unwrap().pid == self.pid  // Compare the pid to find the correct handle
-//     }) {
-//         let mut cargo_process_handle = cargo_process_handle.lock().unwrap();  // Mutably borrow the process handle
-        
-//         let status = cargo_process_handle.child.wait()?;  // Call wait on the child process
 
-//         println!("Cargo process finished with status: {:?}", status);
-        
-//         let end_time = SystemTime::now();
+    //  pub fn wait(self: Arc<Self>) -> std::io::Result<CargoProcessResult> {
+    //     let mut global = GLOBAL_CHILDREN.lock().unwrap();
 
-//         // Retrieve the statistics from the process handle
-//         let stats = Arc::try_unwrap(cargo_process_handle.stats.clone())
-//             .map(|mutex| mutex.into_inner().unwrap())
-//             .unwrap_or_else(|arc| (*arc.lock().unwrap()).clone());
+    //     // Lock and access the CargoProcessHandle inside the Mutex
+    //     if let Some(cargo_process_handle) = global.iter_mut().find(|handle| {
+    //         handle.lock().unwrap().pid == self.pid  // Compare the pid to find the correct handle
+    //     }) {
+    //         let mut cargo_process_handle = cargo_process_handle.lock().unwrap();  // Mutably borrow the process handle
 
-//         let build_out = cargo_process_handle.build_progress_counter.load(Ordering::Relaxed);
-//         let runtime_out = cargo_process_handle.runtime_progress_counter.load(Ordering::Relaxed);
+    //         let status = cargo_process_handle.child.wait()?;  // Call wait on the child process
 
-//         // Calculate phase durations if build_finished_time is recorded
-//         let (build_elapsed, runtime_elapsed) = if let Some(build_finished) = stats.build_finished_time {
-//             let build_dur = build_finished.duration_since(cargo_process_handle.start_time)
-//                 .unwrap_or_else(|_| Duration::new(0, 0));
-//             let runtime_dur = end_time.duration_since(build_finished)
-//                 .unwrap_or_else(|_| Duration::new(0, 0));
-//             (Some(build_dur), Some(runtime_dur))
-//         } else {
-//             (None, None)
-//         };
+    //         println!("Cargo process finished with status: {:?}", status);
 
-//         // Return the final process result
-//         Ok(CargoProcessResult {
-//             exit_status: status,
-//             start_time: cargo_process_handle.start_time,
-//             build_finished_time: stats.build_finished_time,
-//             end_time,
-//             build_elapsed,
-//             runtime_elapsed,
-//             stats,
-//             build_output_size: build_out,
-//             runtime_output_size: runtime_out,
-//         })
-//     } else {
-//         Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Process handle not found").into())
-//     }
-// }
+    //         let end_time = SystemTime::now();
 
-    // Wait for the process and output threads to finish.  
+    //         // Retrieve the statistics from the process handle
+    //         let stats = Arc::try_unwrap(cargo_process_handle.stats.clone())
+    //             .map(|mutex| mutex.into_inner().unwrap())
+    //             .unwrap_or_else(|arc| (*arc.lock().unwrap()).clone());
+
+    //         let build_out = cargo_process_handle.build_progress_counter.load(Ordering::Relaxed);
+    //         let runtime_out = cargo_process_handle.runtime_progress_counter.load(Ordering::Relaxed);
+
+    //         // Calculate phase durations if build_finished_time is recorded
+    //         let (build_elapsed, runtime_elapsed) = if let Some(build_finished) = stats.build_finished_time {
+    //             let build_dur = build_finished.duration_since(cargo_process_handle.start_time)
+    //                 .unwrap_or_else(|_| Duration::new(0, 0));
+    //             let runtime_dur = end_time.duration_since(build_finished)
+    //                 .unwrap_or_else(|_| Duration::new(0, 0));
+    //             (Some(build_dur), Some(runtime_dur))
+    //         } else {
+    //             (None, None)
+    //         };
+
+    //         // Return the final process result
+    //         Ok(CargoProcessResult {
+    //             exit_status: status,
+    //             start_time: cargo_process_handle.start_time,
+    //             build_finished_time: stats.build_finished_time,
+    //             end_time,
+    //             build_elapsed,
+    //             runtime_elapsed,
+    //             stats,
+    //             build_output_size: build_out,
+    //             runtime_output_size: runtime_out,
+    //         })
+    //     } else {
+    //         Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Process handle not found").into())
+    //     }
+    // }
+
+    // Wait for the process and output threads to finish.
     // Computes elapsed times for the build phase and runtime phase, and returns a CargoProcessResult.
     // pub fn wait(mut self) -> std::io::Result<CargoProcessResult> {
     //     let status = self.child.wait()?;
     //     println!("Cargo process finished with status: {:?}", status);
- 
+
     //     self.stdout_handle.join().expect("stdout thread panicked");
     //     self.stderr_handle.join().expect("stderr thread panicked");
- 
+
     //     let end_time = SystemTime::now();
- 
+
     //     // Retrieve the statistics.
     //     let stats = Arc::try_unwrap(self.stats)
     //         .map(|mutex| mutex.into_inner().unwrap())
     //         .unwrap_or_else(|arc| (*arc.lock().unwrap()).clone());
- 
+
     //     let build_out = self.build_progress_counter.load(Ordering::Relaxed);
     //     let runtime_out = self.runtime_progress_counter.load(Ordering::Relaxed);
- 
+
     //     // Calculate phase durations if build_finished_time is recorded.
     //     let (build_elapsed, runtime_elapsed) = if let Some(build_finished) = stats.build_finished_time {
     //         let build_dur = build_finished.duration_since(self.start_time).unwrap_or_else(|_| Duration::new(0, 0));
@@ -470,7 +516,7 @@ pub fn print_results(result: &CargoProcessResult) {
     //     } else {
     //         (None, None)
     //     };
- 
+
     //     Ok(CargoProcessResult {
     //         exit_status: status,
     //         start_time: self.start_time,
@@ -483,9 +529,6 @@ pub fn print_results(result: &CargoProcessResult) {
     //         runtime_output_size: runtime_out,
     //     })
     // }
-
-
-
 
     /// Returns a formatted status string.
     /// If `system` is provided, CPU/memory and runtime info is displayed on the right.
@@ -501,62 +544,68 @@ pub fn print_results(result: &CargoProcessResult) {
         // Use ANSI coloring for the left display.
         let colored_start = nu_ansi_term::Color::Green.paint(&start_str).to_string();
 
-        if let Some(process) = process { 
+        if let Some(process) = process {
             // if let Some(process) = system.process((self.pid as usize).into()) {
-                let cpu_usage = process.cpu_usage();
-                let mem_kb = process.memory();
-                let mem_human = if mem_kb >= 1024 {
-                    format!("{:.2} MB", mem_kb as f64 / 1024.0)
-                } else {
-                    format!("{} KB", mem_kb)
-                };
-
-                let now = SystemTime::now();
-                let runtime_duration = now.duration_since(start_time).unwrap();
-                let runtime_str = crate::e_fmt::format_duration(runtime_duration);
-
-                let left_display = format!(
-                    "{} | CPU: {:.2}% | Mem: {}",
-                    colored_start, cpu_usage, mem_human
-                );
-                // Use plain text for length calculations.
-                let left_plain = format!("{} | CPU: {:.2}% | Mem: {}", start_str, cpu_usage, mem_human);
-
-                // Get terminal width.
-                let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
-                let total_width = cols as usize;
-
-                // Format the runtime info with underlining.
-                let right_display = nu_ansi_term::Style::new()
-                    .reset_before_style()
-                    .underline()
-                    .paint(&runtime_str)
-                    .to_string();
-                let left_len = left_plain.len();
-                let right_len = runtime_str.len();
-                let padding = if total_width > left_len + right_len {
-                    total_width - left_len - right_len
-                } else {
-                    1
-                };
-
-                let ret=format!("{}{}{}", left_display, " ".repeat(padding), right_display);
-                if ret.trim().is_empty() {
-                    return String::from("No output available");
-                } else {
-                    return ret;
-                }
+            let cpu_usage = process.cpu_usage();
+            let mem_kb = process.memory();
+            let mem_human = if mem_kb >= 1024 {
+                format!("{:.2} MB", mem_kb as f64 / 1024.0)
             } else {
-                // return format!("Process {} not found",(self.pid as usize));
-                return String::new()
+                format!("{} KB", mem_kb)
+            };
+
+            let now = SystemTime::now();
+            let runtime_duration = now.duration_since(start_time).unwrap();
+            let runtime_str = crate::e_fmt::format_duration(runtime_duration);
+
+            let left_display = format!(
+                "{} | CPU: {:.2}% | Mem: {}",
+                colored_start, cpu_usage, mem_human
+            );
+            // Use plain text for length calculations.
+            let left_plain = format!(
+                "{} | CPU: {:.2}% | Mem: {}",
+                start_str, cpu_usage, mem_human
+            );
+
+            // Get terminal width.
+            #[cfg(feature = "tui")]
+            let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
+            #[cfg(not(feature = "tui"))]
+            let (cols, _) = (80, 20);
+            let total_width = cols as usize;
+
+            // Format the runtime info with underlining.
+            let right_display = nu_ansi_term::Style::new()
+                .reset_before_style()
+                .underline()
+                .paint(&runtime_str)
+                .to_string();
+            let left_len = left_plain.len();
+            let right_len = runtime_str.len();
+            let padding = if total_width > left_len + right_len {
+                total_width - left_len - right_len
+            } else {
+                1
+            };
+
+            let ret = format!("{}{}{}", left_display, " ".repeat(padding), right_display);
+            if ret.trim().is_empty() {
+                return String::from("No output available");
+            } else {
+                return ret;
             }
+        } else {
+            // return format!("Process {} not found",(self.pid as usize));
+            return String::new();
+        }
         // } else {
         //     // If system monitoring is disabled, just return the start time.
         //     colored_start
         // }
     }
 }
- 
+
 /// Extension trait to add cargo-specific capture capabilities to Command.
 pub trait CargoCommandExt {
     fn spawn_cargo_capture(
@@ -568,19 +617,11 @@ pub trait CargoCommandExt {
         stage_dispatcher: Option<Arc<EventDispatcher>>,
         estimate_bytes: Option<usize>,
     ) -> CargoProcessHandle;
-    fn spawn_cargo_passthrough(
-        &mut self,
-        builder: Arc<CargoCommandBuilder>,
-    ) -> CargoProcessHandle;
+    fn spawn_cargo_passthrough(&mut self, builder: Arc<CargoCommandBuilder>) -> CargoProcessHandle;
 }
- 
+
 impl CargoCommandExt for Command {
-
-
-        fn spawn_cargo_passthrough(
-        &mut self,
-        builder: Arc<CargoCommandBuilder>,
-    ) -> CargoProcessHandle {
+    fn spawn_cargo_passthrough(&mut self, builder: Arc<CargoCommandBuilder>) -> CargoProcessHandle {
         // Spawn the child process without redirecting stdout and stderr
         let child = self.spawn().expect("Failed to spawn cargo process");
 
@@ -590,7 +631,7 @@ impl CargoCommandExt for Command {
         let mut s = CargoStats::default();
         s.build_finished_time = Some(start_time);
         let stats = Arc::new(Mutex::new(s));
-                // Try to take ownership of the Vec<CargoDiagnostic> out of the Arc.
+        // Try to take ownership of the Vec<CargoDiagnostic> out of the Arc.
 
         // Create the CargoProcessHandle
         let result = CargoProcessResult {
@@ -600,6 +641,7 @@ impl CargoCommandExt for Command {
             start_time: Some(start_time),
             build_finished_time: None,
             end_time: None,
+            elapsed_time: None,
             build_elapsed: None,
             runtime_elapsed: None,
             stats: CargoStats::default(),
@@ -611,9 +653,9 @@ impl CargoCommandExt for Command {
 
         // Return the CargoProcessHandle that owns the child process
         CargoProcessHandle {
-            child,          // The child process is now owned by the handle
-            result,         // The result contains information about the process
-            pid,            // The PID of the process
+            child,  // The child process is now owned by the handle
+            result, // The result contains information about the process
+            pid,    // The PID of the process
             stdout_handle: thread::spawn(move || {
                 // This thread is now unnecessary if we are not capturing anything
                 // We can leave it empty or remove it altogether
@@ -623,8 +665,8 @@ impl CargoCommandExt for Command {
             }),
             start_time,
             stats,
-            stdout_dispatcher: None,    // No dispatcher is needed
-            stderr_dispatcher: None,    // No dispatcher is needed
+            stdout_dispatcher: None,   // No dispatcher is needed
+            stderr_dispatcher: None,   // No dispatcher is needed
             progress_dispatcher: None, // No dispatcher is needed
             stage_dispatcher: None,    // No dispatcher is needed
             estimate_bytes: None,
@@ -637,7 +679,6 @@ impl CargoCommandExt for Command {
         }
     }
 
-
     fn spawn_cargo_capture(
         &mut self,
         builder: Arc<CargoCommandBuilder>,
@@ -647,29 +688,28 @@ impl CargoCommandExt for Command {
         stage_dispatcher: Option<Arc<EventDispatcher>>,
         estimate_bytes: Option<usize>,
     ) -> CargoProcessHandle {
-        self.stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-// println!("Spawning cargo process with capture {:?}",self); 
+        self.stdout(Stdio::piped()).stderr(Stdio::piped());
+        // println!("Spawning cargo process with capture {:?}",self);
         let mut child = self.spawn().expect("Failed to spawn cargo process");
-        let pid= child.id();
+        let pid = child.id();
         let start_time = SystemTime::now();
         let diagnostics = Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new()));
         let stats = Arc::new(Mutex::new(CargoStats::default()));
- 
+
         // Two separate counters: one for build output and one for runtime output.
- let stderr_compiler_msg = Arc::new(Mutex::new(VecDeque::<String>::new()));
+        let stderr_compiler_msg = Arc::new(Mutex::new(VecDeque::<String>::new()));
         let build_progress_counter = Arc::new(AtomicUsize::new(0));
         let runtime_progress_counter = Arc::new(AtomicUsize::new(0));
- 
+
         // Clone dispatchers and counters for use in threads.
         let stdout_disp_clone = stdout_dispatcher.clone();
         let progress_disp_clone_stdout = progress_dispatcher.clone();
         let stage_disp_clone = stage_dispatcher.clone();
- 
+
         let stats_clone = Arc::clone(&stats);
         let build_counter_stdout = Arc::clone(&build_progress_counter);
         let runtime_counter_stdout = Arc::clone(&runtime_progress_counter);
- 
+
         // Spawn a thread to process stdout.
         let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
         let stdout = child.stdout.take().expect("Failed to capture stdout");
@@ -677,347 +717,369 @@ impl CargoCommandExt for Command {
         let stdout_handle = thread::spawn(move || {
             let stdout_reader = BufReader::new(stdout);
             // This flag marks whether we are still in the build phase.
+            #[allow(unused_mut)]
             let mut in_build_phase = true;
             let stdout_buffer = Arc::new(Mutex::new(Vec::<String>::new()));
             let buf = Arc::clone(&stdout_buffer);
             {
+                for line in stdout_reader.lines() {
+                    if let Ok(line) = line {
+                        // println!("{}: {}", pid, line);
+                        // Try to parse the line as a JSON cargo message.
 
-            for line in stdout_reader.lines() {
-                if let Ok(line) = line {
-// println!("{}: {}", pid, line);
-                    // Try to parse the line as a JSON cargo message.
-                    match serde_json::from_str::<Message>(&line) {
-                        Ok(msg) => {
-                            // let msg_str = format!("{:?}", msg);
-                            // if let Some(ref disp) = stdout_disp_clone {
-                            //     disp.dispatch(&msg_str);
-                            // }
-                            // Add message length to the appropriate counter.
-                            // if in_build_phase {
-                            //     build_counter_stdout.fetch_add(msg_str.len(), Ordering::Relaxed);
-                            // } else {
-                            //     runtime_counter_stdout.fetch_add(msg_str.len(), Ordering::Relaxed);
-                            // }
-                            if let Some(total) = estimate_bytes {
-                                let current = if in_build_phase {
-                                    build_counter_stdout.load(Ordering::Relaxed)
-                                } else {
-                                    runtime_counter_stdout.load(Ordering::Relaxed)
-                                };
-                                let progress = (current as f64 / total as f64) * 100.0;
-                                if let Some(ref pd) = progress_disp_clone_stdout {
-                                    pd.dispatch(&format!("Progress: {:.2}%", progress));
-                                }
-                            }
- 
-                            let now = SystemTime::now();
-                            // Process known cargo message variants.
-                            match msg {
-                                Message::BuildFinished(_) => {
-                                    // Mark the end of the build phase.
-                                    if in_build_phase {
-                                        in_build_phase = false;
-                                        let mut s = stats_clone.lock().unwrap();
-                                        s.build_finished_count += 1;
-                                        s.build_finished_time.get_or_insert(now);
-                                        // self.result.build_finished_time = Some(now);
-                                        if let Some(ref sd) = stage_disp_clone {
-                                            sd.dispatch(&format!("Stage: BuildFinished occurred at {:?}", now));
-                                        }
-                                            if let Some(ref sd) = stage_disp_clone {
-                                               sd.dispatch("Stage: Switching to runtime passthrough");
-                                            }
+                        #[cfg(not(feature = "uses_serde"))]
+                        println!("{}", line);
+                        #[cfg(feature = "uses_serde")]
+                        match serde_json::from_str::<Message>(&line) {
+                            Ok(msg) => {
+                                // let msg_str = format!("{:?}", msg);
+                                // if let Some(ref disp) = stdout_disp_clone {
+                                //     disp.dispatch(&msg_str);
+                                // }
+                                // Add message length to the appropriate counter.
+                                // if in_build_phase {
+                                //     build_counter_stdout.fetch_add(msg_str.len(), Ordering::Relaxed);
+                                // } else {
+                                //     runtime_counter_stdout.fetch_add(msg_str.len(), Ordering::Relaxed);
+                                // }
+                                if let Some(total) = estimate_bytes {
+                                    let current = if in_build_phase {
+                                        build_counter_stdout.load(Ordering::Relaxed)
+                                    } else {
+                                        runtime_counter_stdout.load(Ordering::Relaxed)
+                                    };
+                                    let progress = (current as f64 / total as f64) * 100.0;
+                                    if let Some(ref pd) = progress_disp_clone_stdout {
+                                        pd.dispatch(&format!("Progress: {:.2}%", progress));
                                     }
                                 }
-                                Message::CompilerMessage(msg) => {
-                            // println!("parsed{}: {:?}", pid, msg);
-                                    let mut s = stats_clone.lock().unwrap();
-                                    s.compiler_message_count += 1;
-                                    if s.compiler_message_time.is_none() {
-                                        s.compiler_message_time = Some(now);
-                                        if let Some(ref sd) = stage_disp_clone {
-                                            sd.dispatch(&format!("Stage: CompilerMessage occurred at {:?}", now));
-                                        }
-                                    }
-                                    let mut msg_vec = stderr_compiler_msg_clone.lock().unwrap();
-                                    msg_vec.push_back(format!("{}\n\n", msg.message.rendered.unwrap_or_default()));
-                                    // let mut diags = diagnostics.lock().unwrap();            
-                                    // let diag = crate::e_eventdispatcher::convert_message_to_diagnostic(msg, &msg_str);
-                                    // diags.push(diag.clone());
-                                    // if let Some(ref sd) = stage_disp_clone {
-                                    //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
-                                    // }
-                                }
-                                Message::CompilerArtifact(_) => {
-                                    let mut s = stats_clone.lock().unwrap();
-                                    s.compiler_artifact_count += 1;
-                                    if s.compiler_artifact_time.is_none() {
-                                        s.compiler_artifact_time = Some(now);
-                                        if let Some(ref sd) = stage_disp_clone {
-                                            sd.dispatch(&format!("Stage: CompilerArtifact occurred at {:?}", now));
-                                        }
-                                    }
-                                }
-                                Message::BuildScriptExecuted(_) => {
-                                    let mut s = stats_clone.lock().unwrap();
-                                    s.build_script_executed_count += 1;
-                                    if s.build_script_executed_time.is_none() {
-                                        s.build_script_executed_time = Some(now);
-                                        if let Some(ref sd) = stage_disp_clone {
-                                            sd.dispatch(&format!("Stage: BuildScriptExecuted occurred at {:?}", now));
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        Err(_err) => {
-                            // println!("ERROR {} {}: {}",_err, pid, line);
-                            // If JSON parsing fails, assume this is plain runtime output.
-                            // If still in build phase, we assume the build phase has ended.
-                            if in_build_phase {
-                                in_build_phase = false;
+
                                 let now = SystemTime::now();
-                                let mut s = stats_clone.lock().unwrap();
-                                s.build_finished_count += 1;
-                                s.build_finished_time.get_or_insert(now);
-                                if let Some(ref sd) = stage_disp_clone {
-                                    sd.dispatch(&format!("Stage: BuildFinished (assumed) occurred at {:?}", now));
+                                // Process known cargo message variants.
+                                match msg {
+                                    Message::BuildFinished(_) => {
+                                        // Mark the end of the build phase.
+                                        if in_build_phase {
+                                            in_build_phase = false;
+                                            let mut s = stats_clone.lock().unwrap();
+                                            s.build_finished_count += 1;
+                                            s.build_finished_time.get_or_insert(now);
+                                            // self.result.build_finished_time = Some(now);
+                                            if let Some(ref sd) = stage_disp_clone {
+                                                sd.dispatch(&format!(
+                                                    "Stage: BuildFinished occurred at {:?}",
+                                                    now
+                                                ));
+                                            }
+                                            if let Some(ref sd) = stage_disp_clone {
+                                                sd.dispatch(
+                                                    "Stage: Switching to runtime passthrough",
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Message::CompilerMessage(msg) => {
+                                        // println!("parsed{}: {:?}", pid, msg);
+                                        let mut s = stats_clone.lock().unwrap();
+                                        s.compiler_message_count += 1;
+                                        if s.compiler_message_time.is_none() {
+                                            s.compiler_message_time = Some(now);
+                                            if let Some(ref sd) = stage_disp_clone {
+                                                sd.dispatch(&format!(
+                                                    "Stage: CompilerMessage occurred at {:?}",
+                                                    now
+                                                ));
+                                            }
+                                        }
+                                        let mut msg_vec = stderr_compiler_msg_clone.lock().unwrap();
+                                        msg_vec.push_back(format!(
+                                            "{}\n\n",
+                                            msg.message.rendered.unwrap_or_default()
+                                        ));
+                                        // let mut diags = diagnostics.lock().unwrap();
+                                        // let diag = crate::e_eventdispatcher::convert_message_to_diagnostic(msg, &msg_str);
+                                        // diags.push(diag.clone());
+                                        // if let Some(ref sd) = stage_disp_clone {
+                                        //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
+                                        // }
+                                    }
+                                    Message::CompilerArtifact(_) => {
+                                        let mut s = stats_clone.lock().unwrap();
+                                        s.compiler_artifact_count += 1;
+                                        if s.compiler_artifact_time.is_none() {
+                                            s.compiler_artifact_time = Some(now);
+                                            if let Some(ref sd) = stage_disp_clone {
+                                                sd.dispatch(&format!(
+                                                    "Stage: CompilerArtifact occurred at {:?}",
+                                                    now
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    Message::BuildScriptExecuted(_) => {
+                                        let mut s = stats_clone.lock().unwrap();
+                                        s.build_script_executed_count += 1;
+                                        if s.build_script_executed_time.is_none() {
+                                            s.build_script_executed_time = Some(now);
+                                            if let Some(ref sd) = stage_disp_clone {
+                                                sd.dispatch(&format!(
+                                                    "Stage: BuildScriptExecuted occurred at {:?}",
+                                                    now
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    _ => {}
                                 }
-                             buf.lock().unwrap().push(line.to_string());
-                            } else {
-                                        // build is done: first flush anything we buffered
-        let mut b = buf.lock().unwrap();
-        for l in b.drain(..) {
-            println!("{}", l);
-        }
-        // then print live
-        println!("{}", line);
                             }
-                            if let Some(ref disp) = stdout_disp_clone {
-                                disp.dispatch(&line);
-                            }
-                            // Print the runtime output.
-                            // println!("{}: {}", pid, line);
-                            if line.contains("not a terminal") {
-                                println!("{}NOT A TERMINAL - MARK AND RUN AGAIN: {}", pid, line);
-                            }
-                            runtime_counter_stdout.fetch_add(line.len(), Ordering::Relaxed);
-                            if let Some(total) = estimate_bytes {
-                                let current = runtime_counter_stdout.load(Ordering::Relaxed);
-                                let progress = (current as f64 / total as f64) * 100.0;
-                                if let Some(ref pd) = progress_disp_clone_stdout {
-                                    pd.dispatch(&format!("Progress: {:.2}%", progress));
+                            Err(_err) => {
+                                // println!("ERROR {} {}: {}",_err, pid, line);
+                                // If JSON parsing fails, assume this is plain runtime output.
+                                // If still in build phase, we assume the build phase has ended.
+                                if in_build_phase {
+                                    in_build_phase = false;
+                                    let now = SystemTime::now();
+                                    let mut s = stats_clone.lock().unwrap();
+                                    s.build_finished_count += 1;
+                                    s.build_finished_time.get_or_insert(now);
+                                    if let Some(ref sd) = stage_disp_clone {
+                                        sd.dispatch(&format!(
+                                            "Stage: BuildFinished (assumed) occurred at {:?}",
+                                            now
+                                        ));
+                                    }
+                                    buf.lock().unwrap().push(line.to_string());
+                                } else {
+                                    // build is done: first flush anything we buffered
+                                    let mut b = buf.lock().unwrap();
+                                    for l in b.drain(..) {
+                                        println!("{}", l);
+                                    }
+                                    // then print live
+                                    println!("{}", line);
+                                }
+                                if let Some(ref disp) = stdout_disp_clone {
+                                    disp.dispatch(&line);
+                                }
+                                // Print the runtime output.
+                                // println!("{}: {}", pid, line);
+                                if line.contains("not a terminal") {
+                                    println!(
+                                        "{}NOT A TERMINAL - MARK AND RUN AGAIN: {}",
+                                        pid, line
+                                    );
+                                }
+                                runtime_counter_stdout.fetch_add(line.len(), Ordering::Relaxed);
+                                if let Some(total) = estimate_bytes {
+                                    let current = runtime_counter_stdout.load(Ordering::Relaxed);
+                                    let progress = (current as f64 / total as f64) * 100.0;
+                                    if let Some(ref pd) = progress_disp_clone_stdout {
+                                        pd.dispatch(&format!("Progress: {:.2}%", progress));
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
         }); // End of stdout thread
- 
-     let tflag = TerminalError::NoError;
+
+        let tflag = TerminalError::NoError;
         // Create a flag to indicate if the process is a terminal process.
-     let terminal_flag = Arc::new(Mutex::new(TerminalError::NoError));
-     let terminal_flag_clone = Arc::clone(&terminal_flag);
+        let terminal_flag = Arc::new(Mutex::new(TerminalError::NoError));
         // Spawn a thread to capture stderr.
         let stderr = child.stderr.take().expect("Failed to capture stderr");
         let stderr_disp_clone = stderr_dispatcher.clone();
-        let build_counter_stderr = Arc::clone(&build_progress_counter);
-        let runtime_counter_stderr = Arc::clone(&runtime_progress_counter);
-        let progress_disp_clone_stderr = progress_dispatcher.clone();
-        let escape_sequence = "\u{1b}[1m\u{1b}[32m";  
+        // let terminal_flag_clone = Arc::clone(&terminal_flag);
+        // let build_counter_stderr = Arc::clone(&build_progress_counter);
+        // let runtime_counter_stderr = Arc::clone(&runtime_progress_counter);
+        // let progress_disp_clone_stderr = progress_dispatcher.clone();
+        let escape_sequence = "\u{1b}[1m\u{1b}[32m";
         // let diagnostics_clone = Arc::clone(&diagnostics);
-            let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
-            // println!("{}: Capturing stderr", pid);
-            let mut stderr_reader = BufReader::new(stderr);
+        let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
+        // println!("{}: Capturing stderr", pid);
+        let mut stderr_reader = BufReader::new(stderr);
         let stderr_handle = thread::spawn(move || {
-
             //    let mut msg_vec = stderr_compiler_msg_clone.lock().unwrap();
-                       loop {
-                        // println!("looping stderr thread {}", pid);
-            // Lock the deque and pop all messages available in a while loop
-            while let Some(message) = {
-                let mut guard = match stderr_compiler_msg_clone.lock() {
-                                    Ok(guard) => guard,
-                                    Err(err) => {
-                                        eprintln!("Failed to lock stderr_compiler_msg_clone: {}", err);
-                                        return; // Exit the function or loop in case of an error
-                                    }
-                                };
-                guard.pop_front()
-            } {
-
-                        for line in message.lines().map(|line| line) {
-
-                if let Some(ref disp) = stderr_disp_clone {
-    // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
-    let responses = disp.dispatch(&line);
-
-    // Iterate over the responses.
-    for ret in responses {
-        if let Some(response) = ret {
-            if response.terminal_status == Some(TerminalError::NoTerminal) {
-                // If the response indicates a terminal error, set the flag.
-                println!("{} IS A TERMINAL PROCESS - {}", pid, line);
-            } else if response.terminal_status == Some(TerminalError::NoError) {
-                // If the response indicates no terminal error, set the flag to NoError.
-            } else if response.terminal_status == Some(TerminalError::NoTerminal) {
-                // If the response indicates not a terminal, set the flag to NoTerminal.
-                println!("{} IS A TERMINAL PROCESS - {}", pid, line);
-            }
-            // if let Some(ref msg) = response.message {
-            //     println!("DISPATCH RESULT {} {}", pid, msg);
-            // // }
-            //             let diag = crate::e_eventdispatcher::convert_response_to_diagnostic(response, &line);
-            //             // let mut diags = diagnostics_clone.lock().unwrap();
-
-            //             let in_multiline = disp.callbacks
-            //             .lock().unwrap()
-            //             .iter()
-            //             .any(|cb| cb.is_reading_multiline.load(Ordering::Relaxed));
-                    
-            //         if !in_multiline {
-            //             // start of a new diagnostic
-            //             diags.push(diag);
-            //         } else {
-            //             // continuation → child of the last diagnostic
-            //             if let Some(parent) = diags.last_mut() {
-            //                 parent.children.push(diag);
-            //             } else {
-            //                 // no parent yet (unlikely), just push
-            //                 diags.push(diag);
-            //             }
-            //         }
-        }
-    }
+            loop {
+                // println!("looping stderr thread {}", pid);
+                // Lock the deque and pop all messages available in a while loop
+                while let Some(message) = {
+                    let mut guard = match stderr_compiler_msg_clone.lock() {
+                        Ok(guard) => guard,
+                        Err(err) => {
+                            eprintln!("Failed to lock stderr_compiler_msg_clone: {}", err);
+                            return; // Exit the function or loop in case of an error
                         }
-            }
-        }
-            // Sleep briefly if no messages are available to avoid busy waiting
-            thread::sleep(Duration::from_millis(100));
+                    };
+                    guard.pop_front()
+                } {
+                    for line in message.lines().map(|line| line) {
+                        if let Some(ref disp) = stderr_disp_clone {
+                            // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
+                            let responses = disp.dispatch(&line);
+
+                            // Iterate over the responses.
+                            for ret in responses {
+                                if let Some(response) = ret {
+                                    if response.terminal_status == Some(TerminalError::NoTerminal) {
+                                        // If the response indicates a terminal error, set the flag.
+                                        println!("{} IS A TERMINAL PROCESS - {}", pid, line);
+                                    } else if response.terminal_status
+                                        == Some(TerminalError::NoError)
+                                    {
+                                        // If the response indicates no terminal error, set the flag to NoError.
+                                    } else if response.terminal_status
+                                        == Some(TerminalError::NoTerminal)
+                                    {
+                                        // If the response indicates not a terminal, set the flag to NoTerminal.
+                                        println!("{} IS A TERMINAL PROCESS - {}", pid, line);
+                                    }
+                                    // if let Some(ref msg) = response.message {
+                                    //     println!("DISPATCH RESULT {} {}", pid, msg);
+                                    // // }
+                                    //             let diag = crate::e_eventdispatcher::convert_response_to_diagnostic(response, &line);
+                                    //             // let mut diags = diagnostics_clone.lock().unwrap();
+
+                                    //             let in_multiline = disp.callbacks
+                                    //             .lock().unwrap()
+                                    //             .iter()
+                                    //             .any(|cb| cb.is_reading_multiline.load(Ordering::Relaxed));
+
+                                    //         if !in_multiline {
+                                    //             // start of a new diagnostic
+                                    //             diags.push(diag);
+                                    //         } else {
+                                    //             // continuation → child of the last diagnostic
+                                    //             if let Some(parent) = diags.last_mut() {
+                                    //                 parent.children.push(diag);
+                                    //             } else {
+                                    //                 // no parent yet (unlikely), just push
+                                    //                 diags.push(diag);
+                                    //             }
+                                    //         }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Sleep briefly if no messages are available to avoid busy waiting
+                thread::sleep(Duration::from_millis(100));
                 // If still in build phase, add to the build counter.
                 // break;
 
-        // println!("{}: dave stderr", pid);
-           // let mut flag = terminal_flag_clone.lock().unwrap();
-            for line in stderr_reader.by_ref().lines() {
+                // println!("{}: dave stderr", pid);
+                // let mut flag = terminal_flag_clone.lock().unwrap();
+                for line in stderr_reader.by_ref().lines() {
                     // println!("SPAWN{}: {:?}", pid, line);
-                if let Ok(line) = line {
+                    if let Ok(line) = line {
+                        // if line.contains("IO(Custom { kind: NotConnected") {
+                        //     println!("{} IS A TERMINAL PROCESS - {}", pid,line);
+                        //     continue;
+                        // }
+                        let line = if line.starts_with(escape_sequence) {
+                            // If the line starts with the escape sequence, preserve it and remove leading spaces
+                            let rest_of_line = &line[escape_sequence.len()..]; // Get the part of the line after the escape sequence
+                            format!("{}{}", escape_sequence, rest_of_line.trim_start())
+                        // Reassemble the escape sequence and the trimmed text
+                        } else {
+                            line // If it doesn't start with the escape sequence, leave it unchanged
+                        };
+                        if let Some(ref disp) = stderr_disp_clone {
+                            // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
+                            let responses = disp.dispatch(&line);
+                            let mut has_match = false;
+                            // Iterate over the responses.
+                            for ret in responses {
+                                if let Some(_response) = ret {
+                                    has_match = true;
+                                    // if response.terminal_status == Some(TerminalError::NoTerminal) {
+                                    //     // If the response indicates a terminal error, set the flag.
+                                    //     *flag = TerminalError::NoTerminal;
+                                    //     println!("{} IS A TERMINAL PROCESS - {}", pid, line);
+                                    // } else if response.terminal_status == Some(TerminalError::NoError) {
+                                    //     // If the response indicates no terminal error, set the flag to NoError.
+                                    //     *flag = TerminalError::NoError;
+                                    // } else if response.terminal_status == Some(TerminalError::NoTerminal) {
+                                    //     // If the response indicates not a terminal, set the flag to NoTerminal.
+                                    //      *flag = TerminalError::NoTerminal;
+                                    //     println!("{} IS A TERMINAL PROCESS - {}", pid, line);
+                                    // }
+                                    // if let Some(ref msg) = response.message {
+                                    //      println!("DISPATCH RESULT {} {}", pid, msg);
+                                    // }
+                                    //     let diag = crate::e_eventdispatcher::convert_response_to_diagnostic(response, &line);
+                                    //     // let mut diags = diagnostics_clone.lock().unwrap();
 
+                                    //     let in_multiline = disp.callbacks
+                                    //     .lock().unwrap()
+                                    //     .iter()
+                                    //     .any(|cb| cb.is_reading_multiline.load(Ordering::Relaxed));
 
-
-                    // if line.contains("IO(Custom { kind: NotConnected") {
-                    //     println!("{} IS A TERMINAL PROCESS - {}", pid,line);
-                    //     continue;
-                    // }
-                    let line = if line.starts_with(escape_sequence) {
-                        // If the line starts with the escape sequence, preserve it and remove leading spaces
-                        let rest_of_line = &line[escape_sequence.len()..]; // Get the part of the line after the escape sequence
-                        format!("{}{}", escape_sequence, rest_of_line.trim_start()) // Reassemble the escape sequence and the trimmed text
-                    } else {
-                        line // If it doesn't start with the escape sequence, leave it unchanged
-                    };
-if let Some(ref disp) = stderr_disp_clone {
-    // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
-    let responses = disp.dispatch(&line);
-    let mut has_match = false;
-    // Iterate over the responses.
-    for ret in responses {
-        if let Some(response) = ret {
-            has_match = true;
-            // if response.terminal_status == Some(TerminalError::NoTerminal) {
-            //     // If the response indicates a terminal error, set the flag.
-            //     *flag = TerminalError::NoTerminal;
-            //     println!("{} IS A TERMINAL PROCESS - {}", pid, line);
-            // } else if response.terminal_status == Some(TerminalError::NoError) {
-            //     // If the response indicates no terminal error, set the flag to NoError.
-            //     *flag = TerminalError::NoError;
-            // } else if response.terminal_status == Some(TerminalError::NoTerminal) {
-            //     // If the response indicates not a terminal, set the flag to NoTerminal.
-            //      *flag = TerminalError::NoTerminal;
-            //     println!("{} IS A TERMINAL PROCESS - {}", pid, line);
-            // }
-            // if let Some(ref msg) = response.message {
-            //      println!("DISPATCH RESULT {} {}", pid, msg);
-            // }
-                    //     let diag = crate::e_eventdispatcher::convert_response_to_diagnostic(response, &line);
-                    //     // let mut diags = diagnostics_clone.lock().unwrap();
-
-                    //     let in_multiline = disp.callbacks
-                    //     .lock().unwrap()
-                    //     .iter()
-                    //     .any(|cb| cb.is_reading_multiline.load(Ordering::Relaxed));
-                    
-                    // if !in_multiline {
-                    //     // start of a new diagnostic
-                    //     diags.push(diag);
-                    // } else {
-                    //     // continuation → child of the last diagnostic
-                    //     if let Some(parent) = diags.last_mut() {
-                    //         parent.children.push(diag);
-                    //     } else {
-                    //         // no parent yet (unlikely), just push
-                    //         diags.push(diag);
-                    //     }
-                    // }
-
-
-        }
-    }
-        if !has_match && !line.trim().is_empty() && !line.eq("...") {
-            // If the line doesn't match any pattern, print it as is.
-            println!("{}", line);
-        }
-                } else {
-    
-                    println!("ALLLINES {}", line.trim());//all lines
+                                    // if !in_multiline {
+                                    //     // start of a new diagnostic
+                                    //     diags.push(diag);
+                                    // } else {
+                                    //     // continuation → child of the last diagnostic
+                                    //     if let Some(parent) = diags.last_mut() {
+                                    //         parent.children.push(diag);
+                                    //     } else {
+                                    //         // no parent yet (unlikely), just push
+                                    //         diags.push(diag);
+                                    //     }
+                                    // }
+                                }
+                            }
+                            if !has_match && !line.trim().is_empty() && !line.eq("...") {
+                                // If the line doesn't match any pattern, print it as is.
+                                println!("{}", line);
+                            }
+                        } else {
+                            println!("ALLLINES {}", line.trim()); //all lines
+                        }
+                        // if let Some(ref disp) = stderr_disp_clone {
+                        //     if let Some(ret) = disp.dispatch(&line) {
+                        //         if let Some(ref msg) = ret.message {
+                        //             println!("DISPATCH RESULT {} {}", pid, msg);
+                        //         }
+                        //     }
+                        // }
+                        // // Here, we assume stderr is less structured. We add its length to runtime counter.
+                        // runtime_counter_stderr.fetch_add(line.len(), Ordering::Relaxed);
+                        // if let Some(total) = estimate_bytes {
+                        //     let current = runtime_counter_stderr.load(Ordering::Relaxed);
+                        //     let progress = (current as f64 / total as f64) * 100.0;
+                        //     if let Some(ref pd) = progress_disp_clone_stderr {
+                        //         pd.dispatch(&format!("Progress: {:.2}%", progress));
+                        //     }
+                        // }
+                    }
                 }
-                    // if let Some(ref disp) = stderr_disp_clone {
-                    //     if let Some(ret) = disp.dispatch(&line) {
-                    //         if let Some(ref msg) = ret.message {
-                    //             println!("DISPATCH RESULT {} {}", pid, msg);
-                    //         }
-                    //     }
-                    // }
-                    // // Here, we assume stderr is less structured. We add its length to runtime counter.
-                    // runtime_counter_stderr.fetch_add(line.len(), Ordering::Relaxed);
-                    // if let Some(total) = estimate_bytes {
-                    //     let current = runtime_counter_stderr.load(Ordering::Relaxed);
-                    //     let progress = (current as f64 / total as f64) * 100.0;
-                    //     if let Some(ref pd) = progress_disp_clone_stderr {
-                    //         pd.dispatch(&format!("Progress: {:.2}%", progress));
-                    //     }
-                    // }
-                }
-            }
-    // println!("{}: dave stderr end", pid);
-        }  //loop
-    }
-);// End of stderr thread
+                // println!("{}: dave stderr end", pid);
+            } //loop
+        }); // End of stderr thread
 
- 
- let final_diagnostics = {
-    let diag_lock = diagnostics.lock().unwrap();
-    diag_lock.clone()
-};
+        let final_diagnostics = {
+            let diag_lock = diagnostics.lock().unwrap();
+            diag_lock.clone()
+        };
         let pid = child.id();
-    let result = CargoProcessResult {
-        pid: pid,
-        exit_status: None,
-        start_time: Some(start_time),
-        build_finished_time: None,
-        end_time: None,
-        build_elapsed: None,
-        runtime_elapsed: None,
-        stats: CargoStats::default(),
-        build_output_size: 0,
-        runtime_output_size: 0,
-        terminal_error: Some(tflag),
-        diagnostics: final_diagnostics,
-        is_filter: builder.is_filter,
-    };
+        let result = CargoProcessResult {
+            pid: pid,
+            exit_status: None,
+            start_time: Some(start_time),
+            build_finished_time: None,
+            end_time: None,
+            elapsed_time: None,
+            build_elapsed: None,
+            runtime_elapsed: None,
+            stats: CargoStats::default(),
+            build_output_size: 0,
+            runtime_output_size: 0,
+            terminal_error: Some(tflag),
+            diagnostics: final_diagnostics,
+            is_filter: builder.is_filter,
+        };
         CargoProcessHandle {
             child,
             result,
@@ -1040,4 +1102,3 @@ if let Some(ref disp) = stderr_disp_clone {
         }
     }
 }
- 

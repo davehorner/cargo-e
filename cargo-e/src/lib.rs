@@ -29,21 +29,21 @@ pub mod e_manifest;
 pub use e_manifest::{collect_workspace_members, locate_manifest};
 pub mod e_parser;
 pub use e_parser::parse_available;
+pub mod e_cargocommand_ext;
 pub mod e_collect;
 pub mod e_command_builder;
 pub mod e_discovery;
+pub mod e_eventdispatcher;
 pub mod e_features;
+pub mod e_fmt;
 pub mod e_prebuild;
+pub mod e_processmanager;
 pub mod e_prompts;
 pub mod e_runall;
 pub mod e_runner;
 pub mod e_target;
 pub mod e_tui;
 pub mod e_workspace;
-pub mod e_cargocommand_ext;
-pub mod e_eventdispatcher;
-pub mod e_processmanager;
-pub mod e_fmt;
 
 #[allow(unused_macros)]
 macro_rules! doc_with_joke {

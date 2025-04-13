@@ -43,14 +43,15 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
     {
         let timeout = Duration::from_secs(wait_secs);
         drain_events().ok(); // Clear any pending events.
-        // Enable raw mode and ensure it will be disabled when the guard is dropped.
+                             // Enable raw mode and ensure it will be disabled when the guard is dropped.
         let _raw_guard = RawModeGuard::new()?;
         println!("timeout: {:?}", timeout);
         let result = if poll(timeout)? {
             if let Event::Key(key_event) = read()? {
                 if let KeyCode::Char(c) = key_event.code {
-                                        // Check if it's the Ctrl+C character, which is often '\x03'
-                    if c == '\x03' {  // Ctrl+C
+                    // Check if it's the Ctrl+C character, which is often '\x03'
+                    if c == '\x03' {
+                        // Ctrl+C
                         return Err(anyhow::anyhow!("Ctrl+C pressed").into()); // Propagate as error to handle
                     }
                     Some(c.to_ascii_lowercase())
@@ -275,7 +276,10 @@ pub fn prompt_line_with_poll_opts(
                         continue;
                     }
                     match code {
-                        KeyCode::Enter => { drain_events().ok(); break;}, // End input on Enter.
+                        KeyCode::Enter => {
+                            drain_events().ok();
+                            break;
+                        } // End input on Enter.
                         KeyCode::Char(c) => {
                             // Check quick exit keys (case-insensitive)
                             if quick_exit.iter().any(|&qe| qe.eq_ignore_ascii_case(&c)) {
@@ -324,8 +328,10 @@ pub fn prompt_line_with_poll_opts(
 }
 
 /// Drain *all* pending input events so that the next `poll` really waits
-fn drain_events() ->Result<()> {
+#[allow(dead_code)]
+fn drain_events() -> Result<()> {
     // keep pulling until there’s nothing left
+    #[cfg(feature = "tui")]
     while poll(Duration::from_millis(0))? {
         let _ = read()?;
     }

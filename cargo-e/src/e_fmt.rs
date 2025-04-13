@@ -1,7 +1,6 @@
 use std::time::Duration;
 
-
- pub fn format_duration(duration: Duration) -> String {
+pub fn format_duration(duration: Duration) -> String {
     let secs = duration.as_secs();
     let millis = duration.subsec_millis();
     let hours = secs / 3600;
@@ -17,11 +16,11 @@ use std::time::Duration;
 }
 /// Helper: Format a Duration in a humanedable way.
 pub fn format_duration_secs(d: Duration) -> String {
-     let secs = d.as_secs();
-     let millis = d.subsec_millis();
-     format!("{}.{:03} secs", secs, millis)
+    let secs = d.as_secs();
+    let millis = d.subsec_millis();
+    format!("{}.{:03} secs", secs, millis)
 }
- 
+
 /// Helper: Format a byte count in humanedable form.
 pub fn format_bytes(bytes: usize) -> String {
     if bytes < 1024 {

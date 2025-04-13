@@ -1,14 +1,14 @@
 use regex::Regex;
-    use std::fmt;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-    use std::sync::Arc;
+use std::fmt;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::e_command_builder::TerminalError; 
+use crate::e_command_builder::TerminalError;
 
 /// Our internal diagnostic level for cargo.
-#[derive(Debug, Clone, PartialEq, Eq,Hash,Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum CargoDiagnosticLevel {
     Error,
     Warning,
@@ -51,7 +51,7 @@ pub enum CargoDiagnosticLevel {
 /// Our callback type enum.
 #[derive(Debug, Clone)]
 pub enum CallbackType {
-LevelMessage,
+    LevelMessage,
     Warning,
     Error,
     Help,
@@ -78,7 +78,11 @@ pub struct CallbackResponse {
 pub struct PatternCallback {
     pub pattern: Regex,
     // pub callback: Arc<dyn Fn(&str) -> Option<CallbackResponse> + Send + Sync>,
-    pub callback: Arc<dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse> + Send + Sync>,
+    pub callback: Arc<
+        dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse>
+            + Send
+            + Sync,
+    >,
     pub is_reading_multiline: Arc<AtomicBool>,
 }
 
@@ -92,7 +96,14 @@ impl fmt::Debug for PatternCallback {
 }
 
 impl PatternCallback {
-    pub fn new(pattern: &str, callback: Box<dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse> + Send + Sync>) -> Self {
+    pub fn new(
+        pattern: &str,
+        callback: Box<
+            dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse>
+                + Send
+                + Sync,
+        >,
+    ) -> Self {
         PatternCallback {
             pattern: Regex::new(pattern).expect("Invalid regex"),
             callback: Arc::new(callback),
@@ -115,7 +126,15 @@ impl EventDispatcher {
     }
 
     /// Add a new callback with a regex pattern.
-    pub fn add_callback(&mut self, pattern: &str, callback: Box<dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse> + Send + Sync>) {
+    pub fn add_callback(
+        &mut self,
+        pattern: &str,
+        callback: Box<
+            dyn Fn(&str, Option<regex::Captures>, Arc<AtomicBool>) -> Option<CallbackResponse>
+                + Send
+                + Sync,
+        >,
+    ) {
         if let Ok(mut callbacks) = self.callbacks.lock() {
             callbacks.push(PatternCallback::new(pattern, callback));
         } else {
@@ -149,4 +168,3 @@ impl EventDispatcher {
         responses
     }
 }
-

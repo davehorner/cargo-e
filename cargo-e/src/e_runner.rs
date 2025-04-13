@@ -2,19 +2,18 @@ use crate::e_processmanager::ProcessManager;
 use crate::{e_target::TargetOrigin, prelude::*};
 // #[cfg(not(feature = "equivalent"))]
 // use ctrlc;
+use crate::e_cargocommand_ext::CargoProcessHandle;
 use crate::e_target::CargoTarget;
+use anyhow::Result;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::Duration;
-use std::sync::atomic::AtomicUsize;
 use which::which; // Adjust the import based on your project structure
-use anyhow::Result;
-use std::collections::{HashMap, VecDeque};
-use crate::e_cargocommand_ext::CargoProcessHandle;
 
 // lazy_static! {
 //     pub static ref GLOBAL_CHILDREN: Arc<Mutex<Vec<Arc<CargoProcessHandle>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -22,9 +21,8 @@ use crate::e_cargocommand_ext::CargoProcessHandle;
 // }
 
 // pub static GLOBAL_CHILDREN:     Lazy<Arc<Mutex<Vec<Arc<Mutex<CargoProcessHandle>>>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
-pub static GLOBAL_CHILDREN: Lazy<Arc<Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(HashMap::new()))
-});
+pub static GLOBAL_CHILDREN: Lazy<Arc<Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 static CTRL_C_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -60,78 +58,97 @@ pub fn take_process_results(pid: u32) -> Option<CargoProcessHandle> {
     // let mut handle = handle.lock().ok()?;
     let handle = global.remove(&pid)?;
     // global.remove(&pid)
-        // This will succeed only if no other Arc exists
+    // This will succeed only if no other Arc exists
     Arc::try_unwrap(handle)
-        .ok()?                 // fails if other Arc exists
+        .ok()? // fails if other Arc exists
         .into_inner()
-        .ok()                  // fails if poisoned
+        .ok() // fails if poisoned
 }
 
-pub fn get_process_results_in_place(pid: u32) -> Option<crate::e_cargocommand_ext::CargoProcessResult> {
-    let global = GLOBAL_CHILDREN.lock().ok()?;                      // MutexGuard<HashMap>
-    let handle = global.get(&pid)?.clone();                         // Arc<Mutex<CargoProcessHandle>>
-    let handle = handle.lock().ok()?;                               // MutexGuard<CargoProcessHandle>
-    Some(handle.result.clone())                                    // ✅ return the result field
+pub fn get_process_results_in_place(
+    pid: u32,
+) -> Option<crate::e_cargocommand_ext::CargoProcessResult> {
+    let global = GLOBAL_CHILDREN.lock().ok()?; // MutexGuard<HashMap>
+    let handle = global.get(&pid)?.clone(); // Arc<Mutex<CargoProcessHandle>>
+    let handle = handle.lock().ok()?; // MutexGuard<CargoProcessHandle>
+    Some(handle.result.clone()) // ✅ return the result field
 }
 
-/// Registers a global Ctrl+C handler that interacts with the `GLOBAL_CHILDREN` process container.
-pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+// /// Registers a global Ctrl+C handler that interacts with the `GLOBAL_CHILDREN` process container.
+// pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
+//     println!("Registering Ctrl+C handler...");
+//     ctrlc::set_handler(move || {
+//          let count = CTRL_C_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+//         {
+//             eprintln!("Ctrl+C pressed");
+
+//     // lock only ONE mutex safely
+//     if let Ok(mut global) = GLOBAL_CHILDREN.try_lock() {
+//             // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+//             eprintln!("Ctrl+C got lock on global container");
+
+//             // If there are processes in the global container, terminate the most recent one
+//             if let Some((pid, child_handle)) = global.iter_mut().next() {
+//                 eprintln!("Ctrl+C pressed, terminating the child process with PID: {}", pid);
+
+//                 // Lock the child process and kill it
+//                 let mut child_handle = child_handle.lock().unwrap();
+//                 if child_handle.requested_exit {
+//                     eprintln!("Child process is already requested kill...");
+//                 } else {
+//                     eprintln!("Child process is not running, no need to kill.");
+//                     child_handle.requested_exit=true;
+//                     println!("Killing child process with PID: {}", pid);
+//                     let _ = child_handle.kill();  // Attempt to kill the process
+//                     println!("Killed child process with PID: {}", pid);
+
+//                     reset_ctrl_c_count();
+//                     return;  // Exit after successfully terminating the process
+//                 }
+
+//                 // Now remove the process from the global container
+//                 // let pid_to_remove = *pid;
+
+//                 // // Reacquire the lock after killing and remove the process from global
+//                 // drop(global);  // Drop the first borrow
+
+//                 // // Re-lock global and safely remove the entry using the pid
+//                 // let mut global = GLOBAL_CHILDREN.lock().unwrap();
+//                 // global.remove(&pid_to_remove); // Remove the process entry by PID
+//                 // println!("Removed process with PID: {}", pid_to_remove);
+//             }
+
+//     } else {
+//         eprintln!("Couldn't acquire GLOBAL_CHILDREN lock safely");
+//     }
+
+/// Registers a global Ctrl+C handler that uses the process manager.
+pub fn register_ctrlc_handler(process_manager: Arc<ProcessManager>) -> Result<(), Box<dyn Error>> {
     println!("Registering Ctrl+C handler...");
     ctrlc::set_handler(move || {
-         let count = CTRL_C_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        {
-            eprintln!("Ctrl+C pressed");
+        let count = CTRL_C_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+        eprintln!("Ctrl+C pressed");
 
-    // lock only ONE mutex safely
-    if let Ok(mut global) = GLOBAL_CHILDREN.try_lock() {
-            // let mut global = GLOBAL_CHILDREN.lock().unwrap();
-            eprintln!("Ctrl+C got lock on global container");
-
-            // If there are processes in the global container, terminate the most recent one
-            if let Some((pid, child_handle)) = global.iter_mut().next() {
-                eprintln!("Ctrl+C pressed, terminating the child process with PID: {}", pid);
-
-                // Lock the child process and kill it
-                let mut child_handle = child_handle.lock().unwrap();
-                if child_handle.requested_exit {
-                    eprintln!("Child process is already requested kill...");
-                } else {
-                    eprintln!("Child process is not running, no need to kill.");
-                    child_handle.requested_exit=true;
-                    println!("Killing child process with PID: {}", pid);
-                    let _ = child_handle.kill();  // Attempt to kill the process
-                    println!("Killed child process with PID: {}", pid);
-
-                    reset_ctrl_c_count();
-                    return;  // Exit after successfully terminating the process
-                }
-
-                // Now remove the process from the global container
-                // let pid_to_remove = *pid;
-
-                // // Reacquire the lock after killing and remove the process from global
-                // drop(global);  // Drop the first borrow
-
-                // // Re-lock global and safely remove the entry using the pid
-                // let mut global = GLOBAL_CHILDREN.lock().unwrap();
-                // global.remove(&pid_to_remove); // Remove the process entry by PID
-                // println!("Removed process with PID: {}", pid_to_remove);
+        // Use the process manager's API to handle killing
+        match process_manager.kill_one() {
+            Ok(true) => {
+                eprintln!("Process was successfully terminated.");
+                reset_ctrl_c_count();
+                return; // Exit handler early after a successful kill.
             }
-
-    } else {
-        eprintln!("Couldn't acquire GLOBAL_CHILDREN lock safely");
-    }
-
-            
+            Ok(false) => {
+                eprintln!("No process was killed this time.");
+            }
+            Err(e) => {
+                eprintln!("Error killing process: {:?}", e);
+            }
         }
 
-        // Now handle the Ctrl+C count and display messages
-        // If Ctrl+C is pressed 3 times without any child process, exit the program.
+        // Handle Ctrl+C count logic for exiting the program.
         if count == 3 {
             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
             std::process::exit(0);
         } else if count == 2 {
-            // Notify that one more Ctrl+C will exit the program.
             eprintln!("Ctrl+C pressed 2 times, press one more to exit.");
         } else {
             eprintln!("Ctrl+C pressed {} times, no child process running.", count);
@@ -139,6 +156,23 @@ pub fn register_ctrlc_handler() -> Result<(), Box<dyn Error>> {
     })?;
     Ok(())
 }
+
+//         }
+
+//         // Now handle the Ctrl+C count and display messages
+//         // If Ctrl+C is pressed 3 times without any child process, exit the program.
+//         if count == 3 {
+//             eprintln!("Ctrl+C pressed 3 times with no child process running. Exiting.");
+//             std::process::exit(0);
+//         } else if count == 2 {
+//             // Notify that one more Ctrl+C will exit the program.
+//             eprintln!("Ctrl+C pressed 2 times, press one more to exit.");
+//         } else {
+//             eprintln!("Ctrl+C pressed {} times, no child process running.", count);
+//         }
+//     })?;
+//     Ok(())
+// }
 
 // /// Registers a global Ctrl+C handler once.
 // /// The handler checks GLOBAL_CHILD and kills the child process if present.
@@ -283,7 +317,8 @@ pub fn run_equivalent_example(
 }
 
 /// Runs the given example (or binary) target.
-pub fn run_example(manager: Arc<ProcessManager>,
+pub fn run_example(
+    manager: Arc<ProcessManager>,
     cli: &crate::Cli,
     target: &crate::e_target::CargoTarget,
 ) -> anyhow::Result<Option<std::process::ExitStatus>> {
@@ -293,16 +328,23 @@ pub fn run_example(manager: Arc<ProcessManager>,
 
     // Avoid running our own binary.
     if target.kind == crate::e_target::TargetKind::Binary && target.name == current_bin {
-            println!("Skipping automatic run: {} is the same as the running binary",
-            target.name);
-            return Ok(None);
+        println!(
+            "Skipping automatic run: {} is the same as the running binary",
+            target.name
+        );
+        return Ok(None);
     }
 
+    let manifest_path = PathBuf::from(target.manifest_path.clone());
     // Build the command using the CargoCommandBuilder.
-    let mut builder = crate::e_command_builder::CargoCommandBuilder::new(&cli.subcommand, cli.filter)
-        .with_target(target)
-        .with_required_features(&target.manifest_path, target)
-        .with_cli(cli);
+    let mut builder = crate::e_command_builder::CargoCommandBuilder::new(
+        &manifest_path,
+        &cli.subcommand,
+        cli.filter,
+    )
+    .with_target(target)
+    .with_required_features(&target.manifest_path, target)
+    .with_cli(cli);
 
     if !cli.extra.is_empty() {
         builder = builder.with_extra_args(&cli.extra);
@@ -336,23 +378,21 @@ pub fn run_example(manager: Arc<ProcessManager>,
     // Check if the manifest triggers the workspace error.
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
 
-    let pid = Arc::new(builder).run(|pid, handle| {
-    manager.register(handle);
-})?;
-let result=manager.wait(pid, None)?;
-// println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
-// println!("\n\nHERE IS THE RESULT!{} {:?}",pid,result);
-if result.is_filter {
-result.print_exact();
-result.print_short();
-result.print_compact();
+    let pid = Arc::new(builder).run(|_pid, handle| {
+        manager.register(handle);
+    })?;
+    let result = manager.wait(pid, None)?;
+    // println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
+    // println!("\n\nHERE IS THE RESULT!{} {:?}",pid,result);
+    if result.is_filter {
+        result.print_exact();
+        result.print_short();
+        result.print_compact();
 
         // manager.print_shortened_output();
         manager.print_prefixed_summary();
         // manager.print_compact();
-}
-
-
+    }
 
     // let handle=    Arc::new(builder).run_wait()?;
     // Spawn the process.
@@ -592,8 +632,8 @@ pub fn spawn_cargo_process(args: &[&str]) -> Result<Child, Box<dyn Error>> {
     // }
     // #[cfg(not(windows))]
     // {
-        let child = Command::new("cargo").args(args).spawn()?;
-        Ok(child)
+    let child = Command::new("cargo").args(args).spawn()?;
+    Ok(child)
     // }
 }
 
@@ -702,7 +742,7 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned = extra_str_slice.clone();
-                let child = run_rust_script(
+                let mut child = run_rust_script(
                     &explicit,
                     &extra_str_slice_cloned
                         .iter()
@@ -724,7 +764,7 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
                 // let status = {
                 //     let mut global = GLOBAL_CHILD.lock().unwrap();
                 //     if let Some(mut child) = global.take() {
-                //         child.wait()
+                child.wait()
                 //     } else {
                 //         // Handle missing child process
                 //         eprintln!("Child process missing");
@@ -746,8 +786,9 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
             });
 
             // Wait for the thread to complete, but with a timeout
-            let timeout = Duration::from_secs(10);
-            match handle.join_timeout(timeout) {
+            // let timeout = Duration::from_secs(10);
+            // match handle.join_timeout(timeout) {
+            match handle.join() {
                 Ok(_) => {
                     println!("Child process finished successfully.");
                 }
@@ -775,7 +816,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned: Vec<String> = extra_str_slice.clone();
-                let child = run_scriptisto(
+                let mut child = run_scriptisto(
                     &relative,
                     &extra_str_slice_cloned
                         .iter()
@@ -797,7 +838,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
                 // let status = {
                 //     let mut global = GLOBAL_CHILD.lock().unwrap();
                 //     if let Some(mut child) = global.take() {
-                //         child.wait()
+                child.wait()
                 //     } else {
                 //         // Handle missing child process
                 //         eprintln!("Child process missing");
@@ -819,8 +860,8 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
             });
 
             // Wait for the thread to complete, but with a timeout
-            let timeout = Duration::from_secs(10);
-            match handle.join_timeout(timeout) {
+            // let timeout = Duration::from_secs(10);
+            match handle.join() {
                 Ok(_) => {
                     println!("Child process finished successfully.");
                 }
@@ -866,17 +907,17 @@ fn make_relative(path: &Path) -> std::io::Result<String> {
     Ok(s)
 }
 
-trait JoinTimeout {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
-}
+// trait JoinTimeout {
+//     fn join_timeout(self, timeout: Duration) -> Result<(), ()>;
+// }
 
-impl<T> JoinTimeout for thread::JoinHandle<T> {
-    fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
-        println!("Waiting for thread to finish...{}", timeout.as_secs());
-        let _ = thread::sleep(timeout);
-        match self.join() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
-    }
-}
+// impl<T> JoinTimeout for thread::JoinHandle<T> {
+//     fn join_timeout(self, timeout: Duration) -> Result<(), ()> {
+//         println!("Waiting for thread to finish...{}", timeout.as_secs());
+//         let _ = thread::sleep(timeout);
+//         match self.join() {
+//             Ok(_) => Ok(()),
+//             Err(_) => Err(()),
+//         }
+//     }
+// }
