@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+use std::process::Child;
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
