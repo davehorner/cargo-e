@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.13](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.12...cargo-e-v0.2.13) - 2025-04-15
+
+### Fixed
+
+- rust-script/scriptisto logical error, if 1 binary exists, the
+
 ## [0.2.12](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.11...cargo-e-v0.2.12) - 2025-04-13
 
 ### Added
