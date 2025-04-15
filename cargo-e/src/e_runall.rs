@@ -1,7 +1,6 @@
+use crate::e_cli::RunAll;
 use crate::e_command_builder::CargoCommandBuilder;
 use crate::e_processmanager::ProcessManager;
-use std::process::Child;
-use crate::e_cli::RunAll;
 use crate::e_target::{CargoTarget, TargetKind};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -9,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+use std::process::Child;
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};

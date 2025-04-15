@@ -276,7 +276,7 @@ pub fn main() -> anyhow::Result<()> {
         let binary = builtin_binaries[0];
         // Prompt the user for what to do.
         let message = format!(
-            "{} binary found.  run? (yes / No / edit / tui / info)     waiting {} seconds.",
+            "{} binary found.  run? (Yes / no / edit / tui / info)     waiting {} seconds.",
             binary.name, cli.wait
         );
         let quick_exit_keys = vec!['q', 't', ' '];
@@ -285,7 +285,7 @@ pub fn main() -> anyhow::Result<()> {
         {
         }
         match cargo_e::e_prompts::prompt(&message, cli.wait) {
-            Ok(Some('y')) => {
+            Ok(Some('y')) | Ok(Some(' ')) => {
                 cargo_e::e_runner::run_example(manager.clone(), &cli, binary)?;
             }
             Ok(Some('i')) => {
@@ -317,8 +317,7 @@ pub fn main() -> anyhow::Result<()> {
                 std::process::exit(0);
             }
             Ok(None) => {
-                println!("No choice made. Exiting.");
-                std::process::exit(0);
+                cargo_e::e_runner::run_example(manager.clone(), &cli, binary)?;
             }
             Err(err) => {
                 eprintln!("Failed to read prompt: {}", err);

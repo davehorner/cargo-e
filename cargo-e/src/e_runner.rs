@@ -733,12 +733,10 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
     let explicit_path = Path::new(&explicit); // Construct Path outside the lock
 
     if explicit_path.exists() {
-        is_active_scriptisto(&explicit_path).ok();
-
         // let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
         let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
 
-        if is_active_rust_script(&explicit_path).is_ok() {
+        if let Ok(true) = is_active_rust_script(&explicit_path) {
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned = extra_str_slice.clone();
@@ -812,7 +810,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
         // let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
         let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
 
-        if is_active_scriptisto(&explicit_path).is_ok() {
+        if let Ok(true) = is_active_scriptisto(&explicit_path) {
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned: Vec<String> = extra_str_slice.clone();
