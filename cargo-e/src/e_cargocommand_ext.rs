@@ -252,6 +252,9 @@ pub struct CargoProcessResult {
 impl CargoProcessResult {
     /// Print every diagnostic in full detail.
     pub fn print_exact(&self) {
+        if self.diagnostics.is_empty() {
+            return;
+        }
         println!(
             "--- Full Diagnostics for PID {} --- {}",
             self.pid,
@@ -264,6 +267,9 @@ impl CargoProcessResult {
 
     /// Print warnings first, then errors, one‐line summary.
     pub fn print_short(&self) {
+        if self.diagnostics.is_empty() {
+            return;
+        }
         // let warnings: Vec<_> = self.diagnostics.iter()
         //     .filter(|d| d.level.eq("warning"))
         //     .collect();
@@ -286,6 +292,9 @@ impl CargoProcessResult {
 
     /// Print a compact, zero‑padded, numbered list of *all* diagnostics.
     pub fn print_compact(&self) {
+        if self.diagnostics.is_empty() {
+            return;
+        }
         let total = self.diagnostics.len();
         println!("--- All Diagnostics ({} total) ---", total);
         for diag in self.diagnostics.iter() {

@@ -45,7 +45,6 @@ pub fn prompt(message: &str, wait_secs: u64) -> Result<Option<char>> {
         drain_events().ok(); // Clear any pending events.
                              // Enable raw mode and ensure it will be disabled when the guard is dropped.
         let _raw_guard = RawModeGuard::new()?;
-        println!("timeout: {:?}", timeout);
         let result = if poll(timeout)? {
             if let Event::Key(key_event) = read()? {
                 if let KeyCode::Char(c) = key_event.code {
