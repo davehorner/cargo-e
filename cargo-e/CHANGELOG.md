@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.14](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.13...cargo-e-v0.2.14) - 2025-04-17
+
+### Added
+
+- rust-script / scriptisto kind detection and filtering. first cargo-e lib egui rust-script in experiments
+
 ## [0.2.13](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.12...cargo-e-v0.2.13) - 2025-04-15
 
 ### Fixed

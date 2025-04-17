@@ -146,9 +146,13 @@ pub fn get_required_features_from_manifest(
 
     // Map the TargetKind to the corresponding section in the manifest.
     let section = match kind {
+        TargetKind::UnknownExample | TargetKind::UnknownExtendedExample => "?-example",
+        TargetKind::UnknownBinary | TargetKind::UnknownExtendedBinary => "?-bin",
         TargetKind::Example | TargetKind::ExtendedExample => "example",
         TargetKind::Binary | TargetKind::ExtendedBinary => "bin",
         TargetKind::ManifestTauri => "bin",
+        TargetKind::ScriptScriptisto => "scriptisto",
+        TargetKind::ScriptRustScript => "rust-script",
         TargetKind::ManifestTauriExample => "example",
         TargetKind::ManifestDioxus => "bin",
         TargetKind::ManifestDioxusExample => "example",

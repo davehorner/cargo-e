@@ -1,6 +1,8 @@
 // src/e_discovery.rs
 use std::{
     fs,
+    fs::File,
+    io::{self, BufRead, BufReader},
     path::{Path, PathBuf},
 };
 
@@ -86,6 +88,29 @@ pub fn scan_examples_directory(
     Ok(targets)
 }
 
+/// Try to detect a “script” kind by reading *one* first line.
+/// Returns Ok(Some(...)) if it matches either marker, Ok(None) otherwise.
+/// Any I/O error is propagated.
+fn detect_script_kind(path: &Path) -> io::Result<Option<TargetKind>> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+
+    // must start with `#`
+    if !first_line.starts_with('#') {
+        return Ok(None);
+    }
+    // now check your two markers
+    if first_line.contains("scriptisto") {
+        return Ok(Some(TargetKind::ScriptScriptisto));
+    }
+    if first_line.contains("rust-script") {
+        return Ok(Some(TargetKind::ScriptRustScript));
+    }
+    Ok(None)
+}
+
 /// Determines the target kind and (optionally) an updated manifest path based on:
 /// - Tauri configuration: If the parent directory of the original manifest contains a
 ///   "tauri.conf.json", and also a Cargo.toml exists in that same directory, then update the manifest path
@@ -108,6 +133,9 @@ pub fn determine_target_kind_and_manifest(
     // Start with the original manifest path.
     let mut new_manifest = manifest_path.to_path_buf();
 
+    if let Ok(Some(script_kind)) = detect_script_kind(candidate) {
+        return (script_kind, new_manifest);
+    }
     // If the incoming kind is already known (Test or Bench), return it.
     if let Some(kind) = incoming_kind {
         if kind == TargetKind::Test || kind == TargetKind::Bench {
@@ -182,8 +210,20 @@ pub fn determine_target_kind_and_manifest(
         return (TargetKind::Test, new_manifest);
     }
 
+    let kind = if example {
+        if extended {
+            TargetKind::UnknownExtendedExample
+        } else {
+            TargetKind::UnknownExample
+        }
+    } else if extended {
+        TargetKind::UnknownExtendedBinary
+    } else {
+        TargetKind::UnknownBinary
+    };
+    return (kind, new_manifest);
     // Default fallback.
-    (TargetKind::Unknown, "errorNOfnMAIN".into())
+    // (TargetKind::Unknown, "errorNOfnMAIN".into())
 }
 
 /// Returns true if the candidate file is not located directly in the project root.

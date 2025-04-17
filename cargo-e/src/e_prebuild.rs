@@ -35,6 +35,7 @@ pub fn prebuild_examples(targets: &[CargoTarget]) -> Result<()> {
             TargetKind::ManifestDioxusExample => ("", true),
             TargetKind::ManifestLeptos => ("", true),
             TargetKind::Unknown => ("", true),
+            _ => ("", true),
         };
 
         if build_flag.is_empty() {
