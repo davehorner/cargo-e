@@ -1036,7 +1036,10 @@ impl CargoCommandBuilder {
                 // Pass the target's name as a filter to run specific tests.
                 self.args.push(target.name.clone());
             }
-            TargetKind::Example | TargetKind::ExtendedExample => {
+            TargetKind::UnknownExample
+            | TargetKind::UnknownExtendedExample
+            | TargetKind::Example
+            | TargetKind::ExtendedExample => {
                 self.args.push(self.subcommand.clone());
                 //self.args.push("--message-format=json".into());
                 self.args.push("--example".into());
@@ -1051,7 +1054,10 @@ impl CargoCommandBuilder {
                         .to_owned(),
                 );
             }
-            TargetKind::Binary | TargetKind::ExtendedBinary => {
+            TargetKind::UnknownBinary
+            | TargetKind::UnknownExtendedBinary
+            | TargetKind::Binary
+            | TargetKind::ExtendedBinary => {
                 self.args.push(self.subcommand.clone());
                 self.args.push("--bin".into());
                 self.args.push(target.name.clone());
@@ -1092,6 +1098,50 @@ impl CargoCommandBuilder {
                         .unwrap_or_default()
                         .to_owned(),
                 );
+            }
+            TargetKind::ScriptScriptisto => {
+                let exe_path = match which("scriptisto") {
+                    Ok(path) => path,
+                    Err(err) => {
+                        eprintln!("Error: 'scriptisto' not found in PATH: {}", err);
+                        return self;
+                    }
+                };
+                self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
+                let candidate_opt = match &target.origin {
+                    Some(TargetOrigin::SingleFile(path))
+                    | Some(TargetOrigin::DefaultBinary(path)) => Some(path),
+                    _ => None,
+                };
+                if let Some(candidate) = candidate_opt {
+                    self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
+                    self.args.push(candidate.to_string_lossy().to_string());
+                } else {
+                    println!("No scriptisto origin found for: {:?}", target);
+                }
+            }
+            TargetKind::ScriptRustScript => {
+                let exe_path = match which("rust-script") {
+                    Ok(path) => path,
+                    Err(err) => {
+                        eprintln!("Error: 'rust-script' not found in PATH: {}", err);
+                        return self;
+                    }
+                };
+                let candidate_opt = match &target.origin {
+                    Some(TargetOrigin::SingleFile(path))
+                    | Some(TargetOrigin::DefaultBinary(path)) => Some(path),
+                    _ => None,
+                };
+                if let Some(candidate) = candidate_opt {
+                    self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
+                    if self.is_filter {
+                        self.args.push("-c".into()); // ask for cargo output
+                    }
+                    self.args.push(candidate.to_string_lossy().to_string());
+                } else {
+                    println!("No rust-script origin found for: {:?}", target);
+                }
             }
             TargetKind::ManifestTauri => {
                 self.suppressed_flags.insert("quiet".to_string());

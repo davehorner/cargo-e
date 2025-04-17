@@ -178,7 +178,6 @@ pub fn collect_samples(
                 let (bins, examples, benches, tests) =
                     crate::e_manifest::get_runnable_targets(&manifest_clone).unwrap_or_default();
 
-                crate::e_manifest::get_runnable_targets(&manifest_clone).unwrap_or_default();
                 // If there are no examples or binaries, return early.
                 if bins.is_empty() && examples.is_empty() {
                     return;

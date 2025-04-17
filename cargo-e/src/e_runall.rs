@@ -40,7 +40,7 @@ use nix::unistd::Pid;
 // }
 
 #[cfg(not(target_os = "windows"))]
-pub fn send_ctrl_c(child: &mut Child) -> Result<()> {
+pub fn send_ctrl_c(child: &mut  std::process::Child) -> Result<()> {
     // On Unix, send SIGINT to the child.
     kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).context("Failed to send SIGINT")?;
     // Wait briefly to allow graceful shutdown.

@@ -722,20 +722,10 @@ pub fn run_rust_script<P: AsRef<Path>>(script_path: P, args: &[&str]) -> Option<
 }
 
 pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<String>) {
-    // let explicit = {
-    //     let lock = EXPLICIT.lock().unwrap_or_else(|e| {
-    //         eprintln!("Failed to acquire lock: {}", e);
-    //         std::process::exit(1); // Exit the program if the lock cannot be obtained
-    //     });
-    //     lock.clone() // Clone the data to move it into the thread
-    // };
-
     let explicit_path = Path::new(&explicit); // Construct Path outside the lock
 
     if explicit_path.exists() {
-        // let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
         let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
-
         if let Ok(true) = is_active_rust_script(&explicit_path) {
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
@@ -752,40 +742,9 @@ pub fn run_rust_script_with_ctrlc_handling(explicit: String, extra_args: Vec<Str
                     std::process::exit(1); // Exit with an error code
                 });
 
-                // // Lock global to store the child process
-                // {
-                //     let mut global = GLOBAL_CHILD.lock().unwrap();
-                //     *global = Some(child);
-                // }
-
-                // // Wait for the child process to complete
-                // let status = {
-                //     let mut global = GLOBAL_CHILD.lock().unwrap();
-                //     if let Some(mut child) = global.take() {
                 child.wait()
-                //     } else {
-                //         // Handle missing child process
-                //         eprintln!("Child process missing");
-                //         std::process::exit(1); // Exit with an error code
-                //     }
-                // };
-
-                // Handle the child process exit status
-                // match status {
-                //     Ok(status) => {
-                //         eprintln!("Child process exited with status code: {:?}", status.code());
-                //         std::process::exit(status.code().unwrap_or(1)); // Exit with the child's status code
-                //     }
-                //     Err(err) => {
-                //         eprintln!("Error waiting for child process: {}", err);
-                //         std::process::exit(1); // Exit with an error code
-                //     }
-                // }
             });
 
-            // Wait for the thread to complete, but with a timeout
-            // let timeout = Duration::from_secs(10);
-            // match handle.join_timeout(timeout) {
             match handle.join() {
                 Ok(_) => {
                     println!("Child process finished successfully.");

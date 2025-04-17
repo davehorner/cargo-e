@@ -21,6 +21,10 @@ pub enum TargetOrigin {
 #[derive(Debug, Clone, PartialEq, Hash, Eq, Copy)]
 pub enum TargetKind {
     Unknown,
+    UnknownExample,
+    UnknownExtendedExample,
+    UnknownBinary,
+    UnknownExtendedBinary,
     Example,
     ExtendedExample,
     Binary,
@@ -33,6 +37,8 @@ pub enum TargetKind {
     ManifestDioxusExample,
     ManifestDioxus,
     ManifestLeptos,
+    ScriptRustScript,
+    ScriptScriptisto,
 }
 
 #[derive(Debug, Clone)]
@@ -876,6 +882,8 @@ impl CargoTarget {
         matches!(
             self.kind,
             TargetKind::Example
+                | TargetKind::UnknownExample
+                | TargetKind::UnknownExtendedExample
                 | TargetKind::ExtendedExample
                 | TargetKind::ManifestDioxusExample
                 | TargetKind::ManifestTauriExample

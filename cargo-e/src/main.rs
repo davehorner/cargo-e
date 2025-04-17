@@ -487,6 +487,10 @@ fn select_and_run_target_loop(
     let mut combined: Vec<(&str, &CargoTarget)> = Vec::new();
     for target in unique_targets {
         let label = match target.kind {
+            TargetKind::ScriptScriptisto => "scriptisto",
+            TargetKind::ScriptRustScript => "rust-script",
+            TargetKind::UnknownExample | TargetKind::UnknownExtendedExample => "?-ex.",
+            TargetKind::UnknownBinary | TargetKind::UnknownExtendedBinary => "?-bin",
             TargetKind::Example => "ex.",
             TargetKind::ExtendedExample => "exx",
             TargetKind::Binary => "bin",
