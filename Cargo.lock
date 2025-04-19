@@ -461,7 +461,7 @@ dependencies = [
  "e_crate_version_checker",
  "env_logger",
  "futures",
- "genai",
+ "genai 0.2.1",
  "log",
  "mlua",
  "nix",
@@ -1249,7 +1249,8 @@ dependencies = [
  "chrono",
  "clap",
  "env_logger",
- "genai",
+ "genai 0.1.23",
+ "genai 0.2.1",
  "include_dir",
  "log",
  "path-slash",
@@ -1656,6 +1657,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "genai"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae86a033ee3272be789db0a7b155fe293aa0e7a8f4305c731a6a59c28a7a473d"
+dependencies = [
+ "bytes",
+ "derive_more 2.0.1",
+ "eventsource-stream",
+ "futures",
+ "reqwest",
+ "reqwest-eventsource",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "value-ext",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1929,7 +1951,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.0",
+ "windows-core 0.57.0",
 ]
 
 [[package]]

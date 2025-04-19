@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
-use std::{path::Path, process::Command};
-use std::path::PathBuf;
 use crate::plugins::plugin_api::{Plugin, Target};
+use anyhow::{bail, Context, Result};
+use std::path::PathBuf;
+use std::{path::Path, process::Command};
 use which::which;
 
 pub struct WasmPlugin {
@@ -13,9 +13,15 @@ impl WasmPlugin {
     /// Attempt to locate `wasmtime`; if found, return a WasmPlugin, else skip
     pub fn load(path: &Path) -> Result<Option<Self>> {
         match which("wasmtime") {
-            Ok(wasmtime_path) => Ok(Some(Self { path: path.to_path_buf(), wasmtime_path })),
+            Ok(wasmtime_path) => Ok(Some(Self {
+                path: path.to_path_buf(),
+                wasmtime_path,
+            })),
             Err(_) => {
-                eprintln!("[warn] wasmtime not found in PATH — skipping wasm plugin: {}", path.display());
+                eprintln!(
+                    "[warn] wasmtime not found in PATH — skipping wasm plugin: {}",
+                    path.display()
+                );
                 Ok(None)
             }
         }
@@ -38,13 +44,17 @@ impl WasmPlugin {
     /// Run the Wasm plugin via Wasmtime, preopening `dir` for WASI, passing `args` to the module
     fn run_wasm(&self, args: &[&str], dir: &Path) -> Result<String> {
         let output = Command::new(&self.wasmtime_path)
-            .arg("--dir").arg(dir)
+            .arg("--dir")
+            .arg(dir)
             .arg(&self.path)
             .args(args)
             .output()?;
         if !output.status.success() {
             eprintln!("[wasm stderr] {}", String::from_utf8_lossy(&output.stderr));
-            bail!("WASM plugin error: {}", String::from_utf8_lossy(&output.stderr));
+            bail!(
+                "WASM plugin error: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
         // Capture and trim stdout from the WASM module
         let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -83,7 +93,11 @@ impl Plugin for WasmPlugin {
     }
 
     fn build_command(&self, dir: &Path, target: &Target) -> Result<Command> {
-        log::trace!("WASM plugin building target '{}' in {}", target.name, dir.display());
+        log::trace!(
+            "WASM plugin building target '{}' in {}",
+            target.name,
+            dir.display()
+        );
         let json = self.run_wasm(
             &["--build_command", &dir.to_string_lossy(), &target.name],
             dir,

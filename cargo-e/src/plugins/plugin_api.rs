@@ -1,24 +1,25 @@
+#[cfg(feature = "uses_wasm")]
+use crate::plugins::wasm_plugin::WasmPlugin;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{path::Path, process::Command};
-use walkdir::WalkDir;
- #[cfg(feature = "uses_wasm")]
-use crate::plugins::wasm_plugin::WasmPlugin;
+#[allow(unused_imports)]
 use toml;
+use walkdir::WalkDir;
 // Generic export plugin for Wasm/DLL exports (always available)
-#[cfg(feature = "uses_wasm")]
-use crate::plugins::wasm_export_plugin::WasmExportPlugin;
-use std::fs;
-use std::sync::Arc;
 use crate::e_processmanager::ProcessManager;
-use crate::Cli;
 use crate::e_target::CargoTarget;
-use std::process::ExitStatus;
-use std::path::PathBuf;
- #[cfg(feature = "uses_rhai")]
-use crate::plugins::rhai_plugin::RhaiPlugin;
 #[cfg(feature = "uses_lua")]
 use crate::plugins::lua_plugin::LuaPlugin;
+#[cfg(feature = "uses_rhai")]
+use crate::plugins::rhai_plugin::RhaiPlugin;
+#[cfg(feature = "uses_wasm")]
+use crate::plugins::wasm_export_plugin::WasmExportPlugin;
+use crate::Cli;
+use std::fs;
+use std::path::PathBuf;
+use std::process::ExitStatus;
+use std::sync::Arc;
 
 /// Returns the directories to search for plugins in precedence order:
 /// 1) development-time CARGO_MANIFEST_DIR/plugins
@@ -164,7 +165,10 @@ pub trait Plugin {
 /// Load all plugins by scanning supported script and WASM plugin directories.
 pub fn load_plugins(cli: &Cli, manager: Arc<ProcessManager>) -> Result<Vec<Box<dyn Plugin>>> {
     let mut plugins: Vec<Box<dyn Plugin>> = Vec::new();
-    log::trace!("Initializing plugin loading; current dir = {:?}", std::env::current_dir()?);
+    log::trace!(
+        "Initializing plugin loading; current dir = {:?}",
+        std::env::current_dir()?
+    );
     let cwd = std::env::current_dir()?;
 
     // Load Lua and Rhai script plugins
@@ -223,7 +227,12 @@ impl PluginManager {
         let manager = ProcessManager::new(cli);
         let plugins = load_plugins(cli, manager.clone())?;
         let cwd = std::env::current_dir()?;
-        Ok(PluginManager { cli: cli.clone(), manager, cwd, plugins })
+        Ok(PluginManager {
+            cli: cli.clone(),
+            manager,
+            cwd,
+            plugins,
+        })
     }
     /// Returns a slice of loaded plugin instances.
     pub fn plugins(&self) -> &[Box<dyn Plugin>] {
@@ -235,12 +244,16 @@ impl PluginManager {
         let mut results = Vec::new();
         for plugin in &self.plugins {
             if plugin.matches(&self.cwd) {
-                let plugin_path = plugin.source().map(PathBuf::from).unwrap_or_else(|| self.cwd.clone());
+                let plugin_path = plugin
+                    .source()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| self.cwd.clone());
                 for pt in plugin.collect_targets(&self.cwd)? {
                     let ct = if let Some(ct) = pt.cargo_target {
                         ct
                     } else {
-                        let reported = pt.metadata
+                        let reported = pt
+                            .metadata
                             .as_ref()
                             .map(PathBuf::from)
                             .unwrap_or_else(|| self.cwd.clone());
@@ -251,7 +264,10 @@ impl PluginManager {
                             kind: TargetKind::Plugin,
                             extended: false,
                             toml_specified: false,
-                            origin: Some(TargetOrigin::Plugin { plugin_path: plugin_path.clone(), reported }),
+                            origin: Some(TargetOrigin::Plugin {
+                                plugin_path: plugin_path.clone(),
+                                reported,
+                            }),
                         }
                     };
                     results.push(ct);
@@ -261,7 +277,6 @@ impl PluginManager {
         Ok(results)
     }
 }
-
 
 /// Internal structure matching the JSON command spec returned by plugins
 #[derive(serde::Deserialize)]

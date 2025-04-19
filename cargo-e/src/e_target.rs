@@ -17,7 +17,10 @@ pub enum TargetOrigin {
     SubProject(PathBuf),
     Named(OsString),
     /// A target provided by a plugin, storing plugin file and reported source path
-    Plugin { plugin_path: PathBuf, reported: PathBuf },
+    Plugin {
+        plugin_path: PathBuf,
+        reported: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq, Copy)]

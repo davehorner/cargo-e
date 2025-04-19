@@ -1,8 +1,12 @@
-use anyhow::Result;
 use crate::plugins::plugin_api::{Plugin, Target};
-use std::{fs, path::{Path, PathBuf}, process::Command};
+use anyhow::Result;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+use wasmparser::{ExternalKind, Parser, Payload};
 use which::which;
-use wasmparser::{Parser, Payload, ExternalKind};
 
 /// A generic WASM export plugin: lists all exported functions in a .wasm file or a native dynamic library
 pub struct WasmExportPlugin {
@@ -13,9 +17,12 @@ pub struct WasmExportPlugin {
 impl WasmExportPlugin {
     /// Load the generic export plugin if Wasmtime is available
     pub fn load(path: &Path) -> Result<Option<Self>> {
-        let wasmtime_path = which("wasmtime")
-            .map_err(|e| anyhow::anyhow!("wasmtime not found in PATH: {}", e))?;
-        Ok(Some(Self { path: path.to_path_buf(), wasmtime_path }))
+        let wasmtime_path =
+            which("wasmtime").map_err(|e| anyhow::anyhow!("wasmtime not found in PATH: {}", e))?;
+        Ok(Some(Self {
+            path: path.to_path_buf(),
+            wasmtime_path,
+        }))
     }
 }
 
@@ -23,7 +30,7 @@ impl Plugin for WasmExportPlugin {
     fn name(&self) -> &str {
         match self.path.extension().and_then(|s| s.to_str()).unwrap_or("") {
             "dll" => "dll-export",
-            _     => "wasm-export",
+            _ => "wasm-export",
         }
     }
 
@@ -33,7 +40,9 @@ impl Plugin for WasmExportPlugin {
 
     fn collect_targets(&self, _dir: &Path) -> Result<Vec<Target>> {
         if self.path.extension().and_then(|s| s.to_str()) == Some("dll") {
-            let name = self.path.file_stem()
+            let name = self
+                .path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("dll_export")
                 .to_string();
@@ -65,9 +74,7 @@ impl Plugin for WasmExportPlugin {
 
     fn build_command(&self, _dir: &Path, target: &Target) -> Result<Command> {
         let mut cmd = Command::new(&self.wasmtime_path);
-        cmd.arg(&self.path)
-           .arg("--invoke")
-           .arg(&target.name);
+        cmd.arg(&self.path).arg("--invoke").arg(&target.name);
         Ok(cmd)
     }
 

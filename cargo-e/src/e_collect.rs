@@ -500,8 +500,8 @@ pub fn collect_all_targets_silent(
         } else {
             bi.clone()
         };
-        let ws_members = e_workspace::get_workspace_member_manifest_paths(ws.as_path())
-            .unwrap_or_default();
+        let ws_members =
+            e_workspace::get_workspace_member_manifest_paths(ws.as_path()).unwrap_or_default();
         manifest_infos.push(("-".to_string(), bi.clone(), false));
         for (member, member_manifest) in ws_members {
             manifest_infos.push((format!("${}", member), member_manifest, true));

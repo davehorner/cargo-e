@@ -1,16 +1,19 @@
-use std::{path::PathBuf, sync::Arc};
+#![cfg(feature = "uses_rhai")]
 use anyhow::Result;
-use cargo_e::plugins::rhai_plugin::RhaiPlugin;
+use cargo_e::e_processmanager::ProcessManager;
 use cargo_e::plugins::plugin_api::Plugin;
+use cargo_e::plugins::rhai_plugin::RhaiPlugin;
 use cargo_e::Cli;
 use clap::Parser;
-use cargo_e::e_processmanager::ProcessManager;
+use std::{path::PathBuf, sync::Arc};
 
 #[test]
 fn test_example_rhai_plugin() -> Result<()> {
     // Path to the example.rhai plugin script in the development plugins directory.
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let plugin_path = PathBuf::from(manifest_dir).join("plugins").join("example.rhai");
+    let plugin_path = PathBuf::from(manifest_dir)
+        .join("plugins")
+        .join("example.rhai");
 
     // Current working directory for plugin operations.
     let cwd = std::env::current_dir()?;

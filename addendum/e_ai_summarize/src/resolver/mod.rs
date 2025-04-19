@@ -1,7 +1,9 @@
-use std::{
-    collections::HashSet, fs, path::{Path, PathBuf}
-};
 use regex::Regex;
+use std::{
+    collections::HashSet,
+    fs,
+    path::{Path, PathBuf},
+};
 
 /// Recursively finds all `crate_name::...` references in `path`,
 /// up to `remaining_depth` levels (or infinite if `None`), using `visited`
@@ -26,14 +28,9 @@ pub fn resolve_local_modules(
     }
 
     // Read source
-    let source = fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("Failed to read {:?}: {}", path, e));
+    let source =
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("Failed to read {:?}: {}", path, e));
 
-    // Prepare crate and src dir
-    let crate_dir = crate_toml_path
-        .parent()
-        .expect("Cargo.toml should have a parent directory");
-    let src_dir = crate_dir.join("src");
     let crate_ident = crate_name.replace('-', "_");
 
     // Regex for `use crate::{...}` and `use crate::foo::bar;`
@@ -45,8 +42,7 @@ pub fn resolve_local_modules(
 
     // Regex for function calls: `crate::foo::bar()` with optional `;`
     let call_pattern = format!(
-        r"\b{crate}::([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*\(\s*\)\s*;?"
-,
+        r"\b{crate}::([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*\(\s*\)\s*;?",
         crate = crate_ident
     );
     let call_re = Regex::new(&call_pattern).expect("Failed to compile call-pattern regex");
@@ -56,7 +52,7 @@ pub fn resolve_local_modules(
 
     // 1) Handle `use crate::{...}` and `use crate::foo::bar;`
     for cap in use_re.captures_iter(&source) {
-        println!("{:?}",cap);
+        println!("{:?}", cap);
         // Braced list: group 1
         if let Some(list) = cap.get(1) {
             for module in list.as_str().split(',').map(str::trim) {
@@ -85,11 +81,11 @@ pub fn resolve_local_modules(
 
     // 2) Handle function calls: `crate::foo::bar()`
     for cap in call_re.captures_iter(&source) {
-        println!("{:?}",cap);
-        let full = cap.get(1).unwrap().as_str();  // e.g. "foo::bar"
-        // only resolve if there's at least one `::` to split
+        println!("{:?}", cap);
+        let full = cap.get(1).unwrap().as_str(); // e.g. "foo::bar"
+                                                 // only resolve if there's at least one `::` to split
         if let Some(idx) = full.rfind("::") {
-            let module_path = &full[..idx];        // e.g. "foo"
+            let module_path = &full[..idx]; // e.g. "foo"
             resolved_modules.extend(resolve_one(
                 crate_name,
                 crate_toml_path,

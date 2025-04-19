@@ -4,6 +4,7 @@ use crate::{e_target::TargetOrigin, prelude::*};
 // use ctrlc;
 use crate::e_cargocommand_ext::CargoProcessHandle;
 use crate::e_target::CargoTarget;
+#[cfg(feature = "uses_plugins")]
 use crate::plugins::plugin_api::Target as PluginTarget;
 use anyhow::Result;
 use once_cell::sync::Lazy;
@@ -337,6 +338,7 @@ pub fn run_example(
     }
 
     // If this is a plugin-provided target, execute it via the plugin's in-process run
+    #[cfg(feature = "uses_plugins")]
     if target.kind == crate::e_target::TargetKind::Plugin {
         if let Some(crate::e_target::TargetOrigin::Plugin { plugin_path, .. }) = &target.origin {
             // Current working directory
@@ -350,7 +352,11 @@ pub fn run_example(
                 "lua" => {
                     #[cfg(feature = "uses_lua")]
                     {
-                        Box::new(crate::plugins::lua_plugin::LuaPlugin::load(plugin_path, cli, manager.clone())?)
+                        Box::new(crate::plugins::lua_plugin::LuaPlugin::load(
+                            plugin_path,
+                            cli,
+                            manager.clone(),
+                        )?)
                     }
                     #[cfg(not(feature = "uses_lua"))]
                     {
@@ -360,7 +366,11 @@ pub fn run_example(
                 "rhai" => {
                     #[cfg(feature = "uses_rhai")]
                     {
-                        Box::new(crate::plugins::rhai_plugin::RhaiPlugin::load(plugin_path, cli, manager.clone())?)
+                        Box::new(crate::plugins::rhai_plugin::RhaiPlugin::load(
+                            plugin_path,
+                            cli,
+                            manager.clone(),
+                        )?)
                     }
                     #[cfg(not(feature = "uses_rhai"))]
                     {
@@ -370,13 +380,17 @@ pub fn run_example(
                 "wasm" => {
                     #[cfg(feature = "uses_wasm")]
                     {
-                        if let Some(wp) = crate::plugins::wasm_plugin::WasmPlugin::load(plugin_path)? {
+                        if let Some(wp) =
+                            crate::plugins::wasm_plugin::WasmPlugin::load(plugin_path)?
+                        {
                             Box::new(wp)
                         } else {
                             // Fallback to generic export plugin
                             Box::new(
-                                crate::plugins::wasm_export_plugin::WasmExportPlugin::load(plugin_path)?
-                                    .expect("Failed to load export plugin"),
+                                crate::plugins::wasm_export_plugin::WasmExportPlugin::load(
+                                    plugin_path,
+                                )?
+                                .expect("Failed to load export plugin"),
                             )
                         }
                     }
@@ -389,8 +403,10 @@ pub fn run_example(
                     #[cfg(feature = "uses_wasm")]
                     {
                         Box::new(
-                            crate::plugins::wasm_export_plugin::WasmExportPlugin::load(plugin_path)?
-                                .expect("Failed to load export plugin"),
+                            crate::plugins::wasm_export_plugin::WasmExportPlugin::load(
+                                plugin_path,
+                            )?
+                            .expect("Failed to load export plugin"),
                         )
                     }
                     #[cfg(not(feature = "uses_wasm"))]

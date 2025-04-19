@@ -11,7 +11,6 @@ pub mod lua_plugin;
 #[cfg(all(feature = "uses_plugins", feature = "uses_rhai"))]
 pub mod rhai_plugin;
 
-
 // WASM Plugin
 #[cfg(all(feature = "uses_plugins", feature = "uses_wasm"))]
 pub mod wasm_plugin;

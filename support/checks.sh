@@ -5,10 +5,11 @@ set -x
 # Change directory to the current working directory (invocation directory)
 CURRENT_DIR="$(pwd)"
 
-# Run the initial cargo commands in the current shell
 cargo doc
 cargo build
 cargo test
+# Clean out stale build artifacts to avoid incompatible crate versions
+cargo clean
 cargo hack check --each-feature --no-dev-deps
 cargo fix --allow-dirty
 cargo fmt

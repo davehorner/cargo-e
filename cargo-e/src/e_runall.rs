@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
-use std::process::Child;
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
@@ -40,7 +39,7 @@ use nix::unistd::Pid;
 // }
 
 #[cfg(not(target_os = "windows"))]
-pub fn send_ctrl_c(child: &mut  std::process::Child) -> Result<()> {
+pub fn send_ctrl_c(child: &mut std::process::Child) -> Result<()> {
     // On Unix, send SIGINT to the child.
     kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).context("Failed to send SIGINT")?;
     // Wait briefly to allow graceful shutdown.
@@ -103,7 +102,7 @@ pub fn run_all_examples(
             .with_extra_args(&cli.extra);
 
         // For debugging, print out the full command.
-        let cmd_debug = format!(
+        log::trace!(
             "{} {}",
             builder.alternate_cmd.as_deref().unwrap_or("cargo"),
             builder.args.join(" ")
@@ -156,7 +155,7 @@ pub fn run_all_examples(
         // }
 
         // Let the target run for the specified duration.
-        let run_duration = Duration::from_secs(cli.wait);
+        // let run_duration = Duration::from_secs(cli.wait);
         // thread::sleep(run_duration);
         // PROMPT let key = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
         // if let Some('q') = key {
@@ -180,16 +179,16 @@ pub fn run_all_examples(
             };
 
             let mut start = None; //Instant::now();
-            let runtime_start = manager
-                .get(pid)
-                .unwrap()
-                .lock()
-                .unwrap()
-                .stats
-                .lock()
-                .unwrap()
-                .build_finished_time;
-            //println!("Runtime start time: {:?}", runtime_start);
+                                  // let runtime_start = manager
+                                  //     .get(pid)
+                                  //     .unwrap()
+                                  //     .lock()
+                                  //     .unwrap()
+                                  //     .stats
+                                  //     .lock()
+                                  //     .unwrap()
+                                  //     .build_finished_time;
+                                  //println!("Runtime start time: {:?}", runtime_start);
             loop {
                 //println!("Checking process status for PID: {}", pid);
                 match manager.try_wait(pid) {
@@ -348,7 +347,7 @@ pub fn run_all_examples(
 
         // If using a timeout/run_all mechanism, sleep or prompt as needed.
         // For simplicity, we wait for a fixed duration here.
-        let run_duration = Duration::from_secs(cli.wait);
+        //let run_duration = Duration::from_secs(cli.wait);
         // PROMPT let _ = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
     }
 

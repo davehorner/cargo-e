@@ -1,13 +1,13 @@
-use anyhow::Result;
-use mlua::{Lua, Table, Function};
-use serde_json;
-use std::path::PathBuf;
-use std::{path::Path, process::Command};
+use crate::e_processmanager::ProcessManager;
 use crate::plugins::plugin_api::CommandSpec;
 use crate::plugins::plugin_api::{Plugin, Target};
 use crate::Cli;
-use crate::e_processmanager::ProcessManager;
+use anyhow::Result;
+use mlua::{Function, Lua, Table};
+use serde_json;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::{path::Path, process::Command};
 
 /// A Lua-based plugin implementation for the `Plugin` trait.
 pub struct LuaPlugin {
@@ -19,21 +19,21 @@ pub struct LuaPlugin {
 
 impl LuaPlugin {
     /// Load the Lua script plugin from the given path, with full CLI and ProcessManager context.
-    pub fn load(path: &Path, cli: &Cli, manager: Arc<ProcessManager>) -> Result<Self> {
+    pub fn load(path: &Path, cli: &Cli, _manager: Arc<ProcessManager>) -> Result<Self> {
         let code = std::fs::read_to_string(path)?;
-    
+
         // Create Lua context and convert to static
         let lua = Lua::new().into_static();
-    
+
         // Evaluate the Lua code, expecting it to return a table
         let plugin_tbl: Table = lua.load(&code).eval()?; // <-- full version you asked for
-    
+
         // Debug: print keys returned in the plugin table
         for pair in plugin_tbl.clone().pairs::<String, mlua::Value>() {
             let (k, _) = pair?;
             println!("[debug] Lua key: {}", k);
         }
-    
+
         // Extract the plugin name from the table
         let name_val = plugin_tbl.get::<_, mlua::Value>("name")?;
         let name = match name_val {
@@ -41,10 +41,10 @@ impl LuaPlugin {
             mlua::Value::Function(f) => f.call::<_, String>(())?,
             _ => anyhow::bail!("Expected 'name' to be string or function"),
         };
-    
+
         // Transmute the plugin table to 'static now that Lua is static
         let tbl: Table<'static> = unsafe { std::mem::transmute(plugin_tbl) };
-    
+
         Ok(LuaPlugin {
             name,
             lua,
@@ -81,17 +81,18 @@ impl Plugin for LuaPlugin {
         let target_str = target.name.as_str();
         // let json: String = f.call((dir_str, target_str))?;
         // let spec: CommandSpec = serde_json::from_str(&json)?;
-        let json: String = f.call((dir_str, target_str))
-    .map_err(|e| anyhow::anyhow!("Lua error calling build_command: {:?}", e))?;
+        let json: String = f
+            .call((dir_str, target_str))
+            .map_err(|e| anyhow::anyhow!("Lua error calling build_command: {:?}", e))?;
 
-let spec: CommandSpec = serde_json::from_str(&json)
-    .map_err(|e| anyhow::anyhow!("Invalid JSON from Lua: {:?}\nOriginal: {}", e, json))?;
+        let spec: CommandSpec = serde_json::from_str(&json)
+            .map_err(|e| anyhow::anyhow!("Invalid JSON from Lua: {:?}\nOriginal: {}", e, json))?;
         Ok(spec.into_command(dir))
     }
     fn source(&self) -> Option<String> {
         Some(self.path.to_string_lossy().into())
     }
-    
+
     /// Override in-process plugin run: call script-defined `run`, or fallback to external command.
     fn run(&self, dir: &Path, target: &Target) -> Result<Vec<String>> {
         let dir_str = dir.to_string_lossy().to_string();
