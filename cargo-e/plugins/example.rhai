@@ -46,9 +46,12 @@ fn build_command(dir, target) {
     "{\"prog\":\"echo\",\"args\":[\"" + msg + "\"],\"cwd\":null}"
 }
 // In-process execution entrypoint: called by the Rust host if defined.
-// Should return an Array with the first element being the exit code (as String),
+// Should return an Array with the first element being the exit code (as String or Int),
 // followed by any output lines (as String).
+// Here, we delegate to the real cargo-e runner via the built-in `run_example` function.
 fn run(dir, target) {
-    let msg = "Hello from Rhai: " + target;
-    ["0", msg]
+    // Execute the actual example by name and return its exit code.
+    let code = run_example(target);
+    // Return a single-element array with the exit code.
+    [code]
 }

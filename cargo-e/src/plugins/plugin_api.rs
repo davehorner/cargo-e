@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{path::Path, process::Command};
-use std::path::PathBuf;
 use walkdir::WalkDir;
  #[cfg(feature = "uses_wasm")]
 use crate::plugins::wasm_plugin::WasmPlugin;
@@ -15,8 +14,11 @@ use crate::e_processmanager::ProcessManager;
 use crate::Cli;
 use crate::e_target::CargoTarget;
 use std::process::ExitStatus;
+use std::path::PathBuf;
  #[cfg(feature = "uses_rhai")]
 use crate::plugins::rhai_plugin::RhaiPlugin;
+#[cfg(feature = "uses_lua")]
+use crate::plugins::lua_plugin::LuaPlugin;
 
 /// Returns the directories to search for plugins in precedence order:
 /// 1) development-time CARGO_MANIFEST_DIR/plugins
@@ -83,12 +85,29 @@ pub fn find_wasm_plugins() -> Vec<PathBuf> {
     wasm_paths
 }
 
+// Allow construction of a plugin_api::Target directly from a CargoTarget
+impl From<crate::e_target::CargoTarget> for Target {
+    fn from(ct: crate::e_target::CargoTarget) -> Self {
+        Target {
+            name: ct.name.clone(),
+            metadata: None,
+            cargo_target: Some(ct),
+        }
+    }
+} // closing impl From<CargoTarget>
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Target {
     pub name: String,
     pub metadata: Option<String>,
+    /// Optional full CargoTarget for plugin-provided targets.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub cargo_target: Option<CargoTarget>,
 }
 
+/// Trait representing a cargo-e plugin. Must be thread-safe.
 pub trait Plugin {
     fn name(&self) -> &str;
     fn matches(&self, dir: &Path) -> bool;
@@ -142,13 +161,13 @@ pub trait Plugin {
     }
 }
 
-pub fn load_plugins() -> Result<Vec<Box<dyn Plugin>>> {
+/// Load all plugins by scanning supported script and WASM plugin directories.
+pub fn load_plugins(cli: &Cli, manager: Arc<ProcessManager>) -> Result<Vec<Box<dyn Plugin>>> {
     let mut plugins: Vec<Box<dyn Plugin>> = Vec::new();
     log::trace!("Initializing plugin loading; current dir = {:?}", std::env::current_dir()?);
-    // current directory for matches
     let cwd = std::env::current_dir()?;
 
-    // Load Lua and Rhai script plugins from project-local and built-in `plugins/` directories
+    // Load Lua and Rhai script plugins
     for base in plugin_directories() {
         log::trace!("Scanning plugin directory: {:?}", base);
         if !base.is_dir() {
@@ -161,13 +180,13 @@ pub fn load_plugins() -> Result<Vec<Box<dyn Plugin>>> {
                 #[cfg(feature = "uses_lua")]
                 if ext == "lua" {
                     log::trace!("Loading Lua plugin at {:?}", path);
-                    let plugin = crate::plugins::lua_plugin::LuaPlugin::load(&path)?;
+                    let plugin = LuaPlugin::load(&path, cli, manager.clone())?;
                     plugins.push(Box::new(plugin));
                 }
                 #[cfg(feature = "uses_rhai")]
                 if ext == "rhai" {
                     log::trace!("Loading Rhai plugin at {:?}", path);
-                    let plugin = crate::plugins::rhai_plugin::RhaiPlugin::load(&path)?;
+                    let plugin = RhaiPlugin::load(&path, cli, manager.clone())?;
                     plugins.push(Box::new(plugin));
                 }
             }
@@ -175,23 +194,72 @@ pub fn load_plugins() -> Result<Vec<Box<dyn Plugin>>> {
     }
     log::trace!("Loaded {} script plugins", plugins.len());
 
-    // Recursively find all .wasm plugins in plugins/**/target/**/*.wasm
+    // Load WASM and export plugins
     #[cfg(feature = "uses_wasm")]
     for wasm_path in find_wasm_plugins() {
-        println!("[debug] trying plugin: {}", wasm_path.display());
-        // First, try the protocol-aware WasmPlugin
+        log::trace!("Trying WASM plugin at {}", wasm_path.display());
         if let Some(wp) = WasmPlugin::load(&wasm_path)? {
             if wp.matches(&cwd) {
                 plugins.push(Box::new(wp));
                 continue;
             }
         }
-        // Fallback to generic export plugin for arbitrary exports
         if let Some(gp) = WasmExportPlugin::load(&wasm_path)? {
             plugins.push(Box::new(gp));
         }
     }
     Ok(plugins)
+}
+/// Manager for in-process plugin discovery and execution.
+pub struct PluginManager {
+    cli: Cli,
+    manager: Arc<ProcessManager>,
+    cwd: PathBuf,
+    plugins: Vec<Box<dyn Plugin>>,
+}
+impl PluginManager {
+    /// Create a new PluginManager and load all available plugins.
+    pub fn new(cli: &Cli) -> Result<Self> {
+        let manager = ProcessManager::new(cli);
+        let plugins = load_plugins(cli, manager.clone())?;
+        let cwd = std::env::current_dir()?;
+        Ok(PluginManager { cli: cli.clone(), manager, cwd, plugins })
+    }
+    /// Returns a slice of loaded plugin instances.
+    pub fn plugins(&self) -> &[Box<dyn Plugin>] {
+        &self.plugins
+    }
+    /// Collects all plugin-provided CargoTargets at the current working directory.
+    pub fn collect_targets(&self) -> Result<Vec<CargoTarget>> {
+        use crate::e_target::{TargetKind, TargetOrigin};
+        let mut results = Vec::new();
+        for plugin in &self.plugins {
+            if plugin.matches(&self.cwd) {
+                let plugin_path = plugin.source().map(PathBuf::from).unwrap_or_else(|| self.cwd.clone());
+                for pt in plugin.collect_targets(&self.cwd)? {
+                    let ct = if let Some(ct) = pt.cargo_target {
+                        ct
+                    } else {
+                        let reported = pt.metadata
+                            .as_ref()
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|| self.cwd.clone());
+                        CargoTarget {
+                            name: pt.name.clone(),
+                            display_name: pt.name.clone(),
+                            manifest_path: self.cwd.clone(),
+                            kind: TargetKind::Plugin,
+                            extended: false,
+                            toml_specified: false,
+                            origin: Some(TargetOrigin::Plugin { plugin_path: plugin_path.clone(), reported }),
+                        }
+                    };
+                    results.push(ct);
+                }
+            }
+        }
+        Ok(results)
+    }
 }
 
 

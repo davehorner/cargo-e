@@ -122,25 +122,30 @@ pub fn main() -> anyhow::Result<()> {
         use std::path::PathBuf;
         let cwd = std::env::current_dir()?;
         log::trace!("Invoking load_plugins() to discover plugins");
-        for plugin in load_plugins()? {
+        for plugin in load_plugins(&cli, manager.clone())? {
             if plugin.matches(&cwd) {
                 let plugin_path = plugin.source()
                     .map(PathBuf::from)
                     .unwrap_or(cwd.clone());
-                for pt in plugin.collect_targets(&cwd)? {
-                    let reported = pt.metadata
-                        .as_ref()
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| cwd.clone());
-                    examples.push(CargoTarget {
-                        name: pt.name.clone(),
-                        display_name: pt.name.clone(),
-                        manifest_path: cwd.clone(),
-                        kind: TargetKind::Plugin,
-                        extended: false,
-                        toml_specified: false,
-                        origin: Some(TargetOrigin::Plugin { plugin_path: plugin_path.clone(), reported }),
-                    });
+                for mut pt in plugin.collect_targets(&cwd)? {
+                    // If plugin provided a full CargoTarget, use it directly.
+                    if let Some(ct) = pt.cargo_target.take() {
+                        examples.push(ct);
+                    } else {
+                        let reported = pt.metadata
+                            .as_ref()
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|| cwd.clone());
+                        examples.push(CargoTarget {
+                            name: pt.name.clone(),
+                            display_name: pt.name.clone(),
+                            manifest_path: cwd.clone(),
+                            kind: TargetKind::Plugin,
+                            extended: false,
+                            toml_specified: false,
+                            origin: Some(TargetOrigin::Plugin { plugin_path: plugin_path.clone(), reported }),
+                        });
+                    }
                 }
             }
         }
@@ -195,18 +200,18 @@ pub fn main() -> anyhow::Result<()> {
                 let cwd = std::env::current_dir()?;
                 if let Some(origin) = &target.origin {
                     if let TargetOrigin::Plugin { plugin_path, reported } = origin {
-                        let pt = PluginTarget { name: target.name.clone(), metadata: Some(reported.to_string_lossy().to_string()) };
-                        for plugin in load_plugins()? {
+                        let pt = PluginTarget { 
+                            name: target.name.clone(), 
+                            metadata: Some(reported.to_string_lossy().to_string()), 
+                            cargo_target: None 
+                        };
+                        for plugin in load_plugins(&cli, manager.clone())? {
                             if plugin.source().map(|s| PathBuf::from(s)) == Some(plugin_path.clone()) {
-                                // Build and run the plugin target interactively
-                                let mut cmd = plugin.run_command(&cwd, &pt)?;
-                                use std::process::Stdio;
-                                cmd.stdin(Stdio::inherit())
-                                   .stdout(Stdio::inherit())
-                                   .stderr(Stdio::inherit());
-                                let status = cmd.status()?;
-                                let code = status.code().unwrap_or(0);
-                                println!("Plugin exited with code: {}", code);
+                                // Delegate execution to run_with_manager
+                                let result = plugin.run_with_manager(manager.clone(), &cli, target)?;
+                                if let Some(status) = result {
+                                    println!("Plugin exited with code: {:?}", status.code());
+                                }
                                 return Ok(());
                             }
                         }

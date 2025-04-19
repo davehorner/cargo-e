@@ -4,6 +4,7 @@ use crate::{e_target::TargetOrigin, prelude::*};
 // use ctrlc;
 use crate::e_cargocommand_ext::CargoProcessHandle;
 use crate::e_target::CargoTarget;
+use crate::plugins::plugin_api::Target as PluginTarget;
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -334,34 +335,89 @@ pub fn run_example(
         );
         return Ok(None);
     }
-    // Handle plugin-provided targets by invoking their run_command
-    #[cfg(feature = "uses_plugins")]
-    {
-        use std::process::Stdio;
-        use crate::plugins::plugin_api::{load_plugins, Target as PluginTarget};
-        use crate::e_target::TargetOrigin;
 
-        if target.kind == crate::e_target::TargetKind::Plugin {
+    // If this is a plugin-provided target, execute it via the plugin's in-process run
+    if target.kind == crate::e_target::TargetKind::Plugin {
+        if let Some(crate::e_target::TargetOrigin::Plugin { plugin_path, .. }) = &target.origin {
+            // Current working directory
             let cwd = std::env::current_dir()?;
-            if let Some(TargetOrigin::Plugin { plugin_path, reported }) = &target.origin {
-                let pt = PluginTarget {
-                    name: target.name.clone(),
-                    metadata: Some(reported.to_string_lossy().to_string()),
-                };
-                for plugin in load_plugins()? {
-                    if plugin.source().map(|s| std::path::PathBuf::from(s)) == Some(plugin_path.clone()) {
-                        let mut cmd = plugin.run_command(&cwd, &pt)?;
-                        cmd.stdin(Stdio::inherit())
-                           .stdout(Stdio::inherit())
-                           .stderr(Stdio::inherit());
-                        let status = cmd.status()?;
-                        return Ok(Some(status));
+            // Load the plugin directly based on its file extension
+            let ext = plugin_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let plugin: Box<dyn crate::plugins::plugin_api::Plugin> = match ext {
+                "lua" => {
+                    #[cfg(feature = "uses_lua")]
+                    {
+                        Box::new(crate::plugins::lua_plugin::LuaPlugin::load(plugin_path, cli, manager.clone())?)
+                    }
+                    #[cfg(not(feature = "uses_lua"))]
+                    {
+                        return Err(anyhow::anyhow!("Lua plugin support is not enabled"));
                     }
                 }
+                "rhai" => {
+                    #[cfg(feature = "uses_rhai")]
+                    {
+                        Box::new(crate::plugins::rhai_plugin::RhaiPlugin::load(plugin_path, cli, manager.clone())?)
+                    }
+                    #[cfg(not(feature = "uses_rhai"))]
+                    {
+                        return Err(anyhow::anyhow!("Rhai plugin support is not enabled"));
+                    }
+                }
+                "wasm" => {
+                    #[cfg(feature = "uses_wasm")]
+                    {
+                        if let Some(wp) = crate::plugins::wasm_plugin::WasmPlugin::load(plugin_path)? {
+                            Box::new(wp)
+                        } else {
+                            // Fallback to generic export plugin
+                            Box::new(
+                                crate::plugins::wasm_export_plugin::WasmExportPlugin::load(plugin_path)?
+                                    .expect("Failed to load export plugin"),
+                            )
+                        }
+                    }
+                    #[cfg(not(feature = "uses_wasm"))]
+                    {
+                        return Err(anyhow::anyhow!("WASM plugin support is not enabled"));
+                    }
+                }
+                "dll" => {
+                    #[cfg(feature = "uses_wasm")]
+                    {
+                        Box::new(
+                            crate::plugins::wasm_export_plugin::WasmExportPlugin::load(plugin_path)?
+                                .expect("Failed to load export plugin"),
+                        )
+                    }
+                    #[cfg(not(feature = "uses_wasm"))]
+                    {
+                        return Err(anyhow::anyhow!("WASM export plugin support is not enabled"));
+                    }
+                }
+                other => {
+                    return Err(anyhow::anyhow!("Unknown plugin extension: {}", other));
+                }
+            };
+            // Run the plugin and capture output
+            let plugin_target = PluginTarget::from(target.clone());
+            let output = plugin.run(&cwd, &plugin_target)?;
+            // Print exit code and subsequent output lines
+            if !output.is_empty() {
+                if let Ok(code) = output[0].parse::<i32>() {
+                    eprintln!("Plugin exited with code: {}", code);
+                }
+                for line in &output[1..] {
+                    println!("{}", line);
+                }
             }
+            return Ok(None);
         }
     }
-
+    // Not a plugin, continue with standard cargo invocation
     let manifest_path = PathBuf::from(target.manifest_path.clone());
     // Build the command using the CargoCommandBuilder.
     let mut builder = crate::e_command_builder::CargoCommandBuilder::new(

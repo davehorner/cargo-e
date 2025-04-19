@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::{path::Path, process::Command};
 use std::path::PathBuf;
 use crate::plugins::plugin_api::{Plugin, Target};
@@ -46,8 +46,10 @@ impl WasmPlugin {
             eprintln!("[wasm stderr] {}", String::from_utf8_lossy(&output.stderr));
             bail!("WASM plugin error: {}", String::from_utf8_lossy(&output.stderr));
         }
+        // Capture and trim stdout from the WASM module
         let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        println!("[wasm stdout] {}", out);
+        // Use structured logging to trace plugin output without polluting stdout
+        log::trace!("WASM stdout ({}): {}", self.path.display(), out);
         Ok(out)
     }
 }
@@ -58,34 +60,36 @@ impl Plugin for WasmPlugin {
     }
 
     fn matches(&self, dir: &Path) -> bool {
-        println!("[debug] WASM plugin checking matches for {}", dir.display());
+        log::trace!("WASM plugin checking matches for {}", dir.display());
         match self.run_wasm(&["--matches", &dir.to_string_lossy()], dir) {
             Ok(s) => {
                 let matched = s.trim() == "true";
-                println!("[debug] WASM plugin match result: {}", matched);
+                log::trace!("WASM plugin match result: {}", matched);
                 matched
             }
             Err(e) => {
-                eprintln!("[warn] WASM plugin match failed: {}", e);
+                log::warn!("WASM plugin match failed: {}", e);
                 false
             }
         }
     }
 
     fn collect_targets(&self, dir: &Path) -> Result<Vec<Target>> {
-        println!("[debug] WASM plugin collecting targets from {}", dir.display());
+        log::trace!("WASM plugin collecting targets from {}", dir.display());
         let json = self.run_wasm(&["--collect_targets", &dir.to_string_lossy()], dir)?;
-        let targets: Vec<Target> = serde_json::from_str(&json)?;
+        let targets: Vec<Target> = serde_json::from_str(&json)
+            .context("Failed to parse JSON from WASM plugin collect_targets output")?;
         Ok(targets)
     }
 
     fn build_command(&self, dir: &Path, target: &Target) -> Result<Command> {
-        println!("[debug] WASM plugin building target '{}' in {}", target.name, dir.display());
+        log::trace!("WASM plugin building target '{}' in {}", target.name, dir.display());
         let json = self.run_wasm(
             &["--build_command", &dir.to_string_lossy(), &target.name],
             dir,
         )?;
-        let spec: CommandSpec = serde_json::from_str(&json)?;
+        let spec: CommandSpec = serde_json::from_str(&json)
+            .context("Failed to parse JSON from WASM plugin build_command output")?;
         Ok(spec.into_command(dir))
     }
     fn source(&self) -> Option<String> {

@@ -23,6 +23,9 @@ use crate::e_target::CargoTarget;
 use serde_json;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use crate::plugins::plugin_api::{Plugin, Target, CommandSpec};
+use crate::Cli;
+use crate::e_processmanager::ProcessManager;
+use std::sync::Arc;
 
 /// A Rhai-based plugin implementation for the `Plugin` trait.
 pub struct RhaiPlugin {
@@ -30,11 +33,16 @@ pub struct RhaiPlugin {
     engine: Engine,
     ast: AST,
     path: PathBuf,
+    /// CLI context for running real example targets
+    cli: crate::Cli,
+    /// Process manager for example execution
+    manager: Arc<ProcessManager>,
 }
 
 impl RhaiPlugin {
     /// Load the Rhai script plugin from the given path.
-    pub fn load(path: &Path) -> Result<Self> {
+    /// Load the Rhai script plugin from the given path, with full CLI and ProcessManager context.
+    pub fn load(path: &Path, cli: &Cli, manager: Arc<ProcessManager>) -> Result<Self> {
         log::trace!("RhaiPlugin::load: reading script from {:?}", path);
         let code = fs::read_to_string(path)?;
         log::trace!("RhaiPlugin::load: script length {} bytes", code.len());
@@ -52,15 +60,36 @@ impl RhaiPlugin {
             // Convert to plugin_api::Target and serialize to JSON
             let plugin_targets: Vec<Target> = targets
                 .into_iter()
-                .map(|t| 
+                .map(|t|
                     Target {
-                    name: t.display_name,
-                    metadata: Some(t.manifest_path.to_string_lossy().to_string()),
-                })
+                        name: t.display_name,
+                        metadata: Some(t.manifest_path.to_string_lossy().to_string()),
+                        cargo_target: None,
+                    }
+                )
                 .collect();
             serde_json::to_string(&plugin_targets).unwrap_or_default()
         }
         engine.register_fn("cargo_e_collect", cargo_e_collect_json);
+        // Expose `run_example(target_name)` to Rhai scripts: returns exit code (i64)
+        {
+            let mgr = manager.clone();
+            let cli_clone = cli.clone();
+            engine.register_fn("run_example", move |target_name: String| -> i64 {
+                // Collect Cargo targets (silent)
+                let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+                let targets = crate::e_collect::collect_all_targets_silent(cli_clone.workspace, threads).unwrap_or_default();
+                if let Some(ct) = targets.into_iter().find(|t| t.name == target_name) {
+                    match crate::e_runner::run_example(mgr.clone(), &cli_clone, &ct) {
+                        Ok(Some(status)) => status.code().unwrap_or(-1).into(),
+                        Ok(None) => 0,
+                        Err(_) => -1,
+                    }
+                } else {
+                    -1
+                }
+            });
+        }
         log::trace!("RhaiPlugin::load: compiling AST");
         let ast = engine.compile(&code)?;
         log::trace!("RhaiPlugin::load: compiled AST successfully");
@@ -71,7 +100,14 @@ impl RhaiPlugin {
             .call_fn(&mut scope, &ast, "name", ())
             .map_err(|e| anyhow!("Rhai error calling name: {:?}", e))?;
         log::trace!("RhaiPlugin::load: plugin reports name = {}", name);
-        Ok(Self { name, engine, ast, path: path.to_path_buf() })
+        Ok(RhaiPlugin {
+            name,
+            engine,
+            ast,
+            path: path.to_path_buf(),
+            cli: cli.clone(),
+            manager,
+        })
     }
 }
 
@@ -122,63 +158,47 @@ impl Plugin for RhaiPlugin {
     fn source(&self) -> Option<String> {
         Some(self.path.to_string_lossy().into())
     }
-    /// Run a Rhai plugin target in-process via the embedded engine.
-    /// Looks for a function named after the target; falls back to `run(dir, target)`.
-    fn run(&self, dir: &std::path::Path, target: &Target) -> Result<Vec<String>> {
-        let dir_str = dir.to_string_lossy().to_string();
+    /// Override in-process plugin run: call script-defined `run`, or fallback to Cargo-e runner.
+    fn run(&self, dir: &Path, target: &Target) -> Result<Vec<String>> {
+        // 1. Try a per-target function matching the target name in the script
         let mut scope = Scope::new();
-        // Attempt in-process execution via Rhai: try per-target fn, then generic `run`, else fallback to external.
-        let arr = match self.engine.call_fn::<Array>(
-            &mut scope,
-            &self.ast,
-            &target.name,
-            (dir_str.clone(), target.name.clone()),
-        ) {
-            Ok(v) => v,
-            Err(_) => {
-                // Try generic `run(dir, target)`
-                match self.engine.call_fn::<Array>(
-                    &mut scope,
-                    &self.ast,
-                    "run",
-                    (dir_str.clone(), target.name.clone()),
-                ) {
-                    Ok(v2) => v2,
-                    Err(_) => {
-                        // No in-process entrypoint: fallback to external command
-                        let mut cmd = self.build_command(dir, target)?;
-                        let output = cmd.output()?;
-                        let mut result = Vec::new();
-                        let code = output.status.code().unwrap_or(0);
-                        // push exit code as string
-                        result.push(code.to_string());
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            // push each line as-is
-                            result.push(line.to_string());
-                        }
-                        return Ok(result);
-                    }
+        let dir_str = dir.to_string_lossy().to_string();
+        let tgt_str = target.name.clone();
+        if let Ok(arr) = self.engine.call_fn::<Array>(&mut scope, &self.ast, &target.name, (dir_str.clone(), tgt_str.clone())) {
+            let mut result = Vec::new();
+            if !arr.is_empty() {
+                result.push(arr[0].to_string());
+                for v in arr.iter().skip(1) {
+                    result.push(v.to_string());
                 }
             }
-        };
-        // Convert to Vec<String> preserving raw values (no quotes)
+            return Ok(result);
+        }
+        // 2. Try a generic `run(dir, target)` function if defined in the script
+        if let Ok(arr) = self.engine.call_fn::<Array>(&mut scope, &self.ast, "run", (dir_str.clone(), tgt_str.clone())) {
+            let mut result = Vec::new();
+            if !arr.is_empty() {
+                result.push(arr[0].to_string());
+                for v in arr.iter().skip(1) {
+                    result.push(v.to_string());
+                }
+            }
+            return Ok(result);
+        }
+        // 3. Fallback: run the external command as specified by build_command
+        let spec_json = self.engine.call_fn::<String>(&mut scope, &self.ast, "build_command", (dir_str.clone(), tgt_str.clone()))
+            .map_err(|e| anyhow!("Rhai error calling build_command: {:?}", e))?;
+        let spec: CommandSpec = serde_json::from_str(&spec_json)
+            .map_err(|e| anyhow!("Invalid JSON from Rhai build_command: {:?}\nJSON: {}", e, spec_json))?;
+        let mut cmd = spec.into_command(dir);
+        // Execute and capture output
+        let output = cmd.output()?;
         let mut result = Vec::new();
-        for value in arr {
-            let s = if let Some(i) = value.clone().try_cast::<i64>() {
-                // integer
-                i.to_string()
-            } else if let Some(f) = value.clone().try_cast::<f64>() {
-                // float
-                f.to_string()
-            } else if let Some(st) = value.clone().try_cast::<String>() {
-                // string: push as-is without quotes
-                st
-            } else {
-                // fallback to generic string conversion
-                value.to_string()
-            };
-            result.push(s);
+        let code = output.status.code().unwrap_or(0);
+        result.push(code.to_string());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            result.push(line.to_string());
         }
         Ok(result)
     }

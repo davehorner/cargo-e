@@ -100,8 +100,9 @@ fn main() -> Result<()> {
                 std::process::exit(0);
             }
         }
-        // Otherwise, try parse integer as exit code
+        // Otherwise, try parse integer as exit code; print target name and result
         if let Ok(code) = out.parse::<i32>() {
+            println!("{}: {}", target.name, out);
             std::process::exit(code);
         }
         // Fallback: print raw output and exit success

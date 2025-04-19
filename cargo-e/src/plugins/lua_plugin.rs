@@ -5,6 +5,9 @@ use std::path::PathBuf;
 use std::{path::Path, process::Command};
 use crate::plugins::plugin_api::CommandSpec;
 use crate::plugins::plugin_api::{Plugin, Target};
+use crate::Cli;
+use crate::e_processmanager::ProcessManager;
+use std::sync::Arc;
 
 /// A Lua-based plugin implementation for the `Plugin` trait.
 pub struct LuaPlugin {
@@ -15,7 +18,8 @@ pub struct LuaPlugin {
 }
 
 impl LuaPlugin {
-    pub fn load(path: &Path) -> Result<Self> {
+    /// Load the Lua script plugin from the given path, with full CLI and ProcessManager context.
+    pub fn load(path: &Path, cli: &Cli, manager: Arc<ProcessManager>) -> Result<Self> {
         let code = std::fs::read_to_string(path)?;
     
         // Create Lua context and convert to static
@@ -86,5 +90,56 @@ let spec: CommandSpec = serde_json::from_str(&json)
     }
     fn source(&self) -> Option<String> {
         Some(self.path.to_string_lossy().into())
+    }
+    
+    /// Override in-process plugin run: call script-defined `run`, or fallback to external command.
+    fn run(&self, dir: &Path, target: &Target) -> Result<Vec<String>> {
+        let dir_str = dir.to_string_lossy().to_string();
+        let tgt_str = target.name.clone();
+        // 1. Try a per-target function matching the target name in the script
+        if let Some(func) = self.tbl.get::<_, Option<Function>>(target.name.as_str())? {
+            let table: Table = func.call((dir_str.clone(), tgt_str.clone()))?;
+            let mut result = Vec::new();
+            for entry in table.sequence_values::<mlua::Value>() {
+                let val = entry.map_err(|e| anyhow::anyhow!("Lua error parsing table: {:?}", e))?;
+                let s = match val {
+                    mlua::Value::String(s) => s.to_str()?.to_string(),
+                    mlua::Value::Integer(i) => i.to_string(),
+                    mlua::Value::Number(n) => n.to_string(),
+                    mlua::Value::Boolean(b) => b.to_string(),
+                    other => format!("{:?}", other),
+                };
+                result.push(s);
+            }
+            return Ok(result);
+        }
+        // 2. Try a generic `run(dir, target)` function if defined in the script
+        if let Some(func) = self.tbl.get::<_, Option<Function>>("run")? {
+            let table: Table = func.call((dir_str.clone(), tgt_str.clone()))?;
+            let mut result = Vec::new();
+            for entry in table.sequence_values::<mlua::Value>() {
+                let val = entry.map_err(|e| anyhow::anyhow!("Lua error parsing table: {:?}", e))?;
+                let s = match val {
+                    mlua::Value::String(s) => s.to_str()?.to_string(),
+                    mlua::Value::Integer(i) => i.to_string(),
+                    mlua::Value::Number(n) => n.to_string(),
+                    mlua::Value::Boolean(b) => b.to_string(),
+                    other => format!("{:?}", other),
+                };
+                result.push(s);
+            }
+            return Ok(result);
+        }
+        // 3. Fallback: run the external command as specified by build_command
+        let mut cmd = self.build_command(dir, target)?;
+        let output = cmd.output()?;
+        let mut result = Vec::new();
+        let code = output.status.code().unwrap_or(0);
+        result.push(code.to_string());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            result.push(line.to_string());
+        }
+        Ok(result)
     }
 }

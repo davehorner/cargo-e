@@ -37,7 +37,11 @@ impl Plugin for WasmExportPlugin {
                 .and_then(|s| s.to_str())
                 .unwrap_or("dll_export")
                 .to_string();
-            return Ok(vec![Target { name, metadata: None }]);
+            return Ok(vec![Target {
+                name,
+                metadata: None,
+                cargo_target: None,
+            }]);
         }
         let data = fs::read(&self.path)?;
         let mut targets = Vec::new();
@@ -47,7 +51,11 @@ impl Plugin for WasmExportPlugin {
                 for export in section {
                     let export = export?;
                     if export.kind == ExternalKind::Func {
-                        targets.push(Target { name: export.name.to_string(), metadata: None });
+                        targets.push(Target {
+                            name: export.name.to_string(),
+                            metadata: None,
+                            cargo_target: None,
+                        });
                     }
                 }
             }
