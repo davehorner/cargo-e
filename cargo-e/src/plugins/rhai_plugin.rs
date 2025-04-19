@@ -35,7 +35,9 @@ pub struct RhaiPlugin {
 impl RhaiPlugin {
     /// Load the Rhai script plugin from the given path.
     pub fn load(path: &Path) -> Result<Self> {
+        log::trace!("RhaiPlugin::load: reading script from {:?}", path);
         let code = fs::read_to_string(path)?;
+        log::trace!("RhaiPlugin::load: script length {} bytes", code.len());
         // Create a Rhai engine and register built-in cargo-e functions
         let mut engine = Engine::new();
         // Built-in to collect Cargo targets via cargo-e library, returning JSON of Targets
@@ -59,12 +61,16 @@ impl RhaiPlugin {
             serde_json::to_string(&plugin_targets).unwrap_or_default()
         }
         engine.register_fn("cargo_e_collect", cargo_e_collect_json);
+        log::trace!("RhaiPlugin::load: compiling AST");
         let ast = engine.compile(&code)?;
+        log::trace!("RhaiPlugin::load: compiled AST successfully");
         // Retrieve the plugin name by calling the `name()` function in the script
         let mut scope = Scope::new();
+        log::trace!("RhaiPlugin::load: invoking name() in script");
         let name: String = engine
             .call_fn(&mut scope, &ast, "name", ())
             .map_err(|e| anyhow!("Rhai error calling name: {:?}", e))?;
+        log::trace!("RhaiPlugin::load: plugin reports name = {}", name);
         Ok(Self { name, engine, ast, path: path.to_path_buf() })
     }
 }
@@ -76,26 +82,32 @@ impl Plugin for RhaiPlugin {
 
     fn matches(&self, dir: &Path) -> bool {
         let dir_str = dir.to_string_lossy().to_string();
+        log::trace!("RhaiPlugin '{}' checking matches on dir {:?}", self.name, dir);
         let mut scope = Scope::new();
-        self.engine
+        let result = self.engine
             .call_fn::<bool>(&mut scope, &self.ast, "matches", (dir_str,))
-            .unwrap_or(false)
+            .unwrap_or(false);
+        log::trace!("RhaiPlugin '{}' matches returned {}", self.name, result);
+        result
     }
 
     fn collect_targets(&self, dir: &Path) -> Result<Vec<Target>> {
         let dir_str = dir.to_string_lossy().to_string();
+        log::trace!("RhaiPlugin '{}' collecting targets on dir {:?}", self.name, dir);
         let mut scope = Scope::new();
         let json: String = self
             .engine
             .call_fn(&mut scope, &self.ast, "collect_targets", (dir_str,))
             .map_err(|e| anyhow!("Rhai error calling collect_targets: {:?}", e))?;
         let targets: Vec<Target> = serde_json::from_str(&json)?;
+        log::trace!("RhaiPlugin '{}' collect_targets returned {} targets", self.name, targets.len());
         Ok(targets)
     }
 
     fn build_command(&self, dir: &Path, target: &Target) -> Result<Command> {
         let dir_str = dir.to_string_lossy().to_string();
         let target_str = target.name.clone();
+        log::trace!("RhaiPlugin '{}' building command for target {}", self.name, target.name);
         let mut scope = Scope::new();
         let json: String = self
             .engine
@@ -103,6 +115,7 @@ impl Plugin for RhaiPlugin {
             .map_err(|e| anyhow!("Rhai error calling build_command: {:?}", e))?;
         let spec: CommandSpec = serde_json::from_str(&json)
             .map_err(|e| anyhow!("Invalid JSON from Rhai: {:?}\nOriginal: {}", e, json))?;
+        log::trace!("RhaiPlugin '{}' build_command JSON spec: {}", self.name, json);
         Ok(spec.into_command(dir))
     }
 

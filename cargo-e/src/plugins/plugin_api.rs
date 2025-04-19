@@ -144,30 +144,36 @@ pub trait Plugin {
 
 pub fn load_plugins() -> Result<Vec<Box<dyn Plugin>>> {
     let mut plugins: Vec<Box<dyn Plugin>> = Vec::new();
+    log::trace!("Initializing plugin loading; current dir = {:?}", std::env::current_dir()?);
     // current directory for matches
     let cwd = std::env::current_dir()?;
 
     // Load Lua and Rhai script plugins from project-local and built-in `plugins/` directories
     for base in plugin_directories() {
+        log::trace!("Scanning plugin directory: {:?}", base);
         if !base.is_dir() {
             continue;
         }
         for entry in fs::read_dir(&base)? {
             let path = entry?.path();
+            log::trace!("Found plugin candidate: {:?}", path);
             if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
                 #[cfg(feature = "uses_lua")]
                 if ext == "lua" {
+                    log::trace!("Loading Lua plugin at {:?}", path);
                     let plugin = crate::plugins::lua_plugin::LuaPlugin::load(&path)?;
                     plugins.push(Box::new(plugin));
                 }
                 #[cfg(feature = "uses_rhai")]
                 if ext == "rhai" {
+                    log::trace!("Loading Rhai plugin at {:?}", path);
                     let plugin = crate::plugins::rhai_plugin::RhaiPlugin::load(&path)?;
                     plugins.push(Box::new(plugin));
                 }
             }
         }
     }
+    log::trace!("Loaded {} script plugins", plugins.len());
 
     // Recursively find all .wasm plugins in plugins/**/target/**/*.wasm
     #[cfg(feature = "uses_wasm")]

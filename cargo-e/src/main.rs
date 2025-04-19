@@ -54,6 +54,7 @@ static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()
 
 pub fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
+    log::trace!("cargo-e starting with args: {:?}", std::env::args().collect::<Vec<_>>());
 
     let mut args: Vec<String> = env::args().collect();
 
@@ -120,6 +121,7 @@ pub fn main() -> anyhow::Result<()> {
         use cargo_e::e_target::{CargoTarget, TargetKind, TargetOrigin};
         use std::path::PathBuf;
         let cwd = std::env::current_dir()?;
+        log::trace!("Invoking load_plugins() to discover plugins");
         for plugin in load_plugins()? {
             if plugin.matches(&cwd) {
                 let plugin_path = plugin.source()
