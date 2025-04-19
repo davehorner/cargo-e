@@ -1,0 +1,1 @@
+/Users/dhorner/w/rust/scotch/cargo-e-ext/cargo-e/cargo-e/plugins/wasm_plugin/target/wasm32-unknown-unknown/release/wasm_plugin.wasm: /Users/dhorner/w/rust/scotch/cargo-e-ext/cargo-e/cargo-e/plugins/wasm_plugin/src/main.rs
