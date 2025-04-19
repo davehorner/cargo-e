@@ -28,14 +28,26 @@ use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
 use once_cell::sync::Lazy;
-
 use cargo_e::prelude::*;
 use cargo_e::Cli;
 use clap::Parser;
+// Plugin API
+// Imports for plugin system
+#[cfg(feature = "uses_plugins")]
+use std::path::PathBuf;
+#[cfg(feature = "uses_plugins")]
+use cargo_e::plugins::plugin_api::{load_plugins, Target as PluginTarget};
+#[cfg(feature = "uses_plugins")]
+use cargo_e::e_target::TargetOrigin;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::process;
 #[cfg(target_os = "windows")]
 use std::os::windows::process;
+// Plugin loader modules
+// Plugin modules (only when plugin system is enabled)
+// Plugin modules moved to the library crate under `cargo_e::plugins`
+//#[cfg(feature = "uses_plugins")]
+//mod plugins;
 
 static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -98,8 +110,39 @@ pub fn main() -> anyhow::Result<()> {
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    let examples =
+    // Collect built-in Cargo targets
+    let mut examples =
         cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads).unwrap_or_default();
+    // Collect plugin-provided targets and merge
+    #[cfg(feature = "uses_plugins")]
+    {
+        use cargo_e::plugins::plugin_api::{load_plugins, Target as PluginTarget};
+        use cargo_e::e_target::{CargoTarget, TargetKind, TargetOrigin};
+        use std::path::PathBuf;
+        let cwd = std::env::current_dir()?;
+        for plugin in load_plugins()? {
+            if plugin.matches(&cwd) {
+                let plugin_path = plugin.source()
+                    .map(PathBuf::from)
+                    .unwrap_or(cwd.clone());
+                for pt in plugin.collect_targets(&cwd)? {
+                    let reported = pt.metadata
+                        .as_ref()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| cwd.clone());
+                    examples.push(CargoTarget {
+                        name: pt.name.clone(),
+                        display_name: pt.name.clone(),
+                        manifest_path: cwd.clone(),
+                        kind: TargetKind::Plugin,
+                        extended: false,
+                        toml_specified: false,
+                        origin: Some(TargetOrigin::Plugin { plugin_path: plugin_path.clone(), reported }),
+                    });
+                }
+            }
+        }
+    }
     use std::collections::HashSet;
 
     // After collecting all samples, deduplicate them.
@@ -139,11 +182,42 @@ pub fn main() -> anyhow::Result<()> {
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
-            #[cfg(feature = "tui")]
-            if cli.tui {
-                do_tui_and_exit(manager, &cli, &unique_examples);
+            // Plugin target in explicit mode
+            if target.kind == TargetKind::Plugin {
+                #[cfg(feature = "uses_plugins")]
+                {
+
+
+                use cargo_e::plugins::plugin_api::{load_plugins, Target as PluginTarget};
+                // Find corresponding plugin and run in-process
+                let cwd = std::env::current_dir()?;
+                if let Some(origin) = &target.origin {
+                    if let TargetOrigin::Plugin { plugin_path, reported } = origin {
+                        let pt = PluginTarget { name: target.name.clone(), metadata: Some(reported.to_string_lossy().to_string()) };
+                        for plugin in load_plugins()? {
+                            if plugin.source().map(|s| PathBuf::from(s)) == Some(plugin_path.clone()) {
+                                // Build and run the plugin target interactively
+                                let mut cmd = plugin.run_command(&cwd, &pt)?;
+                                use std::process::Stdio;
+                                cmd.stdin(Stdio::inherit())
+                                   .stdout(Stdio::inherit())
+                                   .stderr(Stdio::inherit());
+                                let status = cmd.status()?;
+                                let code = status.code().unwrap_or(0);
+                                println!("Plugin exited with code: {}", code);
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
             }
-            cargo_e::e_runner::run_example(manager.clone(), &cli, target)?;
+            } else {
+                #[cfg(feature = "tui")]
+                if cli.tui {
+                    do_tui_and_exit(manager, &cli, &unique_examples);
+                }
+                cargo_e::e_runner::run_example(manager.clone(), &cli, target)?;
+            }
         }
         // If not found among examples, search for a binary with that name.
         else if let Some(target) = examples
@@ -503,6 +577,8 @@ fn select_and_run_target_loop(
             TargetKind::Bench => "bench",
             TargetKind::Test => "test",
             TargetKind::Manifest => "manifest",
+            // Plugin-provided target
+            TargetKind::Plugin => "plugin",
             TargetKind::Unknown => "unknown",
         };
         combined.push((label, target));

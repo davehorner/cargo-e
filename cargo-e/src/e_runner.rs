@@ -334,6 +334,33 @@ pub fn run_example(
         );
         return Ok(None);
     }
+    // Handle plugin-provided targets by invoking their run_command
+    #[cfg(feature = "uses_plugins")]
+    {
+        use std::process::Stdio;
+        use crate::plugins::plugin_api::{load_plugins, Target as PluginTarget};
+        use crate::e_target::TargetOrigin;
+
+        if target.kind == crate::e_target::TargetKind::Plugin {
+            let cwd = std::env::current_dir()?;
+            if let Some(TargetOrigin::Plugin { plugin_path, reported }) = &target.origin {
+                let pt = PluginTarget {
+                    name: target.name.clone(),
+                    metadata: Some(reported.to_string_lossy().to_string()),
+                };
+                for plugin in load_plugins()? {
+                    if plugin.source().map(|s| std::path::PathBuf::from(s)) == Some(plugin_path.clone()) {
+                        let mut cmd = plugin.run_command(&cwd, &pt)?;
+                        cmd.stdin(Stdio::inherit())
+                           .stdout(Stdio::inherit())
+                           .stderr(Stdio::inherit());
+                        let status = cmd.status()?;
+                        return Ok(Some(status));
+                    }
+                }
+            }
+        }
+    }
 
     let manifest_path = PathBuf::from(target.manifest_path.clone());
     // Build the command using the CargoCommandBuilder.

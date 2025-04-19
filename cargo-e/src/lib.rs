@@ -44,6 +44,9 @@ pub mod e_runner;
 pub mod e_target;
 pub mod e_tui;
 pub mod e_workspace;
+// Plugin system modules
+#[cfg(feature = "uses_plugins")]
+pub mod plugins;
 
 #[allow(unused_macros)]
 macro_rules! doc_with_joke {
