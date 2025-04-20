@@ -221,7 +221,7 @@ pub fn determine_target_kind_and_manifest(
     } else {
         TargetKind::UnknownBinary
     };
-    return (kind, new_manifest);
+    (kind, new_manifest)
     // Default fallback.
     // (TargetKind::Unknown, "errorNOfnMAIN".into())
 }

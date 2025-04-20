@@ -56,7 +56,7 @@ impl Plugin for WasmExportPlugin {
         let mut targets = Vec::new();
         for payload in Parser::new(0).parse_all(&data) {
             let payload = payload?;
-            if let Payload::ExportSection(mut section) = payload {
+            if let Payload::ExportSection(section) = payload {
                 for export in section {
                     let export = export?;
                     if export.kind == ExternalKind::Func {

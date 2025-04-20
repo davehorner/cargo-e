@@ -69,9 +69,9 @@ pub fn find_wasm_plugins() -> Vec<PathBuf> {
             .filter(|e| {
                 let path = e.path();
                 // Only allow *.wasm files
-                let is_wasm = path.extension().map_or(false, |ext| ext == "wasm");
+                let is_wasm = path.extension().is_some_and(|ext| ext == "wasm");
                 // also allow native dynamic libraries as plugins
-                let is_dll = path.extension().map_or(false, |ext| ext == "dll");
+                let is_dll = path.extension().is_some_and(|ext| ext == "dll");
                 let is_wasm_or_dll = is_wasm || is_dll;
                 // Skip anything inside a /deps/ directory
                 let not_in_deps = !path
@@ -215,6 +215,7 @@ pub fn load_plugins(cli: &Cli, manager: Arc<ProcessManager>) -> Result<Vec<Box<d
     Ok(plugins)
 }
 /// Manager for in-process plugin discovery and execution.
+#[allow(dead_code)]
 pub struct PluginManager {
     cli: Cli,
     manager: Arc<ProcessManager>,

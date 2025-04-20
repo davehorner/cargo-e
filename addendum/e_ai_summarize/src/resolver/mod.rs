@@ -28,9 +28,8 @@ pub fn resolve_local_modules(
     }
 
     // Read source
-    let source =
-        fs::read_to_string(path).unwrap_or_else(|e| panic!("Failed to read {:?}: {}", path, e));
-
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("Failed to read {:?}: {}", path, e));
     let crate_ident = crate_name.replace('-', "_");
 
     // Regex for `use crate::{...}` and `use crate::foo::bar;`
@@ -52,7 +51,6 @@ pub fn resolve_local_modules(
 
     // 1) Handle `use crate::{...}` and `use crate::foo::bar;`
     for cap in use_re.captures_iter(&source) {
-        println!("{:?}", cap);
         // Braced list: group 1
         if let Some(list) = cap.get(1) {
             for module in list.as_str().split(',').map(str::trim) {
@@ -81,9 +79,8 @@ pub fn resolve_local_modules(
 
     // 2) Handle function calls: `crate::foo::bar()`
     for cap in call_re.captures_iter(&source) {
-        println!("{:?}", cap);
-        let full = cap.get(1).unwrap().as_str(); // e.g. "foo::bar"
-                                                 // only resolve if there's at least one `::` to split
+        let full = cap.get(1).unwrap().as_str();  // e.g. "foo::bar"
+        // only resolve if there's at least one `::` to split
         if let Some(idx) = full.rfind("::") {
             let module_path = &full[..idx]; // e.g. "foo"
             resolved_modules.extend(resolve_one(

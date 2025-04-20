@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.17](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.16...cargo-e-v0.2.17) - 2025-04-20
+
+### Added
+
+- *(tauri)* Improved find_manifest_dir function to handle src-tauri/Cargo.toml fix warnings.
+
 ## [0.2.16](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.15...cargo-e-v0.2.16) - 2025-04-20
 
 ### Added

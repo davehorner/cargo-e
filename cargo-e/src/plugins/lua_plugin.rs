@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::{path::Path, process::Command};
 
 /// A Lua-based plugin implementation for the `Plugin` trait.
+#[allow(dead_code)]
 pub struct LuaPlugin {
     name: String,
     lua: &'static Lua,
@@ -19,7 +20,7 @@ pub struct LuaPlugin {
 
 impl LuaPlugin {
     /// Load the Lua script plugin from the given path, with full CLI and ProcessManager context.
-    pub fn load(path: &Path, cli: &Cli, _manager: Arc<ProcessManager>) -> Result<Self> {
+    pub fn load(path: &Path, _cli: &Cli, _manager: Arc<ProcessManager>) -> Result<Self> {
         let code = std::fs::read_to_string(path)?;
 
         // Create a Lua context and leak it for 'static lifetime
@@ -80,10 +81,9 @@ impl Plugin for LuaPlugin {
 
     fn collect_targets(&self, dir: &Path) -> Result<Vec<Target>> {
         // Call the Lua `collect_targets(dir)` function, which returns JSON
-        let f: Function = self
-            .tbl
-            .get("collect_targets")
-            .map_err(|e| anyhow::anyhow!("Lua error getting 'collect_targets' function: {:?}", e))?;
+        let f: Function = self.tbl.get("collect_targets").map_err(|e| {
+            anyhow::anyhow!("Lua error getting 'collect_targets' function: {:?}", e)
+        })?;
         let json: String = f
             .call(dir.to_string_lossy().as_ref())
             .map_err(|e| anyhow::anyhow!("Lua error calling collect_targets: {:?}", e))?;
@@ -124,9 +124,13 @@ impl Plugin for LuaPlugin {
             .get::<Option<Function>>(target.name.as_str())
             .map_err(|e| anyhow::anyhow!("Lua error getting '{}' function: {:?}", target.name, e))?
         {
-            let table: Table = func
-                .call((dir_str.clone(), tgt_str.clone()))
-                .map_err(|e| anyhow::anyhow!("Lua error calling target '{}' function: {:?}", target.name, e))?;
+            let table: Table = func.call((dir_str.clone(), tgt_str.clone())).map_err(|e| {
+                anyhow::anyhow!(
+                    "Lua error calling target '{}' function: {:?}",
+                    target.name,
+                    e
+                )
+            })?;
             let mut result = Vec::new();
             for entry in table.sequence_values::<mlua::Value>() {
                 let val = entry.map_err(|e| anyhow::anyhow!("Lua error parsing table: {:?}", e))?;

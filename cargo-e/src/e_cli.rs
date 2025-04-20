@@ -204,20 +204,15 @@ pub fn get_feature_flags() -> Vec<&'static str> {
 use std::str::FromStr;
 
 /// Represents the state of the `--run-all` flag.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum RunAll {
     /// The flag was not specified.
+    #[default]
     NotSpecified,
     /// The flag was specified without a value—indicating “run forever.”
     Forever,
     /// The flag was specified with a timeout value.
     Timeout(u64),
-}
-
-impl Default for RunAll {
-    fn default() -> Self {
-        RunAll::NotSpecified
-    }
 }
 
 impl FromStr for RunAll {

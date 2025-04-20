@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.16</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.17</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -165,16 +165,7 @@ If there is only one example, it will run that example, did I mention that alrea
     
      means that each target will be run for 10 seconds. After 10 seconds, Cargo-e will prompt for a key press; if no key is pressed (or if a non-quit key is pressed), the running process will be killed, and the next target is started.
 
-- **Other flags**
-
-  `--release`
-    When specified, Cargo-e passes the --release flag to the underlying Cargo command so that the samples are built and run in release mode. This can significantly improve performance.
-
-  `--quiet`
-    When specified, Cargo-e passes the --quiet flag and automatically adjusts the environment (by appending -Awarnings to RUSTFLAGS) so that compilation output and warnings are suppressed during the run. This creates a cleaner output, focusing solely on the sample's runtime behavior.
-
-  `--help`
-    Displays detailed help information. Use the -h option for additional details on all available flags.
+Displays detailed help information. Use the -h option for additional details on all available flags.
 
 ## Features and Configuration
 
@@ -298,7 +289,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.16</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.17</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 

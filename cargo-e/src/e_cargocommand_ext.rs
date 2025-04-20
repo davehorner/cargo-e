@@ -63,6 +63,7 @@ impl CargoDiagnostic {
     }
 }
 impl CargoDiagnostic {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         lineref: String,
         level: String,
@@ -102,7 +103,7 @@ impl CargoDiagnostic {
         suggestion
             .lines()
             .filter_map(|line| {
-                let binding = line.replace(|c: char| c == '|' || c == '^', "");
+                let binding = line.replace(['|', '^'], "");
                 let cleaned_line = binding.trim();
 
                 // If the line becomes empty after removing | and ^, skip it
@@ -110,9 +111,8 @@ impl CargoDiagnostic {
                     return None; // Skip empty lines
                 }
                 if let Some(caps) = suggestion_regex.captures(line.trim()) {
-                    let suggestion_line: usize =
-                        caps["line"].parse().unwrap_or_else(|_| line_number); // If parsing fails, use the default line number
-                                                                              // Replace the line number if it doesn't match the diagnostic's line number
+                    let suggestion_line: usize = caps["line"].parse().unwrap_or(line_number); // If parsing fails, use the default line number
+                                                                                              // Replace the line number if it doesn't match the diagnostic's line number
                     if suggestion_line != line_number {
                         return Some(format!(
                             "{}:{} | {}",
@@ -122,7 +122,10 @@ impl CargoDiagnostic {
                         ));
                     } else {
                         // If the line number matches, return the original suggestion line without line number
-                        return Some(format!("{}", caps.get(2).map_or("", |m| m.as_str())));
+                        return Some(
+                            caps.get(2)
+                                .map_or("".to_owned(), |m| m.as_str().to_string()),
+                        );
                     }
                 }
                 Some(line.to_string())
@@ -600,13 +603,13 @@ impl CargoProcessHandle {
 
             let ret = format!("{}{}{}", left_display, " ".repeat(padding), right_display);
             if ret.trim().is_empty() {
-                return String::from("No output available");
+                String::from("No output available")
             } else {
-                return ret;
+                ret
             }
         } else {
             // return format!("Process {} not found",(self.pid as usize));
-            return String::new();
+            String::new()
         }
         // } else {
         //     // If system monitoring is disabled, just return the start time.
@@ -632,16 +635,20 @@ pub trait CargoCommandExt {
 impl CargoCommandExt for Command {
     fn spawn_cargo_passthrough(&mut self, builder: Arc<CargoCommandBuilder>) -> CargoProcessHandle {
         // Spawn the child process without redirecting stdout and stderr
-        let child = self.spawn().expect(&format!(
-            "Failed to spawn cargo process {:?} {:?}",
-            &builder.alternate_cmd, builder.args
-        ));
+        let child = self.spawn().unwrap_or_else(|_| {
+            panic!(
+                "Failed to spawn cargo process {:?} {:?}",
+                &builder.alternate_cmd, builder.args
+            )
+        });
 
         let pid = child.id();
         let start_time = SystemTime::now();
         let diagnostics = Arc::clone(&builder.diagnostics);
-        let mut s = CargoStats::default();
-        s.build_finished_time = Some(start_time);
+        let s = CargoStats {
+            build_finished_time: Some(start_time),
+            ..Default::default()
+        };
         let stats = Arc::new(Mutex::new(s));
         // Try to take ownership of the Vec<CargoDiagnostic> out of the Arc.
 
@@ -686,7 +693,7 @@ impl CargoCommandExt for Command {
             runtime_progress_counter: Arc::new(AtomicUsize::new(0)),
             requested_exit: false,
             terminal_error_flag: Arc::new(Mutex::new(TerminalError::NoError)),
-            diagnostics: diagnostics,
+            diagnostics,
             is_filter: builder.is_filter,
         }
     }
@@ -734,7 +741,7 @@ impl CargoCommandExt for Command {
             let stdout_buffer = Arc::new(Mutex::new(Vec::<String>::new()));
             let buf = Arc::clone(&stdout_buffer);
             {
-                for line in stdout_reader.lines() {
+                for line in stdout_reader.lines().map(|line| line) {
                     if let Ok(line) = line {
                         // println!("{}: {}", pid, line);
                         // Try to parse the line as a JSON cargo message.
@@ -930,7 +937,7 @@ impl CargoCommandExt for Command {
                     for line in message.lines().map(|line| line) {
                         if let Some(ref disp) = stderr_disp_clone {
                             // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
-                            let responses = disp.dispatch(&line);
+                            let responses = disp.dispatch(line);
 
                             // Iterate over the responses.
                             for ret in responses {
@@ -1078,7 +1085,7 @@ impl CargoCommandExt for Command {
         };
         let pid = child.id();
         let result = CargoProcessResult {
-            pid: pid,
+            pid,
             exit_status: None,
             start_time: Some(start_time),
             build_finished_time: None,
@@ -1110,7 +1117,7 @@ impl CargoCommandExt for Command {
             runtime_progress_counter,
             requested_exit: false,
             terminal_error_flag: terminal_flag,
-            diagnostics: diagnostics,
+            diagnostics,
             is_filter: builder.is_filter,
         }
     }

@@ -195,22 +195,16 @@ pub async fn summarize_source_session(
                 std::process::exit(1);
             });
             combined_source.push_str(&format!(
-                "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
-                path.display(),
-                contents,
-                path.display()
-            ));
-            let mut visited = HashSet::new();
-            let resolved = crate::resolver::resolve_local_modules(
-                &crate_name,
-                &crate_toml_path,
-                &path,
-                &mut visited,
-                Some(4),
-            );
-            // 3. For each resolved module, read it and append with your markers
-            for module_path in resolved {
-                let module_src = fs::read_to_string(&module_path).unwrap_or_default();
+            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+            path.display(),
+            contents,
+            path.display()
+        ));
+        let mut visited = HashSet::new();
+            let resolved=crate::resolver::resolve_local_modules(&crate_name,&crate_toml_path,path,&mut visited,Some(4));
+                // 3. For each resolved module, read it and append with your markers
+    for module_path in resolved {
+        let module_src = fs::read_to_string(&module_path).unwrap_or_default();
 
                 combined_source.push_str(&format!(
                     "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",

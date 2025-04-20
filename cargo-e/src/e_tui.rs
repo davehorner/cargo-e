@@ -62,21 +62,19 @@ pub mod tui_interactive {
             }
         }
         // Now, an arrow key should have a sequence like: Esc, '[' and then 'A' (or 'B', 'C', 'D').
-        if sequence.len() >= 2 {
-            if sequence[0].code == KeyCode::Char('[') {
-                // Check the third element if available.
-                if let Some(third) = sequence.get(1) {
-                    // Compare the character case-insensitively (to handle unexpected modifiers).
-                    if let KeyCode::Char(ch) = third.code {
-                        let ch = ch.to_ascii_uppercase();
-                        return Ok(match ch {
-                            'A' => Some(KeyCode::Up),
-                            'B' => Some(KeyCode::Down),
-                            'C' => Some(KeyCode::Right),
-                            'D' => Some(KeyCode::Left),
-                            _ => None,
-                        });
-                    }
+        if sequence.len() >= 2 && sequence[0].code == KeyCode::Char('[') {
+            // Check the third element if available.
+            if let Some(third) = sequence.get(1) {
+                // Compare the character case-insensitively (to handle unexpected modifiers).
+                if let KeyCode::Char(ch) = third.code {
+                    let ch = ch.to_ascii_uppercase();
+                    return Ok(match ch {
+                        'A' => Some(KeyCode::Up),
+                        'B' => Some(KeyCode::Down),
+                        'C' => Some(KeyCode::Right),
+                        'D' => Some(KeyCode::Left),
+                        _ => None,
+                    });
                 }
             }
         }
