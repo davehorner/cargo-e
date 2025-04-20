@@ -95,13 +95,17 @@ pub mod version {
                     user_agent::get_user_agent_checked(),
                 )
                 .send()?;
-            // println!("[TRACE] Received response: {:?}", resp.status());
-            let resp = resp; // json() requires a mutable reference.
+            let status = resp.status();
+            if !status.is_success() {
+                // Handle crate not found vs other HTTP errors
+                if status.as_u16() == 404 {
+                    return Err(format!("crate '{}' not found on crates.io", crate_name).into());
+                } else {
+                    return Err(format!("HTTP error {} fetching crate info for '{}'", status, crate_name).into());
+                }
+            }
+            // Parse JSON body for crate info
             let crate_response: CrateResponse = resp.json()?;
-            // println!(
-            //     "[TRACE] Parsed response: latest version is {}",
-            //     crate_response.krate.max_version
-            // );
             Ok(crate_response.krate.max_version)
         }
         #[cfg(not(all(feature = "uses_reqwest", feature = "uses_serde")))]

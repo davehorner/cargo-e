@@ -12,6 +12,11 @@
 
 - **Flexible Configuration:**  
   Supports enabling/disabling features such as `check-version`, `uses_reqwest`, and `uses_serde` to tailor the functionality to your needs.
+  
+- **Fortune:**  
+  When the `fortune` feature is enabled, displays a random developer “fortune” before the update prompt.
+- **Changelog:**  
+  When the `changelog` feature is enabled, embeds and displays the latest release notes from the parent crate’s CHANGELOG after a successful update.
 
 ## Installation
 
@@ -27,7 +32,7 @@ Make sure to enable the features you need. For example:
 ```toml
 [dependencies.e_crate_version_checker]
 version = "0.1.0"
-features = ["check-version", "uses_reqwest", "uses_serde"]
+features = ["check-version", "uses_reqwest", "uses_serde", "fortune", "changelog"]
 ```
 
 ## Usage
@@ -83,11 +88,49 @@ The application will print the current version, query crates.io for the latest v
 
 ## Testing
 
-The crate includes tests to verify update arguments and version-checking logic. To run the tests:
+The crate includes tests to verify update arguments, version‑checking logic, and changelog embedding. To run the full test suite:
 
 ```sh
-cargo test
+cargo test --features changelog
 ```
+
+### Testing Version Checker & Changelog Manually
+
+You can drive the interactive prompt, fortunes, and changelog display locally without publishing or installing prior versions by using these environment variables:
+
+- `E_CRATE_CURRENT_VERSION`      Override the detected current version (e.g., simulate an old install).
+- `E_CRATE_DRY_RUN`              Skip the actual `cargo install` step (dry-run mode).
+- `E_CRATE_FORCE_INTERACTIVE`    Bypass non-interactive detection so prompts always fire.
+
+#### Example: Test `e_crate_version_checker`
+```sh
+printf "\ny\n" \
+  | E_CRATE_CURRENT_VERSION=0.0.1 \
+    E_CRATE_DRY_RUN=1 \
+    E_CRATE_FORCE_INTERACTIVE=1 \
+    cargo run --features changelog -- e_crate_version_checker
+```
+You should see output like:
+```
+minor update for e_crate_version_checker: 0.0.1 -> 0.1.15
+ want to install? [Yes/no] (wait 5 seconds)
+Update complete (dry-run).
+
+📜 Changelog for version 0.1.15:
+### Other
+
+- extended samples are now showing.
+```
+
+#### Example: Test `cargo-e` Integration
+```sh
+printf "\ny\n" \
+  | E_CRATE_CURRENT_VERSION=0.1.0 \
+    E_CRATE_DRY_RUN=1 \
+    E_CRATE_FORCE_INTERACTIVE=1 \
+    cargo run --features fortune,changelog -- package-name
+```
+Replace `package-name` with the crate you want to test. This will trigger fortunes and changelog display even for the default `interactive_crate_upgrade` flow.
 
 ## Contributing
 

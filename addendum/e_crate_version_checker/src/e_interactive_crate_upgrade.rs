@@ -5,6 +5,14 @@ use crate::e_crate_update::version::get_latest_version;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+#[cfg(feature = "fortune")]
+use rand::{seq::IteratorRandom, thread_rng};
+// Use parse-changelog to extract changelog sections when feature enabled
+#[cfg(feature = "changelog")]
+use parse_changelog::parse;
+/// Embed consumer's changelog when "changelog" feature is enabled; path via E_CRATE_CHANGELOG_PATH env var
+#[cfg(feature = "changelog")]
+pub const FULL_CHANGELOG: &str = include_str!(env!("E_CRATE_CHANGELOG_PATH"));
 
 // use crossterm::{
 //     event::{poll, read, Event, KeyCode},
@@ -83,26 +91,48 @@ pub fn interactive_crate_upgrade(
     current_version: &str,
     wait: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !std::io::stdin().is_terminal() {
+    // Allow overriding the current version for testing (e.g., force update flow)
+    let current_version = std::env::var("E_CRATE_CURRENT_VERSION").unwrap_or_else(|_| current_version.to_string());
+    // Skip terminal check if forced (for testing)
+    if std::env::var("E_CRATE_FORCE_INTERACTIVE").is_err() && !std::io::stdin().is_terminal() {
         println!("Non-interactive mode detected; skipping update prompt.");
         return Ok(());
     }
 
-    // Retrieve the latest version from crates.io.
-    let latest_version = get_latest_version(crate_name)?;
+    // Retrieve the latest version from crates.io, handling missing crates gracefully
+    let latest_version = match get_latest_version(crate_name) {
+        Ok(v) => v,
+        Err(e) => {
+            // Print only the error message
+            eprintln!("{}", e);
+            return Ok(());
+        }
+    };
     if current_version == "0.0.0" {
         print!("'{}' is not installed.", crate_name);
     } else if let (
         Some((cur_major, cur_minor, cur_patch)),
         Some((lat_major, lat_minor, lat_patch)),
     ) = (
-        parse_version(current_version),
+        parse_version(&current_version),
         parse_version(&latest_version),
     ) {
         let current_tuple = (cur_major, cur_minor, cur_patch);
         let latest_tuple = (lat_major, lat_minor, lat_patch);
         if current_tuple == latest_tuple {
-            println!("'{}' {} is latest.", crate_name, current_version);
+            // Up-to-date: either print fortune or notice depending on feature
+            #[cfg(feature = "fortune")]
+            {
+                let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
+                let mut rng = thread_rng();
+                if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
+                    println!("{}", line);
+                }
+            }
+            #[cfg(not(feature = "fortune"))]
+            {
+                println!("'{}' {} is latest.", crate_name, current_version);
+            }
             return Ok(());
         } else if current_tuple > latest_tuple {
             println!(
@@ -132,11 +162,34 @@ pub fn interactive_crate_upgrade(
             crate_name, current_version, latest_version
         );
     } else {
-        println!("'{}' up-to-date! {}", crate_name, current_version);
-        return Ok(());
+        // Up-to-date case
+        #[cfg(feature = "fortune")]
+        {
+            // Print a fortune instead of the up-to-date notice
+            let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
+            let mut rng = thread_rng();
+            if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
+                println!("{}", line);
+            }
+            return Ok(());
+        }
+        #[cfg(not(feature = "fortune"))]
+        {
+            println!("'{}' up-to-date! {}", crate_name, current_version);
+            return Ok(());
+        }
     }
 
     // Compare versions and prompt the user accordingly.
+    // If fortune feature is enabled, display a random line from the consumer's fortunes file
+    #[cfg(feature = "fortune")]
+    {
+        let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
+        let mut rng = thread_rng();
+        if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
+            println!("{}", line);
+        }
+    }
     println!(" want to install? [Yes/no] (wait {} seconds)", wait);
     std::io::Write::flush(&mut std::io::stdout())?;
 
@@ -145,10 +198,39 @@ pub fn interactive_crate_upgrade(
     if let Some(input) = read_line_with_timeout(Duration::from_secs(wait)) {
         let input = input.trim().to_lowercase();
         if input == "y" || input.is_empty() {
-            match update_crate(crate_name, &latest_version) {
-                Ok(()) => println!("Update complete."),
-                Err(e) => {
-                    eprintln!("{}", e);
+            // Support dry-run via E_CRATE_DRY_RUN
+            let dry_run = std::env::var("E_CRATE_DRY_RUN").is_ok();
+            let success = if dry_run {
+                println!("Update complete (dry-run).");
+                true
+            } else {
+                match update_crate(crate_name, &latest_version) {
+                    Ok(()) => {
+                        println!("Update complete.");
+                        true
+                    }
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        false
+                    }
+                }
+            };
+            if success {
+                #[cfg(feature = "changelog")]
+                {
+                    let changelog_str = FULL_CHANGELOG;
+                    match parse(changelog_str) {
+                        Ok(cl) => {
+                            if let Some(release) = cl.get(latest_version.as_str()) {
+                                println!("\n📜 Changelog for version {}:\n{}", latest_version, release.notes);
+                            } else {
+                                println!("\n📜 Could not find changelog section for version {}", latest_version);
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to parse changelog: {}", err);
+                        }
+                    }
                 }
             }
             std::process::exit(0);
