@@ -173,9 +173,11 @@ pub async fn summarize_source_session(
             crate_toml_path = toml_path.clone();
             let cargo_toml = fs::read_to_string(crate_toml_path.clone()).unwrap_or_default();
             combined_source.push_str(&format!(
-            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
-            crate_toml_path.display(),cargo_toml, crate_toml_path.display()
-        ));
+                "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+                crate_toml_path.display(),
+                cargo_toml,
+                crate_toml_path.display()
+            ));
         }
         let path = Path::new(fp);
         if path.is_dir() {
@@ -188,29 +190,35 @@ pub async fn summarize_source_session(
                 })?;
             generate_heredoc_output(&crate_name, &crate_version, &files)
         } else if path.is_file() {
-            let contents=fs::read_to_string(path).unwrap_or_else(|err| {
+            let contents = fs::read_to_string(path).unwrap_or_else(|err| {
                 eprintln!("Error reading {}: {}", fp, err);
                 std::process::exit(1);
             });
             combined_source.push_str(&format!(
-            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
-            path.display(),
-            contents,
-            path.display()
-        ));
-        let mut visited = HashSet::new();
-            let resolved=crate::resolver::resolve_local_modules(&crate_name,&crate_toml_path,&path,&mut visited,Some(4));
-                // 3. For each resolved module, read it and append with your markers
-    for module_path in resolved {
-        let module_src = fs::read_to_string(&module_path).unwrap_or_default();
+                "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+                path.display(),
+                contents,
+                path.display()
+            ));
+            let mut visited = HashSet::new();
+            let resolved = crate::resolver::resolve_local_modules(
+                &crate_name,
+                &crate_toml_path,
+                &path,
+                &mut visited,
+                Some(4),
+            );
+            // 3. For each resolved module, read it and append with your markers
+            for module_path in resolved {
+                let module_src = fs::read_to_string(&module_path).unwrap_or_default();
 
-        combined_source.push_str(&format!(
-            "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
-            module_path.display(),
-            module_src,
-            module_path.display()
-        ));
-    }
+                combined_source.push_str(&format!(
+                    "\n//- ----- [{}] -----\n{}\n//- ----- [{}] -----\n\n",
+                    module_path.display(),
+                    module_src,
+                    module_path.display()
+                ));
+            }
 
             combined_source
         } else {

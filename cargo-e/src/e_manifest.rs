@@ -159,8 +159,8 @@ pub fn get_required_features_from_manifest(
         TargetKind::ManifestLeptos => "bin",
         TargetKind::Test => "test",
         TargetKind::Bench => "bench",
-        TargetKind::Unknown => "",
-        TargetKind::Manifest => "",
+        // All other kinds—including Plugin—do not have required-features sections
+        _ => "",
     };
     if section.is_empty() {
         return None;

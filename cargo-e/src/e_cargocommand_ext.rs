@@ -714,23 +714,23 @@ impl CargoCommandExt for Command {
         let runtime_progress_counter = Arc::new(AtomicUsize::new(0));
 
         // Clone dispatchers and counters for use in threads.
-        let stdout_disp_clone = stdout_dispatcher.clone();
+        let _stdout_disp_clone = stdout_dispatcher.clone();
         let progress_disp_clone_stdout = progress_dispatcher.clone();
         let stage_disp_clone = stage_dispatcher.clone();
 
         let stats_clone = Arc::clone(&stats);
-        let build_counter_stdout = Arc::clone(&build_progress_counter);
-        let runtime_counter_stdout = Arc::clone(&runtime_progress_counter);
+        let _build_counter_stdout = Arc::clone(&build_progress_counter);
+        let _runtime_counter_stdout = Arc::clone(&runtime_progress_counter);
 
         // Spawn a thread to process stdout.
-        let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
+        let _stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
         let stdout = child.stdout.take().expect("Failed to capture stdout");
         // println!("{}: Capturing stdout", pid);
         let stdout_handle = thread::spawn(move || {
             let stdout_reader = BufReader::new(stdout);
             // This flag marks whether we are still in the build phase.
             #[allow(unused_mut)]
-            let mut in_build_phase = true;
+            let mut _in_build_phase = true;
             let stdout_buffer = Arc::new(Mutex::new(Vec::<String>::new()));
             let buf = Arc::clone(&stdout_buffer);
             {
@@ -755,10 +755,10 @@ impl CargoCommandExt for Command {
                                 //     runtime_counter_stdout.fetch_add(msg_str.len(), Ordering::Relaxed);
                                 // }
                                 if let Some(total) = estimate_bytes {
-                                    let current = if in_build_phase {
-                                        build_counter_stdout.load(Ordering::Relaxed)
+                                    let current = if _in_build_phase {
+                                        _build_counter_stdout.load(Ordering::Relaxed)
                                     } else {
-                                        runtime_counter_stdout.load(Ordering::Relaxed)
+                                        _runtime_counter_stdout.load(Ordering::Relaxed)
                                     };
                                     let progress = (current as f64 / total as f64) * 100.0;
                                     if let Some(ref pd) = progress_disp_clone_stdout {
@@ -771,8 +771,8 @@ impl CargoCommandExt for Command {
                                 match msg {
                                     Message::BuildFinished(_) => {
                                         // Mark the end of the build phase.
-                                        if in_build_phase {
-                                            in_build_phase = false;
+                                        if _in_build_phase {
+                                            _in_build_phase = false;
                                             let mut s = stats_clone.lock().unwrap();
                                             s.build_finished_count += 1;
                                             s.build_finished_time.get_or_insert(now);
@@ -803,7 +803,8 @@ impl CargoCommandExt for Command {
                                                 ));
                                             }
                                         }
-                                        let mut msg_vec = stderr_compiler_msg_clone.lock().unwrap();
+                                        let mut msg_vec =
+                                            _stderr_compiler_msg_clone.lock().unwrap();
                                         msg_vec.push_back(format!(
                                             "{}\n\n",
                                             msg.message.rendered.unwrap_or_default()
@@ -848,8 +849,8 @@ impl CargoCommandExt for Command {
                                 // println!("ERROR {} {}: {}",_err, pid, line);
                                 // If JSON parsing fails, assume this is plain runtime output.
                                 // If still in build phase, we assume the build phase has ended.
-                                if in_build_phase {
-                                    in_build_phase = false;
+                                if _in_build_phase {
+                                    _in_build_phase = false;
                                     let now = SystemTime::now();
                                     let mut s = stats_clone.lock().unwrap();
                                     s.build_finished_count += 1;
@@ -870,7 +871,7 @@ impl CargoCommandExt for Command {
                                     // then print live
                                     println!("{}", line);
                                 }
-                                if let Some(ref disp) = stdout_disp_clone {
+                                if let Some(ref disp) = _stdout_disp_clone {
                                     disp.dispatch(&line);
                                 }
                                 // Print the runtime output.
@@ -881,9 +882,9 @@ impl CargoCommandExt for Command {
                                         pid, line
                                     );
                                 }
-                                runtime_counter_stdout.fetch_add(line.len(), Ordering::Relaxed);
+                                _runtime_counter_stdout.fetch_add(line.len(), Ordering::Relaxed);
                                 if let Some(total) = estimate_bytes {
-                                    let current = runtime_counter_stdout.load(Ordering::Relaxed);
+                                    let current = _runtime_counter_stdout.load(Ordering::Relaxed);
                                     let progress = (current as f64 / total as f64) * 100.0;
                                     if let Some(ref pd) = progress_disp_clone_stdout {
                                         pd.dispatch(&format!("Progress: {:.2}%", progress));

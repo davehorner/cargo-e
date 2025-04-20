@@ -1015,7 +1015,7 @@ impl CargoCommandBuilder {
             println!("Target origin is not set");
         }
         match target.kind {
-            TargetKind::Unknown => {
+            TargetKind::Unknown | TargetKind::Plugin => {
                 return self;
             }
             TargetKind::Bench => {

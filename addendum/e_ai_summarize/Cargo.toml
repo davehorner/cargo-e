@@ -1,6 +1,6 @@
 [package]
 name = "e_ai_summarize"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 rust-version = "1.85.1"
 authors = ["David Horner"]
@@ -20,7 +20,7 @@ arboard = "3.4.1"
 chrono = "0.4.40"
 clap = { version = "4.5.34", features = ["derive"] }
 env_logger = "0.11.7"
-genai = "0.1.23"
+genai = "0.2"
 include_dir = { version = "0.7.4", features = ["glob"] }
 log = "0.4.27"
 path-slash = "0.2.1"

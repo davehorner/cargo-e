@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.16](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.15...cargo-e-v0.2.16) - 2025-04-20
+
+### Added
+
+- *(cargo-e)* add plugin support to handle plugin-provided targets; dev release only not enabled by default
+
+### Other
+
+- add readme and update versions that were missed in 0.2.15
+
 ## [0.2.15](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.14...cargo-e-v0.2.15) - 2025-04-20
 
 ### Added

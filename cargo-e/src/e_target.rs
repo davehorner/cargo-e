@@ -16,6 +16,11 @@ pub enum TargetOrigin {
     MultiFile(PathBuf),
     SubProject(PathBuf),
     Named(OsString),
+    /// A target provided by a plugin, storing plugin file and reported source path
+    Plugin {
+        plugin_path: PathBuf,
+        reported: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq, Copy)]
@@ -39,6 +44,8 @@ pub enum TargetKind {
     ManifestLeptos,
     ScriptRustScript,
     ScriptScriptisto,
+    /// A target provided by an external plugin (script, WASM, etc.)
+    Plugin,
 }
 
 #[derive(Debug, Clone)]

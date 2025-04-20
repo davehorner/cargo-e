@@ -1,6 +1,6 @@
 use clap::Parser;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author,version, about = "cargo-e is for Example.", long_about = None)]
 #[command(disable_version_flag = true)]
 pub struct Cli {

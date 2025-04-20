@@ -482,6 +482,39 @@ pub fn collect_all_targets(
     Ok(deduped_samples)
 }
 
+/// Same as `collect_all_targets` but does not print workspace/package debug info.
+pub fn collect_all_targets_silent(
+    use_workspace: bool,
+    max_concurrency: usize,
+) -> Result<Vec<CargoTarget>, Box<dyn std::error::Error>> {
+    use std::path::PathBuf;
+    let mut manifest_infos: Vec<(String, PathBuf, bool)> = Vec::new();
+
+    // Locate the package manifest
+    let bi = PathBuf::from(crate::locate_manifest(false)?);
+    let in_workspace = use_workspace || e_workspace::is_workspace_manifest(bi.as_path());
+
+    if in_workspace {
+        let ws = if use_workspace {
+            PathBuf::from(crate::locate_manifest(true)?)
+        } else {
+            bi.clone()
+        };
+        let ws_members =
+            e_workspace::get_workspace_member_manifest_paths(ws.as_path()).unwrap_or_default();
+        manifest_infos.push(("-".to_string(), bi.clone(), false));
+        for (member, member_manifest) in ws_members {
+            manifest_infos.push((format!("${}", member), member_manifest, true));
+        }
+    } else {
+        manifest_infos.push(("-".to_string(), bi.clone(), false));
+    }
+
+    let samples = collect_samples(use_workspace, manifest_infos, max_concurrency)?;
+    let deduped_samples = dedup_single_file_over_default_binary(samples);
+    Ok(deduped_samples)
+}
+
 // Formats the package manifest as "<package>/Cargo.toml"
 fn format_package(manifest: &Path) -> String {
     let pkg = manifest

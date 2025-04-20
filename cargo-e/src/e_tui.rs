@@ -717,11 +717,11 @@ pub mod tui_interactive {
                 // Append a newline-separated entry.
                 writeln!(file, "{}", target.name)?;
             }
-            let message = if cli.print_exit_code {
-                format!("Exitcode {:?}. Press any key to continue...", status_code)
-            } else {
-                "".to_string()
-            };
+            // let message = if cli.print_exit_code {
+            //     format!("Exitcode {:?}. Press any key to continue...", status_code)
+            // } else {
+            //     "".to_string()
+            // };
             // PROMPT let _ = crate::e_prompts::prompt(&message, cli.wait)?;
         }
 
