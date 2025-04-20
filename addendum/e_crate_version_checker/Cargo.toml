@@ -2,7 +2,7 @@
 name = "e_crate_version_checker"
 description = "A tool to check for newer versions of Rust crates on crates.io and interactively update them."
 license = "MIT OR Apache-2.0"
-version = "0.1.15"
+version = "0.1.17"
 authors = ["David Horner"]
 edition = "2021"
 rust-version = "1.81.0"
@@ -15,9 +15,19 @@ check-version-program-start = []
 uses_reqwest = ["dep:reqwest"]
 uses_serde = ["dep:serde","dep:serde_json"]
 # uses_semver = ["dep:semver"]
+# When enabled, include a random fortune message in prompts.
+fortune = ["rand"]
+changelog = ["dep:parse-changelog"]
 
 [dependencies]
+parse-changelog = { version = "0.6", optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"], optional=true }
 serde = { version = "1.0", features = ["derive"], optional=true }
 serde_json = { version = "1.0", optional=true}
+# Random selection for fortunes
+rand = { version = "0.8", optional = true }
 # semver = { version = "1.0.26", optional = true }
+  
+[build-dependencies]
+# Used to generate fortunes at compile time
+genai = "0.2"

@@ -10,6 +10,19 @@ All notable changes to this project will be documented in this file.
 
 
 
+## [0.1.17](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.16...e_crate_version_checker-v0.1.17) - 2025-04-20
+
+### Fixed
+
+- symlink
+- *(e-crate-version-checker)* changelong and fortune tweaking, symlink
+
+## [0.1.16](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.15...e_crate_version_checker-v0.1.16) - 2025-04-20
+
+### Added
+
+- *(e_crate_version_checker)* fortune and changelog features added.
+
 ## [0.1.15](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.14...e_crate_version_checker-v0.1.15) - 2025-04-13
 
 ### Added
