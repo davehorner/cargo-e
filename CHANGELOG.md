@@ -1,1 +1,1 @@
-C:/w/cargo-e/cargo-e/CHANGELOG.md
+cargo-e/CHANGELOG.md
