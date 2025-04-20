@@ -17,7 +17,6 @@ uses_serde = ["dep:serde","dep:serde_json"]
 # uses_semver = ["dep:semver"]
 # When enabled, include a random fortune message in prompts.
 fortune = ["rand"]
-# Embed and display latest changelog section from consumer at runtime
 changelog = ["dep:parse-changelog"]
 
 [dependencies]

@@ -10,9 +10,7 @@ fn main() {
     // If "changelog" feature is enabled, set default changelog path if not overridden
     if std::env::var("CARGO_FEATURE_CHANGELOG").is_ok() {
         if std::env::var("E_CRATE_CHANGELOG_PATH").is_err() {
-            let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-            let default = format!("{}/../../cargo-e/CHANGELOG.md", manifest);
-            println!("cargo:rustc-env=E_CRATE_CHANGELOG_PATH={}", default);
+            println!("cargo:rustc-env=E_CRATE_CHANGELOG_PATH=../cargo-e.CHANGELOG.md");
         }
     }
 

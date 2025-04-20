@@ -98,6 +98,15 @@ pub fn interactive_crate_upgrade(
         println!("Non-interactive mode detected; skipping update prompt.");
         return Ok(());
     }
+    // If fortune feature is enabled, display a random line from the consumer's fortunes file
+    #[cfg(feature = "fortune")]
+    {
+        let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
+        let mut rng = thread_rng();
+        if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
+            println!("{}", line);
+        }
+    }
 
     // Retrieve the latest version from crates.io, handling missing crates gracefully
     let latest_version = match get_latest_version(crate_name) {
@@ -119,20 +128,44 @@ pub fn interactive_crate_upgrade(
     ) {
         let current_tuple = (cur_major, cur_minor, cur_patch);
         let latest_tuple = (lat_major, lat_minor, lat_patch);
-        if current_tuple == latest_tuple {
-            // Up-to-date: either print fortune or notice depending on feature
-            #[cfg(feature = "fortune")]
-            {
-                let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
-                let mut rng = thread_rng();
-                if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
-                    println!("{}", line);
+                #[cfg(feature = "changelog")]
+                {
+    if latest_version != current_version {
+                    let changelog_str = FULL_CHANGELOG;
+                    match parse(changelog_str) {
+                        Ok(cl) => {
+                            if let Some(release) = cl.get(latest_version.as_str()) {
+                                let filtered_notes = release
+    .notes
+    .lines()
+    .filter(|line| !line.trim().is_empty())
+    .collect::<Vec<_>>()
+    .join("\n");
+                                println!("---\nversion {}:\n{}\n---", latest_version, filtered_notes);
+                            } else {
+                                println!("\nCould not find changelog section for version {}", latest_version);
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to parse changelog: {}", err);
+                        }
+                    }
                 }
             }
-            #[cfg(not(feature = "fortune"))]
-            {
+        if current_tuple == latest_tuple {
+            // // Up-to-date: either print fortune or notice depending on feature
+            // #[cfg(feature = "fortune")]
+            // {
+            //     let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
+            //     let mut rng = thread_rng();
+            //     if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
+            //         println!("{}", line);
+            //     }
+            // }
+            // #[cfg(not(feature = "fortune"))]
+            // {
                 println!("'{}' {} is latest.", crate_name, current_version);
-            }
+            // }
             return Ok(());
         } else if current_tuple > latest_tuple {
             println!(
@@ -162,34 +195,11 @@ pub fn interactive_crate_upgrade(
             crate_name, current_version, latest_version
         );
     } else {
-        // Up-to-date case
-        #[cfg(feature = "fortune")]
-        {
-            // Print a fortune instead of the up-to-date notice
-            let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
-            let mut rng = thread_rng();
-            if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
-                println!("{}", line);
-            }
-            return Ok(());
-        }
-        #[cfg(not(feature = "fortune"))]
-        {
             println!("'{}' up-to-date! {}", crate_name, current_version);
             return Ok(());
-        }
     }
 
     // Compare versions and prompt the user accordingly.
-    // If fortune feature is enabled, display a random line from the consumer's fortunes file
-    #[cfg(feature = "fortune")]
-    {
-        let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
-        let mut rng = thread_rng();
-        if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
-            println!("{}", line);
-        }
-    }
     println!(" want to install? [Yes/no] (wait {} seconds)", wait);
     std::io::Write::flush(&mut std::io::stdout())?;
 
@@ -216,22 +226,6 @@ pub fn interactive_crate_upgrade(
                 }
             };
             if success {
-                #[cfg(feature = "changelog")]
-                {
-                    let changelog_str = FULL_CHANGELOG;
-                    match parse(changelog_str) {
-                        Ok(cl) => {
-                            if let Some(release) = cl.get(latest_version.as_str()) {
-                                println!("\n📜 Changelog for version {}:\n{}", latest_version, release.notes);
-                            } else {
-                                println!("\n📜 Could not find changelog section for version {}", latest_version);
-                            }
-                        }
-                        Err(err) => {
-                            eprintln!("Failed to parse changelog: {}", err);
-                        }
-                    }
-                }
             }
             std::process::exit(0);
         } else {
