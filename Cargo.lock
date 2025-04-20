@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-e"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -243,12 +243,13 @@ dependencies = [
  "e_crate_version_checker",
  "env_logger",
  "futures",
- "genai",
+ "genai 0.1.23",
  "log",
  "nix",
  "nu-ansi-term 0.50.1",
  "once_cell",
  "open",
+ "parse-changelog",
  "paste",
  "predicate",
  "predicates",
@@ -629,7 +630,7 @@ dependencies = [
  "chrono",
  "clap",
  "env_logger",
- "genai",
+ "genai 0.1.23",
  "include_dir",
  "log",
  "path-slash",
@@ -645,8 +646,11 @@ dependencies = [
 
 [[package]]
 name = "e_crate_version_checker"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
+ "genai 0.2.2",
+ "parse-changelog",
+ "rand 0.8.5",
  "reqwest",
  "serde",
  "serde_json",
@@ -928,6 +932,27 @@ dependencies = [
  "serde_with",
  "tokio",
  "tokio-stream",
+ "value-ext",
+]
+
+[[package]]
+name = "genai"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f845eb241a89a88497d54cca944333ce6255a00b6ff22001f088bd1dd3a6276"
+dependencies = [
+ "bytes",
+ "derive_more 2.0.1",
+ "eventsource-stream",
+ "futures",
+ "reqwest",
+ "reqwest-eventsource",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
+ "tokio-stream",
+ "tracing",
  "value-ext",
 ]
 
@@ -1493,6 +1518,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
+name = "lexopt"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fa0e2a1fcbe2f6be6c42e342259976206b383122fc152e872795338b5a3f3a7"
+
+[[package]]
 name = "libc"
 version = "0.2.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1865,6 +1896,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-changelog"
+version = "0.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "273a60ea03abb9825bb3034849496510a4aa9d438449cb5a7cb842e954e86490"
+dependencies = [
+ "indexmap 2.9.0",
+ "lexopt",
+ "memchr",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2033,7 +2078,7 @@ checksum = "b820744eb4dc9b57a3398183639c511b5a26d2ed702cedd3febaa1393caa22cc"
 dependencies = [
  "bytes",
  "getrandom 0.3.2",
- "rand",
+ "rand 0.9.0",
  "ring",
  "rustc-hash",
  "rustls",
@@ -2086,13 +2131,34 @@ dependencies = [
 
 [[package]]
 name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "libc",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
- "rand_chacha",
- "rand_core",
+ "rand_chacha 0.9.0",
+ "rand_core 0.9.3",
  "zerocopy",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -2102,7 +2168,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.9.3",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom 0.2.15",
 ]
 
 [[package]]
