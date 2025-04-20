@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "e_crate_version_checker"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "genai 0.2.2",
  "parse-changelog",
