@@ -69,7 +69,7 @@ name = "cargo-e"
 path = "src/main.rs"
 
 [dependencies]
-e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.16", optional = true }
+e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.17", optional = true }
 e_ai_summarize = { path = "../addendum/e_ai_summarize", version = "0.1.7", optional = true }
 anyhow = "1.0.97"
 clap = { version = "4.5.31", features = ["derive"] }
