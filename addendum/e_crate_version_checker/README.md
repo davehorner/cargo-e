@@ -130,6 +130,12 @@ printf "\ny\n" \
     E_CRATE_FORCE_INTERACTIVE=1 \
     cargo run --features fortune,changelog -- package-name
 ```
+```powershell
+$Env:E_CRATE_CURRENT_VERSION='0.1.0'; `
+$Env:E_CRATE_DRY_RUN='1'; `
+$Env:E_CRATE_FORCE_INTERACTIVE='1'; `
+'y' | cargo run --features fortune,changelog -- package-name
+```
 Replace `package-name` with the crate you want to test. This will trigger fortunes and changelog display even for the default `interactive_crate_upgrade` flow.
 
 ## Contributing
