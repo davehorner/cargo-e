@@ -24,7 +24,7 @@ pub enum CargoDiagnosticLevel {
 //     pub highlight_end: usize,
 // }
 
-/// A span (i.e. file location) associated with a diagnostic.
+// A span (i.e. file location) associated with a diagnostic.
 // #[derive(Debug, Clone)]
 // pub struct CargoDiagnosticSpan {
 //     pub file_name: String,

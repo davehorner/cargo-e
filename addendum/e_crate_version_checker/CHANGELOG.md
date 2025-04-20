@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 
 
 
+## [0.1.19](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.18...e_crate_version_checker-v0.1.19) - 2025-04-20
+
+### Added
+
+- *(tauri)* Improved find_manifest_dir function to handle src-tauri/Cargo.toml fix warnings.
+
 ## [0.1.18](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.17...e_crate_version_checker-v0.1.18) - 2025-04-20
 
 ### Other

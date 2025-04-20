@@ -330,7 +330,7 @@ pub fn collect_samples(
     let refined_targets: Vec<CargoTarget> = targets_map.into_values().collect();
     // Now do an additional deduplication pass based on origin and name.
     let deduped_targets = crate::e_target::dedup_targets(refined_targets);
-    return Ok(deduped_targets);
+    Ok(deduped_targets)
     //    return Ok(refined_targets);
 
     // let mut target_map: std::collections::HashMap<String, CargoTarget> =

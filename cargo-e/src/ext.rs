@@ -116,7 +116,7 @@ impl ExtContext {
                     {
                         if plugin.source().map(PathBuf::from) == Some(plugin_path.clone()) {
                             // Convert to plugin_api::Target
-                            let plugin_target =
+                            let _plugin_target =
                                 crate::plugins::plugin_api::Target::from(target.clone());
                             // Run in-process via plugin
                             plugin.run_with_manager(self.manager.clone(), &self.cli, target)?;

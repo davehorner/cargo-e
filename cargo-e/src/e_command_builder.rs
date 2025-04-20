@@ -75,7 +75,7 @@ impl CargoCommandBuilder {
             terminal_error_flag: Arc::new(Mutex::new(false)),
             sender: Some(sender),
             diagnostics: Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new())),
-            is_filter: is_filter,
+            is_filter,
         };
         builder.set_default_dispatchers();
 
@@ -226,7 +226,7 @@ impl CargoCommandBuilder {
                         // *counts.entry(diag_level).or_insert(0) += 1;
                         // let current_count = counts.get(&diag_level).unwrap_or(&0);
                         // existing_diag.diag_number = Some(*current_count);
-                        println!("{:?}", existing_diag);
+                        //println!("{:?}", existing_diag);
                         diags.push(existing_diag.clone());
                     }
                     log::trace!("Diagnostic line: {}", _line);
@@ -375,7 +375,7 @@ impl CargoCommandBuilder {
                     suggestion_m.store(false, Ordering::Relaxed);
                     // End of current diagnostic: take and process it.
                     if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
-                        println!("{:?}", pending_diag);
+                        //println!("{:?}", pending_diag);
                         // Use diagnostics_arc instead of self.diagnostices
                         let mut diags = diagnostics_arc.lock().unwrap();
                         diags.push(pending_diag.clone());
@@ -989,7 +989,7 @@ impl CargoCommandBuilder {
     //     result
     // }
 
-    /// Runs the cargo command using the builder's configuration.
+    // Runs the cargo command using the builder's configuration.
     // pub fn run(&self) -> anyhow::Result<CargoProcessResult> {
     //     // Build the command using the builder's configuration
     //     let mut command = self.build_command();
@@ -1471,7 +1471,7 @@ mod tests {
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
 
         let manifest_path = PathBuf::from("Cargo.toml");
-        let args = CargoCommandBuilder::new(&manifest_path, &"run".to_string(), false)
+        let args = CargoCommandBuilder::new(&manifest_path, "run", false)
             .with_target(&target)
             .with_extra_args(&extra_args)
             .build();

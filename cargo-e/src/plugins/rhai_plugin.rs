@@ -32,6 +32,7 @@ use std::{
 };
 
 /// A Rhai-based plugin implementation for the `Plugin` trait.
+#[allow(dead_code)]
 pub struct RhaiPlugin {
     name: String,
     engine: Engine,

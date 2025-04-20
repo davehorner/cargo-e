@@ -3,30 +3,47 @@ use anyhow::{anyhow, Result};
 use log::trace;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{fs, io};
 use toml::Value;
 
 /// Locate the Cargo.toml by invoking `cargo locate-project --message-format plain`.
 /// If `workspace` is true, the `--workspace` flag is added so that the manifest
 /// for the workspace root is returned.
+/// Locate the Cargo.toml for the project, preferring `src-tauri/Cargo.toml` if it exists.
 pub fn locate_manifest(workspace: bool) -> Result<String, Box<dyn Error>> {
+    // Attempt to locate the project manifest via Cargo
     let mut args = vec!["locate-project", "--message-format", "plain"];
     if workspace {
         args.push("--workspace");
     }
 
     let output = Command::new("cargo").args(&args).output()?;
-    if !output.status.success() {
-        return Err("cargo locate-project failed".into());
+    // Parse Cargo output if successful
+    let manifest_from_cargo = if output.status.success() {
+        let m = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !m.is_empty() {
+            Some(m)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Fallback: prefer a src-tauri manifest if present
+    let fallback_path = Path::new("src-tauri").join("Cargo.toml");
+    if fallback_path.exists() {
+        return Ok(fallback_path.to_string_lossy().into_owned());
     }
 
-    let manifest = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if manifest.is_empty() {
-        return Err("No Cargo.toml found".into());
+    // Otherwise, use the manifest Cargo found
+    if let Some(m) = manifest_from_cargo {
+        return Ok(m);
     }
-    Ok(manifest)
+
+    Err("No Cargo.toml found".into())
 }
 
 /// Parses the workspace manifest (in TOML format) to return a vector of workspace member names and
@@ -91,34 +108,39 @@ pub(crate) fn maybe_patch_manifest_for_run(manifest_path: &Path) -> Result<Optio
     Ok(None)
 }
 
-/// Search upward from the current directory for Cargo.toml.
-pub fn find_manifest_dir() -> std::io::Result<PathBuf> {
+/// Search upward from the current directory for Cargo.toml, with a fallback to `src-tauri/Cargo.toml`.
+pub fn find_manifest_dir() -> io::Result<PathBuf> {
     let mut dir = std::env::current_dir()?;
     loop {
         if dir.join("Cargo.toml").exists() {
             return Ok(dir);
         }
-        // Stop if we cannot go any higher.
         if !dir.pop() {
             break;
         }
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
+
+    // Fallback: prefer a src-tauri manifest if present
+    let fallback = Path::new("src-tauri").join("Cargo.toml");
+    if fallback.exists() {
+        return Ok(fallback
+            .parent()
+            .expect("src-tauri/Cargo.toml has no parent")
+            .to_path_buf());
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
         "Could not locate Cargo.toml in the current or parent directories.",
     ))
 }
 
-/// Searches upward from the given starting directory for a Cargo.toml file
-/// and returns the directory containing it.
-pub fn find_manifest_dir_from(start: &std::path::Path) -> std::io::Result<PathBuf> {
+/// Searches upward from the given starting directory for a Cargo.toml file,
+/// with a fallback to `src-tauri/Cargo.toml` if none is found above.
+pub fn find_manifest_dir_from(start: &Path) -> io::Result<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
-        trace!(
-            "{:?} {:?}",
-            start.display(),
-            dir.join("Cargo.toml").display()
-        );
+        trace!("Checking {}", dir.join("Cargo.toml").display());
         if dir.join("Cargo.toml").exists() {
             return Ok(dir);
         }
@@ -126,8 +148,18 @@ pub fn find_manifest_dir_from(start: &std::path::Path) -> std::io::Result<PathBu
             break;
         }
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
+
+    // Fallback: prefer a src-tauri manifest if present
+    let fallback = Path::new("src-tauri").join("Cargo.toml");
+    if fallback.exists() {
+        return Ok(fallback
+            .parent()
+            .expect("src-tauri/Cargo.toml has no parent")
+            .to_path_buf());
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
         "Could not locate Cargo.toml in the current or parent directories.",
     ))
 }
@@ -616,6 +648,7 @@ use crate::e_target::{CargoTarget, TargetOrigin};
 /// This version uses the new associated constructors on CargoTarget:
 /// - `from_source_file`: builds a target from a candidate file (that contains "fn main" and/or special markers).
 /// - `from_folder`: builds a target by scanning a folder for a candidate source file.
+#[allow(clippy::type_complexity)]
 pub fn get_runnable_targets(
     manifest_path: &Path,
 ) -> anyhow::Result<(

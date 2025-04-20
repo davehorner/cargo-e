@@ -179,7 +179,7 @@ pub fn main() -> anyhow::Result<()> {
         .iter()
         .filter(|e| !e.extended && e.kind == TargetKind::Binary)
         .collect();
-
+    println!("Explicit example: {:?}", cli.explicit_example);
     if let Some(explicit) = cli.explicit_example.clone() {
         if let Some(explicit_example) = cli.explicit_example.clone() {
             let mut explicit_lock = EXPLICIT.lock().unwrap();
@@ -189,10 +189,11 @@ pub fn main() -> anyhow::Result<()> {
             let mut extra_lock = EXTRA_ARGS.lock().unwrap();
             *extra_lock = cli.extra.clone();
         }
-
+        println!("Explicit: {:?}", explicit);
         // Now call run_rust_script_with_ctrlc_handling
         e_runner::run_scriptisto_with_ctrlc_handling(explicit.clone(), cli.extra.clone());
         e_runner::run_rust_script_with_ctrlc_handling(explicit.clone(), cli.extra.clone());
+        println!("Explicit2: {:?}", explicit);
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {

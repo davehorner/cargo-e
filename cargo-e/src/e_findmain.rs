@@ -452,7 +452,7 @@ mod tests {
         let sample = CargoTarget {
             name: "sample1".to_string(),
             display_name: "dummy".to_string(),
-            manifest_path: manifest_path,
+            manifest_path,
             kind: TargetKind::Binary,
             extended: false,
             toml_specified: false,
@@ -493,7 +493,7 @@ mod tests {
         let sample = CargoTarget {
             name: "sample2".to_string(),
             display_name: "dummy".to_string(),
-            manifest_path: manifest_path,
+            manifest_path,
             kind: TargetKind::Binary,
             origin: Some(TargetOrigin::Named("sample2".into())),
             toml_specified: false,

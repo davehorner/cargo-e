@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 #[cfg(feature = "fortune")]
-use rand::{seq::IteratorRandom, thread_rng};
+use rand::{seq::IteratorRandom, rng};
 // Use parse-changelog to extract changelog sections when feature enabled
 #[cfg(feature = "changelog")]
 use parse_changelog::parse;
@@ -102,7 +102,7 @@ pub fn interactive_crate_upgrade(
     #[cfg(feature = "fortune")]
     {
         let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
-        let mut rng = thread_rng();
+        let mut rng = rng();
         if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
             println!("{}", line);
         }
@@ -210,7 +210,7 @@ pub fn interactive_crate_upgrade(
         if input == "y" || input.is_empty() {
             // Support dry-run via E_CRATE_DRY_RUN
             let dry_run = std::env::var("E_CRATE_DRY_RUN").is_ok();
-            let success = if dry_run {
+            let _success = if dry_run {
                 println!("Update complete (dry-run).");
                 true
             } else {
@@ -225,8 +225,6 @@ pub fn interactive_crate_upgrade(
                     }
                 }
             };
-            if success {
-            }
             std::process::exit(0);
         } else {
             println!("Update canceled.");
