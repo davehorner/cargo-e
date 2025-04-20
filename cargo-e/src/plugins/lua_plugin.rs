@@ -13,7 +13,7 @@ use std::{path::Path, process::Command};
 pub struct LuaPlugin {
     name: String,
     lua: &'static Lua,
-    tbl: Table<'static>,
+    tbl: Table,
     path: PathBuf,
 }
 
@@ -22,28 +22,38 @@ impl LuaPlugin {
     pub fn load(path: &Path, cli: &Cli, _manager: Arc<ProcessManager>) -> Result<Self> {
         let code = std::fs::read_to_string(path)?;
 
-        // Create Lua context and convert to static
-        let lua = Lua::new().into_static();
+        // Create a Lua context and leak it for 'static lifetime
+        let lua: &'static Lua = Box::leak(Box::new(Lua::new()));
 
         // Evaluate the Lua code, expecting it to return a table
-        let plugin_tbl: Table = lua.load(&code).eval()?; // <-- full version you asked for
+        let plugin_tbl: Table = lua
+            .load(&code)
+            .eval()
+            .map_err(|e| anyhow::anyhow!("Lua eval error in plugin {}: {:?}", path.display(), e))?;
 
         // Debug: print keys returned in the plugin table
         for pair in plugin_tbl.clone().pairs::<String, mlua::Value>() {
-            let (k, _) = pair?;
-            println!("[debug] Lua key: {}", k);
+            if let Ok((k, _)) = pair {
+                println!("[debug] Lua key: {}", k);
+            }
         }
 
         // Extract the plugin name from the table
-        let name_val = plugin_tbl.get::<_, mlua::Value>("name")?;
+        let name_val: mlua::Value = plugin_tbl
+            .get("name")
+            .map_err(|e| anyhow::anyhow!("Lua error getting 'name': {:?}", e))?;
         let name = match name_val {
-            mlua::Value::String(s) => s.to_str()?.to_owned(),
-            mlua::Value::Function(f) => f.call::<_, String>(())?,
+            mlua::Value::String(s) => s
+                .to_str()
+                .map_err(|e| anyhow::anyhow!("Lua error converting name to str: {:?}", e))?
+                .to_owned(),
+            mlua::Value::Function(f) => f
+                .call::<String>(())
+                .map_err(|e| anyhow::anyhow!("Lua error calling name function: {:?}", e))?,
             _ => anyhow::bail!("Expected 'name' to be string or function"),
         };
 
-        // Transmute the plugin table to 'static now that Lua is static
-        let tbl: Table<'static> = unsafe { std::mem::transmute(plugin_tbl) };
+        let tbl: Table = plugin_tbl;
 
         Ok(LuaPlugin {
             name,
@@ -61,21 +71,32 @@ impl Plugin for LuaPlugin {
 
     fn matches(&self, dir: &Path) -> bool {
         // Call the Lua `matches(dir)` function
-        let f: Function = self.tbl.get("matches").unwrap();
+        let f: Function = match self.tbl.get("matches") {
+            Ok(func) => func,
+            Err(_) => return false,
+        };
         f.call(dir.to_string_lossy().as_ref()).unwrap_or(false)
     }
 
     fn collect_targets(&self, dir: &Path) -> Result<Vec<Target>> {
         // Call the Lua `collect_targets(dir)` function, which returns JSON
-        let f: Function = self.tbl.get("collect_targets")?;
-        let json: String = f.call(dir.to_string_lossy().as_ref())?;
+        let f: Function = self
+            .tbl
+            .get("collect_targets")
+            .map_err(|e| anyhow::anyhow!("Lua error getting 'collect_targets' function: {:?}", e))?;
+        let json: String = f
+            .call(dir.to_string_lossy().as_ref())
+            .map_err(|e| anyhow::anyhow!("Lua error calling collect_targets: {:?}", e))?;
         let v: Vec<Target> = serde_json::from_str(&json)?;
         Ok(v)
     }
 
     fn build_command(&self, dir: &Path, target: &Target) -> Result<Command> {
         // Call the Lua `build_command(dir, target_name)` function, which returns JSON
-        let f: Function = self.tbl.get("build_command")?;
+        let f: Function = self
+            .tbl
+            .get("build_command")
+            .map_err(|e| anyhow::anyhow!("Lua error getting 'build_command' function: {:?}", e))?;
         let b = dir.to_string_lossy();
         let dir_str = b.as_ref();
         let target_str = target.name.as_str();
@@ -98,13 +119,22 @@ impl Plugin for LuaPlugin {
         let dir_str = dir.to_string_lossy().to_string();
         let tgt_str = target.name.clone();
         // 1. Try a per-target function matching the target name in the script
-        if let Some(func) = self.tbl.get::<_, Option<Function>>(target.name.as_str())? {
-            let table: Table = func.call((dir_str.clone(), tgt_str.clone()))?;
+        if let Some(func) = self
+            .tbl
+            .get::<Option<Function>>(target.name.as_str())
+            .map_err(|e| anyhow::anyhow!("Lua error getting '{}' function: {:?}", target.name, e))?
+        {
+            let table: Table = func
+                .call((dir_str.clone(), tgt_str.clone()))
+                .map_err(|e| anyhow::anyhow!("Lua error calling target '{}' function: {:?}", target.name, e))?;
             let mut result = Vec::new();
             for entry in table.sequence_values::<mlua::Value>() {
                 let val = entry.map_err(|e| anyhow::anyhow!("Lua error parsing table: {:?}", e))?;
                 let s = match val {
-                    mlua::Value::String(s) => s.to_str()?.to_string(),
+                    mlua::Value::String(s) => s
+                        .to_str()
+                        .map_err(|e| anyhow::anyhow!("Lua error converting string entry: {:?}", e))?
+                        .to_string(),
                     mlua::Value::Integer(i) => i.to_string(),
                     mlua::Value::Number(n) => n.to_string(),
                     mlua::Value::Boolean(b) => b.to_string(),
@@ -115,13 +145,22 @@ impl Plugin for LuaPlugin {
             return Ok(result);
         }
         // 2. Try a generic `run(dir, target)` function if defined in the script
-        if let Some(func) = self.tbl.get::<_, Option<Function>>("run")? {
-            let table: Table = func.call((dir_str.clone(), tgt_str.clone()))?;
+        if let Some(func) = self
+            .tbl
+            .get::<Option<Function>>("run")
+            .map_err(|e| anyhow::anyhow!("Lua error getting 'run' function: {:?}", e))?
+        {
+            let table: Table = func
+                .call((dir_str.clone(), tgt_str.clone()))
+                .map_err(|e| anyhow::anyhow!("Lua error calling 'run' function: {:?}", e))?;
             let mut result = Vec::new();
             for entry in table.sequence_values::<mlua::Value>() {
                 let val = entry.map_err(|e| anyhow::anyhow!("Lua error parsing table: {:?}", e))?;
                 let s = match val {
-                    mlua::Value::String(s) => s.to_str()?.to_string(),
+                    mlua::Value::String(s) => s
+                        .to_str()
+                        .map_err(|e| anyhow::anyhow!("Lua error converting string entry: {:?}", e))?
+                        .to_string(),
                     mlua::Value::Integer(i) => i.to_string(),
                     mlua::Value::Number(n) => n.to_string(),
                     mlua::Value::Boolean(b) => b.to_string(),

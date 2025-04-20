@@ -25,7 +25,7 @@ reqwest = { version = "0.12", features = ["blocking", "json"], optional=true }
 serde = { version = "1.0", features = ["derive"], optional=true }
 serde_json = { version = "1.0", optional=true}
 # Random selection for fortunes
-rand = { version = "0.8", optional = true }
+rand = { version = "0.9", optional = true }
 # semver = { version = "1.0.26", optional = true }
   
 [build-dependencies]
