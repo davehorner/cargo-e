@@ -578,6 +578,7 @@ pub mod tui_interactive {
         })?;
         // let ret=manager.wait(pid, None)?;
         let handle = manager.get(pid).unwrap().clone();
+        let start_time = handle.lock().unwrap().start_time;
         // let mut child = cmd.spawn()?;
         // if cli.print_instruction {
         //     println!("Process started. Press Ctrl+C to terminate or 'd' to detach...");
@@ -586,14 +587,16 @@ pub mod tui_interactive {
         let mut status_code: i32 = -255;
         let mut detached = false;
         let shared_child = handle.clone();
-        let mut system = System::new_all();
+        let system = Arc::new(Mutex::new(System::new_all()));
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
         // Refresh CPU usage to get actual value.
-        system.refresh_processes_specifics(
+        let mut system_guard = system.lock().unwrap();
+        system_guard.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
             ProcessRefreshKind::nothing().with_cpu(),
         );
+        drop(system_guard);
         // Now we enter an event loop, periodically checking if the child has exited
         // and polling for keyboard input.
         {
@@ -667,17 +670,18 @@ pub mod tui_interactive {
             // Only update the status display every SAMPLE_INTERVAL iterations.
             if sample_count % SAMPLE_INTERVAL == 0 {
                 // system.refresh_all();
-
-                // Refresh CPU usage to get actual value.
-                system.refresh_processes_specifics(
+                let mut system_guard = system.lock().unwrap();
+                system_guard.refresh_processes_specifics(
                     ProcessesToUpdate::All,
                     true,
                     ProcessRefreshKind::nothing().with_cpu(),
                 );
+                drop(system_guard);
+                // Refresh CPU usage to get actual value.
                 let status_display = ProcessManager::format_process_status(
                     pid,
-                    &handle,
-                    &system,
+                    Some(start_time),
+                    system.clone(),
                     &target,
                     (index + 1, examples.len()),
                 );

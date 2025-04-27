@@ -8,8 +8,10 @@ fn main() {
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=src/");
     // If "changelog" feature is enabled, set default changelog path if not overridden
-    if std::env::var("CARGO_FEATURE_CHANGELOG").is_ok() && std::env::var("E_CRATE_CHANGELOG_PATH").is_err() {
-            println!("cargo:rustc-env=E_CRATE_CHANGELOG_PATH=../cargo-e.CHANGELOG.md");
+    if std::env::var("CARGO_FEATURE_CHANGELOG").is_ok()
+        && std::env::var("E_CRATE_CHANGELOG_PATH").is_err()
+    {
+        println!("cargo:rustc-env=E_CRATE_CHANGELOG_PATH=../cargo-e.CHANGELOG.md");
     }
 
     // If "fortune" feature is enabled, select external file or generate default fortunes

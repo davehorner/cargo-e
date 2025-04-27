@@ -476,13 +476,121 @@ pub fn run_example(
 
     // Check if the manifest triggers the workspace error.
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
-
-    let pid = Arc::new(builder).run(|_pid, handle| {
+    let a_blder = Arc::new(builder.clone());
+    let pid = a_blder.run(|_pid, handle| {
         manager.register(handle);
     })?;
     let result = manager.wait(pid, None)?;
     // println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));
     // println!("\n\nHERE IS THE RESULT!{} {:?}",pid,result);
+    if result
+        .exit_status
+        .map_or(false, |status| status.code() == Some(101))
+    {
+        println!(
+            "ProcessManager senses pid {} cargo error, running again to capture and analyze",
+            pid
+        );
+        match builder.clone().capture_output() {
+            Ok(output) => {
+                if output.contains("error: failed to load manifest for workspace member") {
+                    println!("cargo-e error: failed to load manifest for workspace member, please check your workspace configuration.");
+                    println!("cargo-e autorecovery: removing manfifest path from argument and changing to parent of Cargo.toml.");
+                    let cwd = target
+                        .manifest_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."));
+                    // Rebuild the command with the new cwd
+                    builder.execution_dir = Some(cwd.to_path_buf());
+                    // Remove --manifest-path and its associated value from the args array
+                    if let Some(pos) = builder.args.iter().position(|arg| arg == "--manifest-path")
+                    {
+                        // Remove --manifest-path and the next argument (the manifest path value)
+                        builder.args.remove(pos); // Remove --manifest-path
+                        if pos < builder.args.len() {
+                            builder.args.remove(pos); // Remove the manifest path value
+                        }
+                    }
+                    let mut cmd = builder.clone().build_command();
+                    cmd.current_dir(cwd);
+
+                    // Retry the command execution
+                    let mut child = cmd.spawn()?;
+                    let status = child.wait()?;
+                    return Ok(Some(status)); // Return the exit status after retrying
+                                             // return run_example(manager, cli, target);  // Recursively call run_example
+                }
+                if output.contains("no such command: `tauri`") {
+                    println!("cargo tauri is not installed, please install it with cargo install tauri-cli");
+                    // Use the yesno function to prompt the user
+                    match crate::e_prompts::yesno(
+                        "Do you want to install tauri-cli?",
+                        Some(true), // Default to yes
+                    ) {
+                        Ok(Some(true)) => {
+                            println!("Installing tauri-cli...");
+                            match spawn_cargo_process(&["install", "tauri-cli"]) {
+                                Ok(mut child) => {
+                                    child.wait().ok(); // Wait for the installation to finish
+                                } // Installation successful
+                                Err(e) => {
+                                    eprintln!("Error installing tauri-cli: {}", e);
+                                }
+                            }
+                        }
+                        Ok(Some(false)) => {}
+                        Ok(None) => {
+                            println!("Installation cancelled (timeout or invalid input).");
+                        }
+                        Err(e) => {
+                            eprintln!("Error during prompt: {}", e);
+                        }
+                    }
+                } else if output.contains("error: no such command: `leptos`") {
+                    println!("cargo-leptos is not installed, please install it with cargo install cargo-leptos");
+                    // Use the yesno function to prompt the user
+                    match crate::e_prompts::yesno(
+                        "Do you want to install cargo-leptos?",
+                        Some(true), // Default to yes
+                    ) {
+                        Ok(Some(true)) => {
+                            println!("Installing cargo-leptos...");
+                            match spawn_cargo_process(&["install", "cargo-leptos"]) {
+                                Ok(mut child) => {
+                                    child.wait().ok(); // Wait for the installation to finish
+                                } // Installation successful
+                                Err(e) => {
+                                    eprintln!("Error installing cargo-leptos: {}", e);
+                                }
+                            }
+                        }
+                        Ok(Some(false)) => {}
+                        Ok(None) => {
+                            println!("Installation cancelled (timeout or invalid input).");
+                        }
+                        Err(e) => {
+                            eprintln!("Error during prompt: {}", e);
+                        }
+                    }
+                } else if output.contains("no such command: `dx`") {
+                    println!("cargo dx is not installed, please install it with cargo install dioxus-cli");
+                } else if output.contains("no such command: `scriptisto`") {
+                    println!("cargo scriptisto is not installed, please install it with cargo install scriptisto");
+                } else if output.contains("no such command: `rust-script`") {
+                    println!("cargo rust-script is not installed, please install it with cargo install rust-script");
+                } else if output.contains(
+                    "No platform feature enabled. Please enable one of the following features:",
+                ) {
+                    println!("cargo e sees a dioxus issue; maybe a prompt in the future or auto-resolution.");
+                } else {
+                    println!("cargo error: {}", output);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error running cargo: {}", e);
+            }
+        }
+    }
     if result.is_filter {
         result.print_exact();
         result.print_short();
@@ -809,8 +917,11 @@ pub fn check_rust_script_installed() -> Result<std::path::PathBuf, Box<dyn Error
 }
 
 pub fn run_rust_script<P: AsRef<Path>>(script_path: P, args: &[&str]) -> Option<Child> {
-    let rust_script = check_rust_script_installed().ok()?;
-
+    let rust_script = check_rust_script_installed();
+    if rust_script.is_err() {
+        return None;
+    }
+    let rust_script = rust_script.unwrap();
     let script: &std::path::Path = script_path.as_ref();
     let child = Command::new(rust_script)
         .arg(script)

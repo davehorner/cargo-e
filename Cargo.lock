@@ -382,6 +382,7 @@ dependencies = [
  "env_logger",
  "futures",
  "genai",
+ "glob",
  "log",
  "mlua",
  "nix",

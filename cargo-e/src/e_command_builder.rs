@@ -14,7 +14,7 @@ use crate::e_cargocommand_ext::{CargoCommandExt, CargoDiagnostic, CargoProcessHa
 use crate::e_eventdispatcher::{
     CallbackResponse, CallbackType, CargoDiagnosticLevel, EventDispatcher,
 };
-use crate::e_runner::GLOBAL_CHILDREN;
+use crate::e_runner::{spawn_cargo_process, GLOBAL_CHILDREN};
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 use std::sync::{Arc, Mutex};
 
@@ -923,6 +923,10 @@ impl CargoCommandBuilder {
 
                     // If the status is `Some(status)`, the process has finished
                     if let Some(status) = status {
+                        if status.code() == Some(101) {
+                            println!("Process with PID {} finished with cargo error", pid);
+                        }
+
                         // Check the terminal error flag and update the result if there is an error
                         if *cargo_process_handle.terminal_error_flag.lock().unwrap()
                             != TerminalError::NoError
@@ -1053,6 +1057,7 @@ impl CargoCommandBuilder {
                         .unwrap_or_default()
                         .to_owned(),
                 );
+                self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::UnknownBinary
             | TargetKind::UnknownExtendedBinary
@@ -1070,6 +1075,7 @@ impl CargoCommandBuilder {
                         .unwrap_or_default()
                         .to_owned(),
                 );
+                self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::Manifest => {
                 self.suppressed_flags.insert("quiet".to_string());
@@ -1098,6 +1104,7 @@ impl CargoCommandBuilder {
                         .unwrap_or_default()
                         .to_owned(),
                 );
+                self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::ScriptScriptisto => {
                 let exe_path = match which("scriptisto") {
@@ -1121,10 +1128,10 @@ impl CargoCommandBuilder {
                 }
             }
             TargetKind::ScriptRustScript => {
-                let exe_path = match which("rust-script") {
-                    Ok(path) => path,
-                    Err(err) => {
-                        eprintln!("Error: 'rust-script' not found in PATH: {}", err);
+                let exe_path = match crate::e_installer::ensure_rust_script() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("{}", e);
                         return self;
                     }
                 };
@@ -1144,10 +1151,36 @@ impl CargoCommandBuilder {
                 }
             }
             TargetKind::ManifestTauri => {
+                // First, locate the Cargo.toml using the existing function
+                let manifest_path = crate::locate_manifest(true).unwrap_or_else(|_| {
+                    eprintln!("Error: Unable to locate Cargo.toml file.");
+                    std::process::exit(1);
+                });
+
+                // Now, get the workspace parent from the manifest directory
+                let manifest_dir = Path::new(&manifest_path)
+                    .parent()
+                    .unwrap_or(Path::new(".."));
+
+                let pnpm =
+                    crate::e_installer::check_pnpm_and_install(manifest_dir).unwrap_or_else(|_| {
+                        eprintln!("Error: Unable to check pnpm dependencies.");
+                        std::process::exit(1);
+                    });
+                // Ensure npm dependencies are handled at the workspace parent level
+                if pnpm == PathBuf::new() {
+                    crate::e_installer::check_npm_and_install(manifest_dir).unwrap_or_else(|_| {
+                        eprintln!("Error: Unable to check npm dependencies.");
+                        std::process::exit(1);
+                    });
+                }
+
                 self.suppressed_flags.insert("quiet".to_string());
                 // Helper closure to check for tauri.conf.json in a directory.
                 let has_tauri_conf = |dir: &Path| -> bool { dir.join("tauri.conf.json").exists() };
 
+                // Helper closure to check for tauri.conf.json and package.json in a directory.
+                let has_file = |dir: &Path, filename: &str| -> bool { dir.join(filename).exists() };
                 // Try candidate's parent (if origin is SingleFile or DefaultBinary).
                 let candidate_dir_opt = match &target.origin {
                     Some(TargetOrigin::SingleFile(path))
@@ -1181,6 +1214,11 @@ impl CargoCommandBuilder {
                             target.manifest_path.display()
                         );
                     }
+                    // Check for package.json and run npm ls if found.
+                    println!("Checking for package.json in: {}", candidate_dir.display());
+                    if has_file(candidate_dir, "package.json") {
+                        crate::e_installer::check_npm_and_install(candidate_dir).ok();
+                    }
                 } else if let Some(manifest_parent) = target.manifest_path.parent() {
                     if has_tauri_conf(manifest_parent) {
                         println!("Using manifest parent: {}", manifest_parent.display());
@@ -1196,6 +1234,17 @@ impl CargoCommandBuilder {
                             );
                             self.execution_dir = Some(manifest_parent.to_path_buf());
                         }
+                    }
+                    // Check for package.json and run npm ls if found.
+                    println!(
+                        "Checking for package.json in: {}",
+                        manifest_parent.display()
+                    );
+                    if has_file(manifest_parent, "package.json") {
+                        crate::e_installer::check_npm_and_install(manifest_parent).ok();
+                    }
+                    if has_file(Path::new("."), "package.json") {
+                        crate::e_installer::check_npm_and_install(manifest_parent).ok();
                     }
                 } else {
                     println!(
@@ -1242,10 +1291,10 @@ impl CargoCommandBuilder {
                 }
 
                 // fallback to trunk
-                let exe_path = match which("trunk") {
-                    Ok(path) => path,
-                    Err(err) => {
-                        eprintln!("Error: 'trunk' not found in PATH: {}", err);
+                let exe_path = match crate::e_installer::ensure_trunk() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("{}", e);
                         return self;
                     }
                 };
@@ -1272,14 +1321,14 @@ impl CargoCommandBuilder {
                 self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::ManifestDioxus => {
-                let exe_path = match which("dx") {
+                // For Dioxus targets, print the manifest path and set the execution directory
+                let exe_path = match crate::e_installer::ensure_dx() {
                     Ok(path) => path,
-                    Err(err) => {
-                        eprintln!("Error: 'dx' not found in PATH: {}", err);
+                    Err(e) => {
+                        eprintln!("Error locating `dx`: {}", e);
                         return self;
                     }
                 };
-                // For Dioxus targets, print the manifest path and set the execution directory
                 // to be the same directory as the manifest.
                 if let Some(manifest_parent) = target.manifest_path.parent() {
                     println!("Manifest path: {}", target.manifest_path.display());
@@ -1299,10 +1348,10 @@ impl CargoCommandBuilder {
                 self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::ManifestDioxusExample => {
-                let exe_path = match which("dx") {
+                let exe_path = match crate::e_installer::ensure_dx() {
                     Ok(path) => path,
-                    Err(err) => {
-                        eprintln!("Error: 'dx' not found in PATH: {}", err);
+                    Err(e) => {
+                        eprintln!("Error locating `dx`: {}", e);
                         return self;
                     }
                 };
@@ -1388,36 +1437,79 @@ impl CargoCommandBuilder {
         self.args
     }
 
-    /// Optionally, builds a std::process::Command.
-    pub fn build_command(&self) -> Command {
-        let mut is_cargo = false;
+    pub fn is_compiler_target(&self) -> bool {
+        let supported_subcommands = ["run", "build", "check", "leptos"];
+        if let Some(alternate) = &self.alternate_cmd {
+            if alternate != "cargo" {
+                return false;
+            }
+        }
+        if let Some(_) = self
+            .args
+            .iter()
+            .position(|arg| supported_subcommands.contains(&arg.as_str()))
+        {
+            return true;
+        }
+        false
+    }
+
+    pub fn injected_args(&self) -> (String, Vec<String>) {
         let mut new_args = self.args.clone();
         let supported_subcommands = [
             "run", "build", "test", "bench", "clean", "doc", "publish", "update",
         ];
 
-        let mut cmd = if let Some(alternate) = &self.alternate_cmd {
-            Command::new(alternate)
-        } else {
-            is_cargo = true;
-            Command::new("cargo")
-        };
-        if is_cargo && self.is_filter {
+        if self.is_filter {
             if let Some(pos) = new_args
                 .iter()
                 .position(|arg| supported_subcommands.contains(&arg.as_str()))
             {
-                // If the command is "cargo run", insert the JSON output format and color options.
+                // If the command is a supported subcommand like "cargo run", insert the JSON output format and color options.
                 new_args.insert(pos + 1, "--message-format=json".into());
                 new_args.insert(pos + 2, "--color".into());
                 new_args.insert(pos + 3, "always".into());
             }
         }
+
+        let program = self.alternate_cmd.as_deref().unwrap_or("cargo").to_string();
+        (program, new_args)
+    }
+
+    pub fn print_command(&self) {
+        let (program, new_args) = self.injected_args();
+        println!("{} {}", program, new_args.join(" "));
+    }
+
+    /// builds a std::process::Command.
+    pub fn build_command(&self) -> Command {
+        let (program, new_args) = self.injected_args();
+
+        let mut cmd = Command::new(program);
         cmd.args(new_args);
+
         if let Some(dir) = &self.execution_dir {
             cmd.current_dir(dir);
         }
+
         cmd
+    }
+    /// Runs the command and returns everything it printed (stdout + stderr),
+    /// regardless of exit status.
+    pub fn capture_output(&self) -> anyhow::Result<String> {
+        // Build and run
+        let mut cmd = self.build_command();
+        let output = cmd
+            .output()
+            .map_err(|e| anyhow::anyhow!("Failed to spawn cargo process: {}", e))?;
+
+        // Decode both stdout and stderr lossily
+        let mut all = String::new();
+        all.push_str(&String::from_utf8_lossy(&output.stdout));
+        all.push_str(&String::from_utf8_lossy(&output.stderr));
+
+        // Return the combined string, even if exit was !success
+        Ok(all)
     }
 }
 /// Resolves a file path by:

@@ -30,12 +30,18 @@ mod tests {
         let parsed = parse(changelog).expect("Failed to parse FULL_CHANGELOG");
         // Expect a known version from the consumer's changelog
         let version = "0.2.14";
-        assert!(parsed.get(version).is_some(),
-            "Changelog should contain section for version {}", version);
+        assert!(
+            parsed.get(version).is_some(),
+            "Changelog should contain section for version {}",
+            version
+        );
         let notes = &parsed.get(version).unwrap().notes;
         // Check for a known substring from that section
-        assert!(notes.contains("rust-script / scriptisto kind detection"),
-            "Changelog notes for version {} should contain expected text", version);
+        assert!(
+            notes.contains("rust-script / scriptisto kind detection"),
+            "Changelog notes for version {} should contain expected text",
+            version
+        );
     }
 }
 

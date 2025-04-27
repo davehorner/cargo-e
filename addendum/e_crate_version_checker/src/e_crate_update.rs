@@ -101,7 +101,11 @@ pub mod version {
                 if status.as_u16() == 404 {
                     return Err(format!("crate '{}' not found on crates.io", crate_name).into());
                 } else {
-                    return Err(format!("HTTP error {} fetching crate info for '{}'", status, crate_name).into());
+                    return Err(format!(
+                        "HTTP error {} fetching crate info for '{}'",
+                        status, crate_name
+                    )
+                    .into());
                 }
             }
             // Parse JSON body for crate info

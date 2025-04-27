@@ -36,6 +36,7 @@ pub mod e_discovery;
 pub mod e_eventdispatcher;
 pub mod e_features;
 pub mod e_fmt;
+pub mod e_installer;
 pub mod e_prebuild;
 pub mod e_processmanager;
 pub mod e_prompts;

@@ -165,19 +165,19 @@ pub fn main() -> anyhow::Result<()> {
         .clone()
         .into_iter()
         .filter(|e| {
-            let key = (e.name.clone(), e.extended, e.kind);
+            let key = (e.name.clone(), e.extended, e.kind, e.toml_specified);
             seen.insert(key)
         })
         .collect();
 
-    let builtin_examples: Vec<&CargoTarget> = unique_examples
+    let builtin_examples: Vec<&CargoTarget> = examples
         .iter()
-        .filter(|e| !e.extended && matches!(e.kind, TargetKind::Example))
+        .filter(|e| e.toml_specified && matches!(e.kind, TargetKind::Example))
         .collect();
 
-    let builtin_binaries: Vec<&CargoTarget> = unique_examples
+    let builtin_binaries: Vec<&CargoTarget> = examples
         .iter()
-        .filter(|e| !e.extended && e.kind == TargetKind::Binary)
+        .filter(|e| e.toml_specified && e.kind == TargetKind::Binary)
         .collect();
     println!("Explicit example: {:?}", cli.explicit_example);
     if let Some(explicit) = cli.explicit_example.clone() {
@@ -508,7 +508,7 @@ fn provide_notice_of_no_examples(
         .count();
 
     println!(
-        "0 built-in examples ({} alternatives: {} examples, {} binaries).",
+        "({} targets: {} examples, {} binaries)",
         examples.len(),
         ex_count,
         bin_count
@@ -578,29 +578,9 @@ fn select_and_run_target_loop(
         cli.wait
     );
     // Build a combined list: examples first, then binaries.
-    let mut combined: Vec<(&str, &CargoTarget)> = Vec::new();
+    let mut combined: Vec<(String, &CargoTarget)> = Vec::new();
     for target in unique_targets {
-        let label = match target.kind {
-            TargetKind::ScriptScriptisto => "scriptisto",
-            TargetKind::ScriptRustScript => "rust-script",
-            TargetKind::UnknownExample | TargetKind::UnknownExtendedExample => "?-ex.",
-            TargetKind::UnknownBinary | TargetKind::UnknownExtendedBinary => "?-bin",
-            TargetKind::Example => "ex.",
-            TargetKind::ExtendedExample => "exx",
-            TargetKind::Binary => "bin",
-            TargetKind::ExtendedBinary => "binx",
-            TargetKind::ManifestTauri => "tauri",
-            TargetKind::ManifestTauriExample => "tauri-e",
-            TargetKind::ManifestDioxus => "dioxus",
-            TargetKind::ManifestDioxusExample => "dioxus-e",
-            TargetKind::ManifestLeptos => "leptos",
-            TargetKind::Bench => "bench",
-            TargetKind::Test => "test",
-            TargetKind::Manifest => "manifest",
-            // Plugin-provided target
-            TargetKind::Plugin => "plugin",
-            TargetKind::Unknown => "unknown",
-        };
+        let label = target.display_label();
         combined.push((label, target));
     }
 
@@ -815,7 +795,7 @@ pub fn append_run_history(target_name: &str) -> io::Result<()> {
 fn process_input(
     manager: Arc<ProcessManager>,
     input: &str,
-    combined: &[(&str, &CargoTarget)],
+    combined: &[(String, &CargoTarget)],
     cli: &Cli,
     offset: usize, // offset for the current page
 ) -> Result<LoopResult, Box<dyn Error + Send + Sync>> {
@@ -846,7 +826,7 @@ fn process_input(
                 eprintln!("error: Invalid target number for edit: {}", trimmed);
                 Ok(LoopResult::Quit)
             } else {
-                let (target_type, target) = combined[abs_index];
+                let (target_type, target) = &combined[abs_index];
                 println!("info {} \"{}\"...", target_type, target.name);
                 futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(target));
                 cargo_e::e_prompts::prompt_line("", 120).ok();
@@ -873,7 +853,7 @@ fn process_input(
                 eprintln!("error: Invalid target number for edit: {}", trimmed);
                 Ok(LoopResult::Quit)
             } else {
-                let (target_type, target) = combined[abs_index];
+                let (target_type, target) = &combined[abs_index];
                 println!("editing {} \"{}\"...", target_type, target.name);
                 // Call the appropriate function to open the target for editing.
                 // For example, if using VSCode:
@@ -899,7 +879,7 @@ fn process_input(
             eprintln!("invalid number: {}", trimmed);
             Ok(LoopResult::Quit)
         } else {
-            let (target_type, target) = combined[abs_index];
+            let (target_type, target) = &combined[abs_index];
             if cli.print_program_name {
                 println!("running {} \"{}\"...", target_type, target.name);
             }

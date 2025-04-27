@@ -113,6 +113,7 @@ mlua = { version = "0.10", features = ["lua54", "vendored"], optional = true }
 wasmtime = { version = "31.0.0", optional = true }
 wasmtime-wasi = { version = "31", features = ["preview1"], optional = true }
 wasmparser = { version = "0.229.0", optional = true }
+glob = "0.3.2"
 # scotch-host = { git = "https://github.com/davehorner/scotch.git", branch = "feature/long-live-scotch", package = "scotch-host", version = "0.1.0",optional = true }
 # scotch-guest-macros = { git = "https://github.com/davehorner/scotch.git", branch = "feature/long-live-scotch", package = "scotch-guest-macros", version = "0.1.0",optional = true }
 # scotch-host-macros  = { git = "https://github.com/davehorner/scotch.git", branch = "feature/long-live-scotch", package = "scotch-host-macros",  version = "0.1.0",optional = true }    
