@@ -68,6 +68,9 @@ impl ProcessManager {
         manager
     }
 
+    pub fn reset_signalled(&self) {
+        self.signalled_count.store(0, Ordering::SeqCst);
+    }
     pub fn has_signalled(&self) -> usize {
         self.signalled_count.load(Ordering::SeqCst)
     }
@@ -80,7 +83,6 @@ impl ProcessManager {
             }
         }) {
             Ok(_) => {
-                println!("ctrlc> Ctrl+C handler installed.");
                 thread::spawn(move || {
                     while rx.recv().is_ok() {
                         self_.signalled_count.fetch_add(1, Ordering::SeqCst);
@@ -151,6 +153,13 @@ impl ProcessManager {
 
     pub fn take(&self, pid: u32) -> Option<Arc<Mutex<CargoProcessHandle>>> {
         self.processes.lock().unwrap().remove(&pid)
+    }
+
+    pub fn remove(&self, pid: u32) {
+        if let Some(handle_arc) = self.processes.lock().unwrap().remove(&pid) {
+            // This was the only Arc reference, so dropping it here will run CargoProcessHandle::drop()
+            drop(handle_arc);
+        }
     }
 
     pub fn try_wait(&self, pid: u32) -> anyhow::Result<Option<ExitStatus>> {
@@ -379,10 +388,19 @@ impl ProcessManager {
                             }
                             #[cfg(windows)]
                             {
+                                // Remove the handle so it drops (and on Windows that will kill if still alive)
+                                {
+                                    let mut procs = self.processes.lock().unwrap();
+                                    procs.remove(&pid);
+                                }
+
                                 eprintln!("Attempt {}: killing PID {}", attempts + 1, pid);
                                 if let Err(e) = h.child.kill() {
                                     eprintln!("Failed to kill PID {}: {}", pid, e);
                                 }
+                                _ = std::process::Command::new("taskkill")
+                                    .args(["/F", "/PID", &pid.to_string()])
+                                    .spawn();
                             }
                             h.requested_exit = true;
                         }
@@ -404,7 +422,6 @@ impl ProcessManager {
                 // Give it a moment before retrying
                 thread::sleep(Duration::from_secs(2));
             }
-
             // Remove the handle so it drops (and on Windows that will kill if still alive)
             {
                 let mut procs = self.processes.lock().unwrap();
@@ -1030,24 +1047,27 @@ impl ProcessManager {
 
     pub fn format_process_status(
         pid: u32,
-        handle: &Arc<Mutex<CargoProcessHandle>>,
-        system: &System,
+        start_time: Option<SystemTime>,
+        system: Arc<Mutex<System>>,
         target: &CargoTarget,
         target_dimensions: (usize, usize),
     ) -> String {
-        // Assume start_time has been initialized.
-        let start_time = handle
-            .clone()
-            .lock()
-            .expect("Failed to lock handle")
-            .start_time;
-        let start_dt: chrono::DateTime<Local> = start_time.into();
-        let start_str = start_dt.format("%H:%M:%S").to_string();
+        // let start_dt: chrono::DateTime<Local> =
+        //     start_time.unwrap_or_else(|| SystemTime::UNIX_EPOCH).into();
+        let start_str = start_time
+            .map(|st| {
+                chrono::DateTime::<Local>::from(st)
+                    .format("%H:%M:%S")
+                    .to_string()
+            })
+            .unwrap_or_else(|| "-".to_string());
         let colored_start = nu_ansi_term::Color::LightCyan.paint(&start_str).to_string();
         let plain_start = start_str;
-
+        if start_time.is_none() {
+            return String::new();
+        }
         // Refresh the system stats and look up the process.
-        if let Some(process) = system.process((pid as usize).into()) {
+        if let Some(process) = system.lock().unwrap().process((pid as usize).into()) {
             let cpu_usage = process.cpu_usage();
             let mem_kb = process.memory();
             let mem_human = if mem_kb >= 1024 {
@@ -1058,7 +1078,12 @@ impl ProcessManager {
 
             // Calculate runtime.
             let now = SystemTime::now();
-            let runtime_duration = now.duration_since(start_time).unwrap();
+            let runtime_duration = match start_time {
+                Some(start) => now
+                    .duration_since(start)
+                    .unwrap_or_else(|_| Duration::from_secs(0)),
+                None => Duration::from_secs(0),
+            };
             let runtime_str = crate::e_fmt::format_duration(runtime_duration);
             // compute the max number of digits in either dimension:
             let max_digits = target_dimensions
@@ -1114,7 +1139,8 @@ impl ProcessManager {
 
             format!("{}{}{}", left_display, " ".repeat(padding), right_display)
         } else {
-            String::new()
+            // String::from("xxx")
+            format!("\rProcess with PID {} not found in sysinfo", pid)
         }
     }
 

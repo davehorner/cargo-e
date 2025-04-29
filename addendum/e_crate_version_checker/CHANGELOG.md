@@ -10,6 +10,13 @@ All notable changes to this project will be documented in this file.
 
 
 
+
+## [0.1.20](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.19...e_crate_version_checker-v0.1.20) - 2025-04-29
+
+### Added
+
+- cargo error detection, tauri pnpm/npm install/build automation, automate tool runner installations.
+
 ## [0.1.19](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.18...e_crate_version_checker-v0.1.19) - 2025-04-20
 
 ### Added

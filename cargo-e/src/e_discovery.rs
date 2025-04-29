@@ -128,6 +128,7 @@ pub fn determine_target_kind_and_manifest(
     file_contents: &str,
     example: bool,
     extended: bool,
+    _toml_specified: bool,
     incoming_kind: Option<TargetKind>,
 ) -> (TargetKind, PathBuf) {
     // Start with the original manifest path.
@@ -161,6 +162,13 @@ pub fn determine_target_kind_and_manifest(
             .map(|p| p.join("tauri.conf.json"))
             .map_or(false, |p| p.exists());
 
+    // println!(
+    //     "{} {} {} {}",
+    //     manifest_path.display(),
+    //     candidate.display(),
+    //     tauri_detected,
+    //     toml_specified
+    // );
     if tauri_detected {
         if example {
             return (TargetKind::ManifestTauriExample, new_manifest);

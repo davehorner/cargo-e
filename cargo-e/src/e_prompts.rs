@@ -336,3 +336,33 @@ fn drain_events() -> Result<()> {
     }
     Ok(())
 }
+
+/// Prompts the user with a yes/no question and returns true if the user answers yes, false if no,
+/// or None if the timeout expires or an error occurs.
+pub fn yesno(prompt_message: &str, default: Option<bool>) -> Result<Option<bool>> {
+    let prompt_with_default = match default {
+        Some(true) => format!("{} (Y/n)? ", prompt_message),
+        Some(false) => format!("{} (y/N)? ", prompt_message),
+        None => format!("{} (y/n)? ", prompt_message),
+    };
+
+    let result = match prompt(&prompt_with_default, 10)? {
+        Some(c) => match c {
+            'y' => Some(true),
+            'n' => Some(false),
+            _ => {
+                // Handle invalid input (e.g., by re-prompting or returning None)
+                println!("Invalid input. Please enter 'y' or 'n'.");
+                return Ok(None); // Or potentially re-prompt here.
+            }
+        },
+        None => {
+            // Timeout occurred
+            match default {
+                Some(value) => Some(value),
+                None => None,
+            }
+        }
+    };
+    Ok(result)
+}

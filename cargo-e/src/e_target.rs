@@ -2,19 +2,20 @@
 use anyhow::{Context, Result};
 use log::{debug, trace};
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap, HashSet},
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
 use toml::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TargetOrigin {
     DefaultBinary(PathBuf),
     SingleFile(PathBuf),
     MultiFile(PathBuf),
     SubProject(PathBuf),
+    TomlSpecified(PathBuf),
     Named(OsString),
     /// A target provided by a plugin, storing plugin file and reported source path
     Plugin {
@@ -23,7 +24,7 @@ pub enum TargetOrigin {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, Copy, PartialOrd, Ord)]
 pub enum TargetKind {
     Unknown,
     UnknownExample,
@@ -47,6 +48,49 @@ pub enum TargetKind {
     /// A target provided by an external plugin (script, WASM, etc.)
     Plugin,
 }
+impl TargetKind {
+    pub fn section_name(&self) -> &'static str {
+        match self {
+            // TargetKind::UnknownExample | TargetKind::UnknownExtendedExample => "?-example",
+            // TargetKind::UnknownBinary | TargetKind::UnknownExtendedBinary => "?-bin",
+            TargetKind::Example | TargetKind::ExtendedExample => "example",
+            TargetKind::Binary | TargetKind::ExtendedBinary => "bin",
+            TargetKind::ManifestTauri => "bin",
+            // TargetKind::ScriptScriptisto => "scriptisto",
+            // TargetKind::ScriptRustScript => "rust-script",
+            TargetKind::ManifestTauriExample => "example",
+            TargetKind::ManifestDioxus => "bin",
+            TargetKind::ManifestDioxusExample => "example",
+            TargetKind::ManifestLeptos => "bin",
+            TargetKind::Test => "test",
+            TargetKind::Bench => "bench",
+            // All other kinds—including Plugin—do not have required-features sections
+            _ => "",
+        }
+    }
+    pub fn label(&self) -> &'static str {
+        match self {
+            TargetKind::ScriptScriptisto => "scriptisto",
+            TargetKind::ScriptRustScript => "rust-script",
+            TargetKind::UnknownExample | TargetKind::UnknownExtendedExample => "?-ex.",
+            TargetKind::UnknownBinary | TargetKind::UnknownExtendedBinary => "?-bin",
+            TargetKind::Example => "ex.",
+            TargetKind::ExtendedExample => "exx",
+            TargetKind::Binary => "bin",
+            TargetKind::ExtendedBinary => "binx",
+            TargetKind::ManifestTauri => "tauri",
+            TargetKind::ManifestTauriExample => "tauri-e",
+            TargetKind::ManifestDioxus => "dioxus",
+            TargetKind::ManifestDioxusExample => "dioxus-e",
+            TargetKind::ManifestLeptos => "leptos",
+            TargetKind::Bench => "bench",
+            TargetKind::Test => "test",
+            TargetKind::Manifest => "manifest",
+            TargetKind::Plugin => "plugin",
+            TargetKind::Unknown => "unknown",
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct CargoTarget {
@@ -60,6 +104,14 @@ pub struct CargoTarget {
 }
 
 impl CargoTarget {
+    /// Full display label, with a `*` suffix when toml_specified.
+    pub fn display_label(&self) -> String {
+        let mut label = self.kind.label().to_string();
+        if self.toml_specified {
+            label.push('*');
+        }
+        label
+    }
     /// Constructs a CargoTarget from a source file.
     ///
     /// Reads the file at `file_path` and determines the target kind based on:
@@ -83,6 +135,7 @@ impl CargoTarget {
             &file_contents,
             example,
             extended,
+            false,
             None,
         );
         if kind == TargetKind::Unknown {
@@ -232,16 +285,24 @@ impl CargoTarget {
     //         self.display_name = name;
     //     }
 
-    pub fn figure_main_name(&mut self) {
+    pub fn figure_main_name(&mut self) -> anyhow::Result<()> {
         let mut is_toml_specified = false;
+        // if self.toml_specified {
+        //     // If the target is already specified in the manifest, return it as is.
+        //     return Ok(());
+        // }
         // Only operate if we have a candidate file path.
         let candidate = match &self.origin {
-            Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
+            Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => {
+                Some(path)
+            }
             _ => {
                 debug!("No candidate file found in target.origin; skipping name determination");
-                return;
+                None
             }
         };
+
+        let candidate = candidate.ok_or_else(|| anyhow::anyhow!("No candidate file found"))?;
 
         trace!("figure_main: {:?}", &self.origin);
 
@@ -258,7 +319,9 @@ impl CargoTarget {
         let found_manifest_dir = crate::e_manifest::find_manifest_dir_from(candidate_dir);
         if let Ok(found_dir) = found_manifest_dir {
             let found_manifest = found_dir.join("Cargo.toml");
-            if found_manifest == self.manifest_path {
+            let canon_found = found_manifest.canonicalize()?;
+            let canon_target = self.manifest_path.canonicalize()?;
+            if canon_found == canon_target {
                 trace!(
                     "{} Manifest path matches candidate's upward search result: {:?}",
                     candidate.display(),
@@ -506,6 +569,7 @@ impl CargoTarget {
         }
         self.name = name.clone();
         self.display_name = name;
+        Ok(())
     }
     /// Constructs a CargoTarget from a folder by trying to locate a runnable source file.
     ///
@@ -560,7 +624,7 @@ impl CargoTarget {
                 // For a subproject, we initially mark it as Manifest;
                 // later refinement may resolve it further.
                 kind: TargetKind::Manifest,
-                toml_specified: true,
+                toml_specified: false,
                 extended: true,
                 origin: Some(TargetOrigin::SubProject(sub_manifest)),
             });
@@ -619,6 +683,7 @@ impl CargoTarget {
             &file_contents,
             example,
             extended,
+            false,
             None,
         );
         if kind == TargetKind::Unknown {
@@ -702,7 +767,7 @@ impl CargoTarget {
             origin: Some(TargetOrigin::SingleFile(candidate)),
         };
         // Call the method to update name based on the candidate and manifest.
-        target.figure_main_name();
+        target.figure_main_name().ok();
         Some(target)
     }
     /// Returns a refined CargoTarget based on its file contents and location.
@@ -712,6 +777,10 @@ impl CargoTarget {
     pub fn refined_target(target: &CargoTarget) -> CargoTarget {
         let mut refined = target.clone();
 
+        // if target.toml_specified {
+        //     // If the target is already specified in the manifest, return it as is.
+        //     return refined;
+        // }
         // Operate only if the target has a file to inspect.
         let file_path = match &refined.origin {
             Some(TargetOrigin::SingleFile(path)) | Some(TargetOrigin::DefaultBinary(path)) => path,
@@ -727,11 +796,13 @@ impl CargoTarget {
             &file_contents,
             refined.is_example(),
             refined.extended,
+            refined.toml_specified,
             Some(refined.kind),
         );
+        if new_kind == TargetKind::ManifestDioxus {}
         refined.kind = new_kind;
         refined.manifest_path = new_manifest;
-        refined.figure_main_name();
+        refined.figure_main_name().ok();
         refined
     }
 
@@ -757,15 +828,18 @@ impl CargoTarget {
             sub_targets.extend(benches);
             sub_targets.extend(tests);
 
-            // Optionally mark these targets as extended.
-            for t in &mut sub_targets {
-                t.extended = true;
-                match t.kind {
-                    TargetKind::Example => t.kind = TargetKind::ExtendedExample,
-                    TargetKind::Binary => t.kind = TargetKind::ExtendedBinary,
-                    _ => {} // For other kinds, you may leave them unchanged.
-                }
-            }
+            // // Optionally mark these targets as extended.
+            // for t in &mut sub_targets {
+            //     if !t.toml_specified {
+
+            //     t.extended = true;
+            //     match t.kind {
+            //         TargetKind::Example => t.kind = TargetKind::ExtendedExample,
+            //         TargetKind::Binary => t.kind = TargetKind::ExtendedBinary,
+            //         _ => {} // For other kinds, you may leave them unchanged.
+            //     }
+            //     }
+            // }
             Ok(sub_targets)
         } else {
             // If the target is not a subproject, return an empty vector.
@@ -773,45 +847,52 @@ impl CargoTarget {
         }
     }
 
-    /// Expands subproject targets in the given map.
-    /// For every target with a SubProject origin, this function removes the original target,
-    /// expands it using `expand_subproject`, and then inserts the expanded targets.
-    /// The expanded targets have their display names modified to include the original folder name as a prefix.
-    /// This version replaces any existing target with the same key.
     pub fn expand_subprojects_in_place(
         targets_map: &mut HashMap<(String, String), CargoTarget>,
     ) -> Result<()> {
-        // Collect keys for targets that are subprojects.
-        let sub_keys: Vec<(String, String)> = targets_map
+        // collect subproject keys…
+        let sub_keys: Vec<_> = targets_map
             .iter()
-            .filter_map(|(key, target)| {
-                if let Some(TargetOrigin::SubProject(_)) = target.origin {
-                    Some(key.clone())
-                } else {
-                    None
-                }
+            .filter_map(|(key, t)| {
+                matches!(t.origin, Some(TargetOrigin::SubProject(_))).then(|| key.clone())
             })
             .collect();
-
+        log::trace!("Subproject keys: {:?}", sub_keys);
         for key in sub_keys {
             if let Some(sub_target) = targets_map.remove(&key) {
-                // Expand the subproject target.
-                let expanded_targets = Self::expand_subproject(&sub_target)?;
-                for mut new_target in expanded_targets {
-                    // Update the display name to include the subproject folder name.
-                    // For example, if sub_target.display_name was "foo" and new_target.name is "bar",
-                    // the new display name becomes "foo > bar".
-                    new_target.display_name =
-                        format!("{} > {}", sub_target.display_name, new_target.name);
-                    // Create a key for the expanded target.
+                let expanded = Self::expand_subproject(&sub_target)?;
+                for mut new_target in expanded {
+                    log::trace!(
+                        "Expanding subproject target: {} -> {}",
+                        sub_target.display_name,
+                        new_target.display_name
+                    );
+                    // carry forward the toml_specified flag from the original
+                    //    new_target.toml_specified |= sub_target.toml_specified;
+
                     let new_key = Self::target_key(&new_target);
-                    // Replace any existing target with the same key.
-                    targets_map.insert(new_key, new_target);
+
+                    match targets_map.entry(new_key) {
+                        Entry::Vacant(e) => {
+                            new_target.display_name =
+                                format!("{} > {}", sub_target.display_name, new_target.name);
+                            e.insert(new_target);
+                        }
+                        Entry::Occupied(mut e) => {
+                            // if the existing one is toml-specified, keep it
+                            if e.get().toml_specified {
+                                new_target.toml_specified = true;
+                            }
+                            e.insert(new_target);
+                        }
+                    }
                 }
             }
         }
+
         Ok(())
     }
+
     // /// Expands subproject targets in `targets`. Any target whose origin is a SubProject
     // /// is replaced by the targets returned by `expand_subproject`. If the expansion fails,
     // /// you can choose to log the error and keep the original target, or remove it.
@@ -871,14 +952,24 @@ impl CargoTarget {
             new_targets.extend(examples);
             new_targets.extend(benches);
             new_targets.extend(tests);
+
             // Mark these targets as extended.
-            for t in &mut new_targets {
-                t.extended = true;
-            }
+            // for t in &mut new_targets {
+            //     t.extended = true;
+            // }
             // Insert each new target if not already present.
             for new in new_targets {
                 let key = CargoTarget::target_key(&new);
-                map.entry(key).or_insert(new.clone());
+                if let Some(existing) = map.get_mut(&key) {
+                    // If they already specified this with --manifest-path, leave it untouched:
+                    if existing.toml_specified {
+                        continue;
+                    }
+                } else {
+                    map.insert(key, new);
+                }
+                // let key = CargoTarget::target_key(&new);
+                // map.entry(key).or_insert(new.clone());
             }
         }
         Ok(())
@@ -898,42 +989,144 @@ impl CargoTarget {
     }
 }
 
-/// Returns the "depth" of a path, i.e. the number of components.
-pub fn path_depth(path: &Path) -> usize {
-    path.components().count()
-}
-
-/// Deduplicates targets that share the same (name, origin key). If duplicates are found,
-/// the target with the manifest path of greater depth is kept.
+/// Deduplicates `CargoTarget` entries by `name`, applying strict priority rules.
+///
+/// Priority Rules:
+/// 1. If the incoming target's `TargetKind` is **greater than `Manifest`**, it overrides any existing lower-priority target,
+///    regardless of `TargetOrigin` (including `TomlSpecified`).
+/// 2. If both the existing and incoming targets have `TargetKind > Manifest`, prefer the one with the higher `TargetKind`.
+/// 3. If neither target is high-priority (`<= Manifest`), compare `(TargetOrigin, TargetKind)` using natural enum ordering.
+/// 4. If origin and kind are equal, prefer the target with the deeper `manifest_path`.
+/// 5. If any target in the group has `toml_specified = true`, ensure the final target reflects this.
+///
+/// This guarantees deterministic, priority-driven deduplication while respecting special framework targets.
 pub fn dedup_targets(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
-    let mut grouped: HashMap<(String, Option<String>), CargoTarget> = HashMap::new();
+    let mut grouped: HashMap<String, CargoTarget> = HashMap::new();
 
-    for target in targets {
-        // We'll group targets by (target.name, origin_key)
-        // Create an origin key if available by canonicalizing the origin path.
-        let origin_key = target.origin.as_ref().and_then(|origin| match origin {
-            TargetOrigin::SingleFile(path)
-            | TargetOrigin::DefaultBinary(path)
-            | TargetOrigin::SubProject(path) => path
-                .canonicalize()
-                .ok()
-                .map(|p| p.to_string_lossy().into_owned()),
-            _ => None,
-        });
-        let key = (target.name.clone(), origin_key);
+    for target in &targets {
+        let key = target.name.clone();
 
         grouped
             .entry(key)
             .and_modify(|existing| {
-                let current_depth = path_depth(&target.manifest_path);
-                let existing_depth = path_depth(&existing.manifest_path);
-                // If the current target's manifest path is deeper, replace the existing target.
-                if current_depth > existing_depth {
-                    *existing = target.clone();
+                let target_high = target.kind > TargetKind::Manifest;
+                let existing_high = existing.kind > TargetKind::Manifest;
+
+                // Rule 1: If target is high-priority (> Manifest)
+                if target_high {
+                    if !existing_high || target.kind > existing.kind {
+                        let was_toml_specified = existing.toml_specified;
+                        *existing = target.clone();
+                        existing.toml_specified |= was_toml_specified | target.toml_specified;
+                    }
+                    return; // High-priority kinds dominate
                 }
+
+                // Rule 2: Both kinds are normal (<= Manifest)
+                if target.kind > existing.kind {
+                    let was_toml_specified = existing.toml_specified;
+                    *existing = target.clone();
+                    existing.toml_specified |= was_toml_specified | target.toml_specified;
+                    return;
+                }
+
+                // Rule 3: If kinds are equal, compare origin
+                if target.kind == existing.kind {
+                    if target.origin.clone() > existing.origin.clone() {
+                        let was_toml_specified = existing.toml_specified;
+                        *existing = target.clone();
+                        existing.toml_specified |= was_toml_specified | target.toml_specified;
+                        return;
+                    }
+
+                    // Rule 4: If origin is also equal, compare path depth
+                    if target.origin == existing.origin {
+                        if path_depth(&target.manifest_path) > path_depth(&existing.manifest_path) {
+                            let was_toml_specified = existing.toml_specified;
+                            *existing = target.clone();
+                            existing.toml_specified |= was_toml_specified | target.toml_specified;
+                        }
+                    }
+                }
+                // No replacement needed if none of the conditions matched
             })
-            .or_insert(target);
+            .or_insert(target.clone());
     }
 
-    grouped.into_values().collect()
+    let toml_specified_names: HashSet<String> = targets
+        .iter()
+        .filter(|t| matches!(t.origin, Some(TargetOrigin::TomlSpecified(_))))
+        .map(|t| t.name.clone())
+        .collect();
+
+    // Update toml_specified flag based on origin analysis
+    for target in grouped.values_mut() {
+        if toml_specified_names.contains(&target.name) {
+            target.toml_specified = true;
+        }
+    }
+
+    // Collect, then sort by (kind, name)
+    let mut sorted_targets: Vec<_> = grouped.into_values().collect();
+
+    sorted_targets.sort_by_key(|t| (t.kind.clone(), t.name.clone()));
+
+    sorted_targets
 }
+
+/// Calculates the depth of a path (number of components).
+fn path_depth(path: &Path) -> usize {
+    path.components().count()
+}
+
+// /// Returns the "depth" of a path, i.e. the number of components.
+// pub fn path_depth(path: &Path) -> usize {
+//     path.components().count()
+// }
+
+// /// Deduplicates targets that share the same (name, origin key). If duplicates are found,
+// /// the target with the manifest path of greater depth is kept.
+// pub fn dedup_targets(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
+//     let mut grouped: HashMap<(String, Option<String>), CargoTarget> = HashMap::new();
+
+//     for target in targets {
+//         // We'll group targets by (target.name, origin_key)
+//         // Create an origin key if available by canonicalizing the origin path.
+//         let origin_key = target.origin.as_ref().and_then(|origin| match origin {
+//             TargetOrigin::SingleFile(path)
+//             | TargetOrigin::DefaultBinary(path)
+//             | TargetOrigin::TomlSpecified(path)
+//             | TargetOrigin::SubProject(path) => path
+//                 .canonicalize()
+//                 .ok()
+//                 .map(|p| p.to_string_lossy().into_owned()),
+//             _ => None,
+//         });
+//         let key = (target.name.clone(), origin_key);
+
+//         grouped
+//             .entry(key)
+//             .and_modify(|existing| {
+//                 let current_depth = path_depth(&target.manifest_path);
+//                 let existing_depth = path_depth(&existing.manifest_path);
+//                 // If the current target's manifest path is deeper, replace the existing target.
+//                 if current_depth > existing_depth {
+//                     println!(
+//                         "{} {} Replacing {:?} {:?} with {:?} {:?} manifest path: {} -> {}",
+//                         target.name,
+//                         existing.name,
+//                         target.kind,
+//                         existing.kind,
+//                         target.origin,
+//                         existing.origin,
+//                         existing.manifest_path.display(),
+//                         target.manifest_path.display()
+//                     );
+//                     *existing = target.clone();
+//                 }
+//             })
+//             .or_insert(target);
+//     }
+
+//     grouped.into_values().collect()
+// }

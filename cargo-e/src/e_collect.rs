@@ -77,7 +77,10 @@ pub fn collect_binaries(
             } else {
                 TargetKind::Binary
             };
+            // let target_kind = TargetKind::Binary;
 
+            // let display_name = name.clone();
+            //  format!("builtin binary: {}", name);
             let display_name = if prefix.starts_with('$') {
                 format!("{} > binary > {}", prefix, name)
             } else if extended {
@@ -94,8 +97,8 @@ pub fn collect_binaries(
                 manifest_path: manifest_path.into(),
                 kind: target_kind,
                 extended,
-                toml_specified: false,
-                origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
+                toml_specified: true,
+                origin: Some(TargetOrigin::TomlSpecified(manifest_path.to_path_buf())),
             }
         })
         .collect();
@@ -124,21 +127,37 @@ pub fn collect_examples(
     let examples = names
         .into_iter()
         .map(|name| {
-            let target_kind = if extended {
+            // let target_kind = if extended {
+            //     TargetKind::ExtendedExample
+            // } else {
+            //     TargetKind::Example
+            // };
+            // let target_kind = TargetKind::Example;
+            let target_kind = if let Some(parent) = manifest_path.parent() {
+                if parent.file_name().and_then(|s| s.to_str()) == Some("src-tauri") {
+                    TargetKind::ManifestTauri
+                } else if extended {
+                    TargetKind::ExtendedExample
+                } else {
+                    TargetKind::Example
+                }
+            } else if extended {
                 TargetKind::ExtendedExample
             } else {
                 TargetKind::Example
             };
 
-            let display_name = if prefix.starts_with('$') {
-                format!("{} > example > {}", prefix, name)
-            } else if extended {
-                format!("{} {}", prefix, name)
-            } else if prefix.starts_with("builtin") {
-                format!("builtin example: {}", name)
-            } else {
-                format!("{} {}", prefix, name)
-            };
+            let display_name = name.clone();
+            //  format!("builtin example: {}", name);
+            // if prefix.starts_with('$') {
+            //     format!("{} > example > {}", prefix, name)
+            // } else if extended {
+            //     format!("{} {}", prefix, name)
+            // } else if prefix.starts_with("builtin") {
+            //     format!("builtin example: {}", name)
+            // } else {
+            //     format!("{} {}", prefix, name)
+            // };
             let target = CargoTarget {
                 name: name.clone(),
                 display_name,
@@ -146,7 +165,7 @@ pub fn collect_examples(
                 kind: target_kind,
                 extended,
                 toml_specified: true,
-                origin: Some(TargetOrigin::SubProject(manifest_path.to_path_buf())),
+                origin: Some(TargetOrigin::TomlSpecified(manifest_path.to_path_buf())),
             };
             target
         })
@@ -174,23 +193,120 @@ pub fn collect_samples(
             let tx = tx.clone();
             let manifest_clone = manifest_path.clone();
             pool.execute(move || {
-                // Retrieve the runnable targets from the manifest.
-                let (bins, examples, benches, tests) =
+                let prefix_clone = _prefix.clone(); // Define prefix_clone here
+                                                    // 1. Collect the builtin stuff
+                let mut builtin_examples = Vec::new();
+                if let Ok(mut ex) =
+                    collect_examples(&prefix_clone, &manifest_clone, _workspace_mode)
+                {
+                    builtin_examples.append(&mut ex);
+                }
+                let mut builtin_bins = Vec::new();
+                if let Ok(mut bins) =
+                    collect_binaries(&prefix_clone, &manifest_clone, _workspace_mode)
+                {
+                    builtin_bins.append(&mut bins);
+                }
+                debug!(
+                    "DEBUG: {} builtin examples = {:?}",
+                    &manifest_clone.display(),
+                    builtin_examples
+                );
+                debug!(
+                    "DEBUG: {} builtin binaries = {:?}",
+                    &manifest_clone.display(),
+                    builtin_bins
+                );
+                // 2. Get the “official” runnable ones
+                let (runnable_bins, runnable_examples, benches, tests) =
                     crate::e_manifest::get_runnable_targets(&manifest_clone).unwrap_or_default();
 
-                // If there are no examples or binaries, return early.
-                if bins.is_empty() && examples.is_empty() {
+                // if nothing at all, skip
+                if runnable_bins.is_empty()
+                    && runnable_examples.is_empty()
+                    && builtin_bins.is_empty()
+                    && builtin_examples.is_empty()
+                {
                     return;
                 }
 
-                // Combine all targets.
+                // 1) Start with all the builtins in order
+                let mut bins = builtin_bins;
+
+                // 2) For each runnable:
+                //    – if it matches a builtin by name, overwrite that slot
+                //    – otherwise push to the end
+                for runnable in runnable_bins {
+                    if let Some(idx) = bins.iter().position(|b| b.name == runnable.name) {
+                        bins[idx] = runnable;
+                    } else {
+                        bins.push(runnable);
+                    }
+                }
+
+                let mut examples = builtin_examples;
+                for runnable in runnable_examples {
+                    if let Some(idx) = examples.iter().position(|e| e.name == runnable.name) {
+                        examples[idx] = runnable;
+                    } else {
+                        examples.push(runnable);
+                    }
+                }
+
+                // // 3. Merge bins: start with runnable, then override/insert builtin by name
+                // let mut bins_map: HashMap<_, _> = runnable_bins
+                //     .into_iter()
+                //     .map(|bin| (bin.name.clone(), bin))
+                //     .collect();
+                // // for bin in builtin_bins {
+                // //     bins_map.insert(bin.name.clone(), bin);
+                // // }
+                // let bins: Vec<_> = bins_map.into_values().collect();
+
+                // // 4. Same for examples
+                // let mut ex_map: HashMap<_, _> = runnable_examples
+                //     .into_iter()
+                //     .map(|ex| (ex.name.clone(), ex))
+                //     .collect();
+                // // for ex in builtin_examples {
+                // //     ex_map.insert(ex.name.clone(), ex);
+                // // }
+                // let examples: Vec<_> = ex_map.into_values().collect();
+
+                debug!("DEBUG: merged examples = {:#?}", examples);
+                // 5. Now combine everything
                 let all_targets = bins
                     .into_iter()
                     .chain(examples)
                     .chain(benches)
                     .chain(tests)
                     .collect::<Vec<_>>();
+                //                 let mut results = Vec::new();
+                //                 let prefix_clone = _prefix.clone(); // Define prefix_clone here
+                //                 if let Ok(mut ex) = collect_examples(&prefix_clone, &manifest_clone, _workspace_mode) {
+                //                      results.append(&mut ex);
+                //                 }
+                //                 if let Ok(mut bins) = collect_binaries(&prefix_clone, &manifest_clone, _workspace_mode) {
+                //                      results.append(&mut bins);
+                //                 }
+                //                 // Retrieve the runnable targets from the manifest.
+                //                 let (bins, examples, benches, tests) =
+                //                     crate::e_manifest::get_runnable_targets(&manifest_clone).unwrap_or_default();
 
+                //                 // If there are no examples or binaries, return early.
+                //                 if bins.is_empty() && examples.is_empty() {
+                //                     return;
+                //                 }
+
+                //                 // Combine all targets.
+                //                 let all_targets = bins
+                //                     .into_iter()
+                //                     .chain(results)
+                //                     .chain(examples)
+                //                     .chain(benches)
+                //                     .chain(tests)
+                //                     .collect::<Vec<_>>();
+                // log::debug!("DEBUG: all_targets = {:?}", all_targets);
                 // Now refine each target using the new pure method.
                 // If you implemented it as an associated method `refined()`:
 
@@ -199,6 +315,7 @@ pub fn collect_samples(
                     .map(|t| CargoTarget::refined_target(&t))
                     .collect();
                 tx.send(refined_targets).expect("Failed to send results");
+                // tx.send(all_targets).expect("Failed to send results");
                 //  let mut results = Vec::new();
                 //  results.extend(bins);
                 //  results.extend(examples);
@@ -206,13 +323,6 @@ pub fn collect_samples(
                 //  results.extend(tests);
                 //  tx.send(results).expect("Failed to send results");
 
-                // let mut results = Vec::new();
-                // if let Ok(mut ex) = collect_examples(&prefix_clone, &manifest_clone, extended) {
-                //     results.append(&mut ex);
-                // }
-                // if let Ok(mut bins) = collect_binaries(&prefix_clone, &manifest_clone, extended) {
-                //     results.append(&mut bins);
-                // }
                 // let etargets =
                 // crate::e_discovery::discover_targets(manifest_clone.parent().unwrap()).unwrap();
                 // for target in etargets {
@@ -263,6 +373,7 @@ pub fn collect_samples(
         );
 
         for samples in rx {
+            debug!("DEBUG: samples = {:#?}", samples);
             all_samples.extend(samples);
         }
     }
@@ -318,9 +429,40 @@ pub fn collect_samples(
 
     // Build a HashMap keyed by (manifest, name) to deduplicate targets.
     let mut targets_map: HashMap<(String, String), CargoTarget> = HashMap::new();
-    for target in initial_targets.into_iter() {
+    // for target in initial_targets.into_iter() {
+    //     let key = CargoTarget::target_key(&target);
+    //     targets_map.entry(key).or_insert(target);
+    // }
+    for target in initial_targets {
         let key = CargoTarget::target_key(&target);
-        targets_map.entry(key).or_insert(target);
+        targets_map
+            .entry(key)
+            .and_modify(|existing| {
+                // inline match‐upgrading, wrapped in dbg! to print old, new and result
+                existing.kind = match (&existing.kind, &target.kind) {
+                    (TargetKind::Example, TargetKind::ExtendedExample) => {
+                        // you had Example, new is ExtendedExample → upgrade
+                        target.kind.clone()
+                    }
+                    (TargetKind::Binary, TargetKind::ExtendedBinary) => target.kind.clone(),
+                    (_, TargetKind::ManifestTauriExample) | (_, TargetKind::ManifestTauri) => {
+                        // println!("DEBUG: Tauri {}", target.name);
+                        target.kind.clone()
+                    }
+                    // your custom case: anything → Dioxius
+                    (_, TargetKind::ManifestDioxus) => {
+                        // println!("DEBUG: Dioxus {}", target.name);
+                        target.kind.clone()
+                    }
+                    (_, TargetKind::ManifestDioxusExample) => {
+                        // println!("DEBUG: DioxusExample {}", target.name);
+                        target.kind.clone()
+                    }
+                    // else keep old
+                    (old_kind, _) => old_kind.clone(),
+                };
+            })
+            .or_insert(target);
     }
 
     // Expand subprojects in place.
@@ -331,7 +473,7 @@ pub fn collect_samples(
     // Now do an additional deduplication pass based on origin and name.
     let deduped_targets = crate::e_target::dedup_targets(refined_targets);
     Ok(deduped_targets)
-    //    return Ok(refined_targets);
+    //  return Ok(refined_targets);
 
     // let mut target_map: std::collections::HashMap<String, CargoTarget> =
     //     std::collections::HashMap::new();
@@ -365,7 +507,6 @@ pub fn collect_samples(
     // Ok(all_samples)
 }
 
-use log::warn;
 use std::fs;
 use std::path::Path;
 
@@ -374,14 +515,13 @@ pub fn path_depth(path: &Path) -> usize {
     path.components().count()
 }
 
-/// Deduplicates targets by their canonicalized origin.
-/// In particular, if two targets share the same origin key and one is a SingleFile
-/// and the other is a DefaultBinary, only the SingleFile target is kept.
+/// Deduplicates targets by their canonicalized origin, gives priority to `toml_specified`,
+/// and ensures single-file targets override default binaries when appropriate.
 pub fn dedup_single_file_over_default_binary(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
     let mut map: HashMap<Option<String>, CargoTarget> = HashMap::new();
 
     for target in targets {
-        // Try to get a canonicalized string for the target's origin.
+        // Compute canonical origin key
         let origin_key = target.origin.as_ref().and_then(|origin| match origin {
             TargetOrigin::SingleFile(path)
             | TargetOrigin::DefaultBinary(path)
@@ -391,39 +531,41 @@ pub fn dedup_single_file_over_default_binary(targets: Vec<CargoTarget>) -> Vec<C
             _ => None,
         });
 
-        if let Some(key) = origin_key.clone() {
-            if let Some(existing) = map.get(&Some(key.clone())) {
-                // If one target is SingleFile and the other is DefaultBinary, keep the SingleFile.
-                match (&target.origin, &existing.origin) {
-                    (Some(TargetOrigin::SingleFile(_)), Some(TargetOrigin::DefaultBinary(_))) => {
-                        map.insert(Some(key), target);
-                    }
-                    (Some(TargetOrigin::DefaultBinary(_)), Some(TargetOrigin::SingleFile(_))) => {
-                        // Do nothing: keep the existing SingleFile.
-                    }
-                    _ => {
-                        // Otherwise, choose the target with a deeper manifest path.
-                        let current_depth = path_depth(&target.manifest_path);
-                        let existing_depth = path_depth(&existing.manifest_path);
-                        if current_depth > existing_depth {
-                            map.insert(Some(key), target);
-                        }
-                    }
+        // Use Some(key) or None as map key
+        let entry_key = origin_key.clone();
+
+        if let Some(existing) = map.get(&entry_key) {
+            // 1) Prioritize toml_specified
+            if target.toml_specified && !existing.toml_specified {
+                map.insert(entry_key.clone(), target);
+                continue;
+            }
+            if !target.toml_specified && existing.toml_specified {
+                // keep existing
+                continue;
+            }
+
+            // 2) If one is SingleFile and other DefaultBinary, keep SingleFile
+            match (&target.origin, &existing.origin) {
+                (Some(TargetOrigin::SingleFile(_)), Some(TargetOrigin::DefaultBinary(_))) => {
+                    map.insert(entry_key.clone(), target);
+                    continue;
                 }
-            } else {
-                map.insert(Some(key), target);
+                (Some(TargetOrigin::DefaultBinary(_)), Some(TargetOrigin::SingleFile(_))) => {
+                    continue;
+                }
+                _ => {}
+            }
+
+            // 3) Otherwise, choose deeper manifest path
+            let current_depth = path_depth(&target.manifest_path);
+            let existing_depth = path_depth(&existing.manifest_path);
+            if current_depth > existing_depth {
+                map.insert(entry_key.clone(), target);
             }
         } else {
-            // For targets with no origin key, use None.
-            if let Some(existing) = map.get(&None) {
-                // Optionally, compare further; here we simply warn.
-                warn!(
-                    "Duplicate target with no origin: Existing: {:?} vs New: {:?}",
-                    existing, target
-                );
-            } else {
-                map.insert(None, target);
-            }
+            // No collision yet, insert
+            map.insert(entry_key, target);
         }
     }
 
@@ -468,6 +610,7 @@ pub fn collect_all_targets(
         println!("package: {}", format_package(&bi));
         manifest_infos.push(("-".to_string(), bi.clone(), false));
         for (member, member_manifest) in ws_members {
+            debug!("  member: {}", format_package(&member_manifest));
             manifest_infos.push((format!("${}", member), member_manifest, true));
         }
     } else {
@@ -478,8 +621,9 @@ pub fn collect_all_targets(
 
     let samples = collect_samples(use_workspace, manifest_infos, max_concurrency)?;
     // Deduplicate targets: if a SingleFile and DefaultBinary share the same origin, keep only the SingleFile.
-    let deduped_samples = dedup_single_file_over_default_binary(samples);
-    Ok(deduped_samples)
+    // let deduped_samples = dedup_single_file_over_default_binary(samples);
+    // Ok(deduped_samples)
+    Ok(samples)
 }
 
 /// Same as `collect_all_targets` but does not print workspace/package debug info.

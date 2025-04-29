@@ -1,5 +1,6 @@
 use crate::e_target::TargetKind;
 use anyhow::{anyhow, Result};
+use glob::glob;
 use log::trace;
 use std::error::Error;
 use std::ffi::OsStr;
@@ -64,16 +65,43 @@ pub fn collect_workspace_members(
         if let Some(member_array) = ws.get("members").and_then(|v| v.as_array()) {
             for member in member_array {
                 if let Some(member_str) = member.as_str() {
-                    // Strip any trailing glob patterns like "/*".
-                    let member_clean = if member_str.contains('*') {
-                        member_str.trim_end_matches("/*")
+                    // If the member path ends with "/*", handle it as a glob pattern
+                    if member_str.ends_with("/*") {
+                        let dir_pattern = member_str.trim_end_matches("/*");
+                        let glob_pattern = format!("{}/**/Cargo.toml", dir_pattern);
+
+                        // Use the glob crate to match the pattern and iterate over the results
+                        for entry in glob(&glob_pattern)? {
+                            match entry {
+                                Ok(path) => {
+                                    // Check if it exists and if the path is a valid Cargo.toml
+                                    if path.exists()
+                                        && path.file_name().and_then(|name| name.to_str())
+                                            == Some("Cargo.toml")
+                                    {
+                                        let member_name = path
+                                            .parent()
+                                            .and_then(|p| p.file_name())
+                                            .map(|p| p.to_string_lossy().into_owned())
+                                            .unwrap_or_else(|| "unknown".to_string());
+                                        members.push((member_name, path));
+                                    }
+                                }
+                                Err(_) => continue, // Ignore any errors from glob
+                            }
+                        }
                     } else {
-                        member_str
-                    };
-                    let member_path = workspace_root.join(member_clean);
-                    let member_manifest = member_path.join("Cargo.toml");
-                    if member_manifest.exists() {
-                        members.push((member_clean.to_string(), member_manifest));
+                        // Strip any trailing glob patterns like "*".
+                        let member_clean = if member_str.contains('*') {
+                            member_str.trim_end_matches("/*")
+                        } else {
+                            member_str
+                        };
+                        let member_path = workspace_root.join(member_clean);
+                        let member_manifest = member_path.join("Cargo.toml");
+                        if member_manifest.exists() {
+                            members.push((member_clean.to_string(), member_manifest));
+                        }
                     }
                 }
             }
@@ -177,23 +205,7 @@ pub fn get_required_features_from_manifest(
     let value: Value = content.parse().ok()?;
 
     // Map the TargetKind to the corresponding section in the manifest.
-    let section = match kind {
-        TargetKind::UnknownExample | TargetKind::UnknownExtendedExample => "?-example",
-        TargetKind::UnknownBinary | TargetKind::UnknownExtendedBinary => "?-bin",
-        TargetKind::Example | TargetKind::ExtendedExample => "example",
-        TargetKind::Binary | TargetKind::ExtendedBinary => "bin",
-        TargetKind::ManifestTauri => "bin",
-        TargetKind::ScriptScriptisto => "scriptisto",
-        TargetKind::ScriptRustScript => "rust-script",
-        TargetKind::ManifestTauriExample => "example",
-        TargetKind::ManifestDioxus => "bin",
-        TargetKind::ManifestDioxusExample => "example",
-        TargetKind::ManifestLeptos => "bin",
-        TargetKind::Test => "test",
-        TargetKind::Bench => "bench",
-        // All other kinds—including Plugin—do not have required-features sections
-        _ => "",
-    };
+    let section = kind.section_name();
     if section.is_empty() {
         return None;
     }

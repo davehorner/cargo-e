@@ -68,11 +68,20 @@ pub fn get_workspace_member_manifest_paths(manifest_path: &Path) -> Option<Vec<(
                 let member_path = workspace_root.join(s);
                 let member_manifest = member_path.join("Cargo.toml");
                 if member_manifest.exists() {
-                    let member_name = Path::new(s)
+                    let mut member_name = Path::new(s)
                         .file_name()
                         .and_then(|os| os.to_str())
                         .unwrap_or(s)
                         .to_string();
+                    if member_name.eq("src-tauri") {
+                        // Special case for src-tauri, use the parent directory name.
+                        member_name = member_path
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|os| os.to_str())
+                            .unwrap_or(s)
+                            .to_string();
+                    }
                     member_paths.push((member_name, member_manifest));
                 }
             }
