@@ -179,7 +179,6 @@ pub fn main() -> anyhow::Result<()> {
         .iter()
         .filter(|e| e.toml_specified && e.kind == TargetKind::Binary)
         .collect();
-    println!("Explicit example: {:?}", cli.explicit_example);
     if let Some(explicit) = cli.explicit_example.clone() {
         if let Some(explicit_example) = cli.explicit_example.clone() {
             let mut explicit_lock = EXPLICIT.lock().unwrap();
@@ -193,7 +192,6 @@ pub fn main() -> anyhow::Result<()> {
         // Now call run_rust_script_with_ctrlc_handling
         e_runner::run_scriptisto_with_ctrlc_handling(explicit.clone(), cli.extra.clone());
         e_runner::run_rust_script_with_ctrlc_handling(explicit.clone(), cli.extra.clone());
-        println!("Explicit2: {:?}", explicit);
         // Search the discovered targets for one with the matching name.
         // Try examples first.
         if let Some(target) = examples.iter().find(|t| t.name == explicit) {
@@ -373,11 +371,6 @@ pub fn main() -> anyhow::Result<()> {
             "{} binary found.  run? (Yes / no / edit / tui / info)     waiting {} seconds.",
             binary.name, cli.wait
         );
-        let quick_exit_keys = vec!['q', 't', ' '];
-        if let Ok(Some(line)) =
-            cargo_e::e_prompts::prompt_line_with_poll_opts(cli.wait.max(3), &quick_exit_keys, None)
-        {
-        }
         match cargo_e::e_prompts::prompt(&message, cli.wait) {
             Ok(Some('y')) | Ok(Some(' ')) => {
                 cargo_e::e_runner::run_example(manager.clone(), &cli, binary)?;
