@@ -104,11 +104,12 @@ pub fn run_all_examples(
 
         // Build the command using CargoCommandBuilder.
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder = CargoCommandBuilder::new(&manifest_path, &cli.subcommand, cli.filter)
-            .with_target(&target)
-            // .with_required_features(&target.manifest_path, &target)
-            .with_cli(cli)
-            .with_extra_args(&cli.extra);
+        let builder =
+            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
+                .with_target(&target)
+                // .with_required_features(&target.manifest_path, &target)
+                .with_cli(cli)
+                .with_extra_args(&cli.extra);
 
         // For debugging, print out the full command.
         builder.print_command();
@@ -234,7 +235,8 @@ pub fn run_all_examples(
                     println!("Detected Ctrl+C. {}", manager.has_signalled());
                     manager.remove(pid); // Clean up the process handle
                     if manager.has_signalled() > 1 {
-                        return Ok(false);
+                        println!("User requested quit. 2 ctrl-c.");
+                        break;
                     }
                     println!("Dectected Ctrl+C, coninuing to next target.");
                     break;
@@ -379,7 +381,7 @@ pub fn run_all_examples(
             fs::write(&target.manifest_path, original)
                 .context("Failed to restore patched manifest")?;
         }
-
+        manager.generate_report();
         // Check if the user requested to quit.
         if user_requested_quit {
             break;

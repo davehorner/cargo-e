@@ -54,6 +54,7 @@ pub struct ProcessManager {
     processes: Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>,
     // #[cfg(feature = "uses_async")]
     // notifier: Notify,
+    results: Mutex<Vec<CargoProcessResult>>,
 }
 
 impl ProcessManager {
@@ -63,6 +64,7 @@ impl ProcessManager {
             signalled_count: AtomicUsize::new(0),
             signal_tx: tx.clone(),
             processes: Mutex::new(HashMap::new()),
+            results: Mutex::new(Vec::new()),
         });
         ProcessManager::install_handler(Arc::clone(&manager), rx);
         manager
@@ -108,6 +110,22 @@ impl ProcessManager {
             println!("ctrlc> Terminating process with PID: {}", pid);
             if let Ok(mut h) = handle.lock() {
                 let _ = h.kill();
+                let final_diagnostics = {
+                    let diag_lock = h.diagnostics.lock().unwrap();
+                    diag_lock.clone()
+                };
+                h.result.diagnostics = final_diagnostics.clone();
+
+                // Ensure `es` is properly defined or assigned
+                if let Some(exit_status) = h.child.try_wait().ok().flatten() {
+                    h.result.exit_status = Some(exit_status);
+                }
+
+                h.result.end_time = Some(SystemTime::now());
+                if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
+                    h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
+                }
+                self.record_result(h.result.clone());
             }
         }
         processes.clear();
@@ -157,6 +175,24 @@ impl ProcessManager {
 
     pub fn remove(&self, pid: u32) {
         if let Some(handle_arc) = self.processes.lock().unwrap().remove(&pid) {
+            let mut h = handle_arc.lock().unwrap();
+            let final_diagnostics = {
+                let diag_lock = h.diagnostics.lock().unwrap();
+                diag_lock.clone()
+            };
+            h.result.diagnostics = final_diagnostics.clone();
+
+            // Ensure `es` is properly defined or assigned
+            if let Some(exit_status) = h.child.try_wait().ok().flatten() {
+                h.result.exit_status = Some(exit_status);
+            }
+
+            h.result.end_time = Some(SystemTime::now());
+            if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
+                h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
+            }
+            self.record_result(h.result.clone());
+            drop(h);
             // This was the only Arc reference, so dropping it here will run CargoProcessHandle::drop()
             drop(handle_arc);
         }
@@ -320,7 +356,6 @@ impl ProcessManager {
 
         if let Some(handle) = handle_opt {
             eprintln!("Attempting to kill PID: {}", pid);
-
             #[cfg(unix)]
             let signals = [
                 Signal::SIGHUP,
@@ -388,11 +423,11 @@ impl ProcessManager {
                             }
                             #[cfg(windows)]
                             {
-                                // Remove the handle so it drops (and on Windows that will kill if still alive)
-                                {
-                                    let mut procs = self.processes.lock().unwrap();
-                                    procs.remove(&pid);
-                                }
+                                // // Remove the handle so it drops (and on Windows that will kill if still alive)
+                                // {
+                                //     let mut procs = self.processes.lock().unwrap();
+                                //     procs.remove(&pid);
+                                // }
 
                                 eprintln!("Attempt {}: killing PID {}", attempts + 1, pid);
                                 if let Err(e) = h.child.kill() {
@@ -425,7 +460,30 @@ impl ProcessManager {
             // Remove the handle so it drops (and on Windows that will kill if still alive)
             {
                 let mut procs = self.processes.lock().unwrap();
-                procs.remove(&pid);
+                if let Some(handle_arc) = procs.remove(&pid) {
+                    let mut handle = handle_arc.lock().unwrap();
+                    let final_diagnostics = {
+                        let diag_lock = handle.diagnostics.lock().unwrap();
+                        diag_lock.clone()
+                    };
+                    handle.result.diagnostics = final_diagnostics.clone();
+
+                    // Ensure `es` is properly defined or assigned
+                    if let Some(exit_status) = handle.child.try_wait().ok().flatten() {
+                        handle.result.exit_status = Some(exit_status);
+                    }
+
+                    handle.result.end_time = Some(SystemTime::now());
+                    if let (Some(start), Some(end)) =
+                        (handle.result.start_time, handle.result.end_time)
+                    {
+                        handle.result.elapsed_time =
+                            Some(end.duration_since(start).unwrap_or_default());
+                    }
+                    self.record_result(handle.result.clone());
+                } else {
+                    eprintln!("No process found with PID: {}", pid);
+                }
             }
 
             if did_exit {
@@ -749,8 +807,29 @@ impl ProcessManager {
         // 1. Remove the handle from the map
         let handle_arc = {
             let mut map = self.processes.lock().unwrap();
-            map.remove(&pid)
-                .ok_or_else(|| anyhow::anyhow!("Process handle with PID {} not found", pid))?
+            map.remove(&pid).ok_or_else(|| {
+                let result = CargoProcessResult {
+                    target_name: String::new(), // Placeholder, should be set properly in actual use
+                    cmd: String::new(),         // Placeholder, should be set properly in actual use
+                    args: Vec::new(),           // Placeholder, should be set properly in actual use
+                    pid,
+                    exit_status: None,
+                    diagnostics: Vec::new(),
+                    start_time: None,
+                    end_time: Some(SystemTime::now()),
+                    elapsed_time: None,
+                    terminal_error: None, // Placeholder, should be set properly in actual use
+                    build_finished_time: None, // Placeholder, should be set properly in actual use
+                    build_elapsed: None,  // Placeholder, should be set properly in actual use
+                    runtime_elapsed: None, // Placeholder, should be set properly in actual use
+                    stats: crate::e_cargocommand_ext::CargoStats::default(), // Provide a default instance of CargoStats
+                    build_output_size: 0,   // Default value set to 0
+                    runtime_output_size: 0, // Placeholder, should be set properly in actual use
+                    is_filter: false,       // Placeholder, should be set properly in actual use
+                };
+                self.record_result(result.clone());
+                anyhow::anyhow!("Process handle with PID {} not found", pid)
+            })?
         };
 
         // 2. Unwrap Arc<Mutex<...>> to get the handle
@@ -795,6 +874,11 @@ impl ProcessManager {
                 handle.result.diagnostics = final_diagnostics.clone();
                 handle.result.exit_status = Some(es);
                 handle.result.end_time = Some(SystemTime::now());
+                if let (Some(start), Some(end)) = (handle.result.start_time, handle.result.end_time)
+                {
+                    handle.result.elapsed_time =
+                        Some(end.duration_since(start).unwrap_or_default());
+                }
                 println!(
                     "\nProcess with PID {} finished {:?} {}",
                     pid,
@@ -815,9 +899,22 @@ impl ProcessManager {
             // 5. Move them into the final result
             handle.result.diagnostics = diagnostics;
         }
+        self.record_result(handle.result.clone());
         Ok(handle.result)
     }
 
+    pub fn record_result(&self, result: CargoProcessResult) {
+        let mut results = self.results.lock().unwrap();
+        results.push(result);
+    }
+
+    pub fn generate_report(&self) {
+        let results = self.results.lock().unwrap();
+        let report = crate::e_reports::generate_markdown_report(&results);
+        if let Err(e) = crate::e_reports::save_report_to_file(&report, "run_report.md") {
+            eprintln!("Failed to save report: {}", e);
+        }
+    }
     //     pub fn wait(&self, pid: u32, _duration: Option<Duration>) -> anyhow::Result<CargoProcessResult> {
     //     // Hide the cursor and ensure it is restored on exit.
     //     {

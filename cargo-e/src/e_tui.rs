@@ -472,7 +472,7 @@ pub mod tui_interactive {
                 }
             }
         }
-
+        manager.generate_report();
         disable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(
@@ -527,10 +527,11 @@ pub mod tui_interactive {
         terminal.show_cursor()?;
 
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder = CargoCommandBuilder::new(&manifest_path, &cli.subcommand, cli.filter)
-            .with_target(target)
-            .with_required_features(&manifest_path, target)
-            .with_cli(cli);
+        let builder =
+            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
+                .with_target(target)
+                .with_required_features(&manifest_path, target)
+                .with_cli(cli);
         let cmd = builder.build_command();
 
         // Set current directory appropriately.

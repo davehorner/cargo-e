@@ -170,6 +170,12 @@ impl fmt::Debug for CargoDiagnostic {
         };
 
         // Color the diagnostic number based on the level
+        let diag_number = match self.level.as_str() {
+            "warning" => format!("W{}:", diag_number),
+            "error" => format!("E{}:", diag_number),
+            "help" => format!("H{}:", diag_number),
+            _ => format!("N{}:", diag_number), // Default to green for notes
+        };
         let diag_number_colored = match self.level.as_str() {
             "warning" => Color::Yellow.paint(format!("W{}:", diag_number)),
             "error" => Color::Red.paint(format!("E{}:", diag_number)),
@@ -178,26 +184,27 @@ impl fmt::Debug for CargoDiagnostic {
         };
 
         // Print the struct name (capitalized level) and lineref
-        write!(f, "{} ", diag_number_colored)?;
         // Print the struct name (capitalized level) and lineref
         // write!(f, "{}: ", struct_name)?;
 
         // Always show lineref with underline if uses_color is true
         if self.uses_color {
+            write!(f, "{} ", diag_number_colored)?;
             let underlined_text = Style::new().underline().paint(&self.lineref).to_string();
             write!(f, "\x1b[4m{}\x1b[0m ", underlined_text)?; // Apply underline using ANSI codes
+            let message = match self.level.as_str() {
+                "warning" => Color::Yellow.paint(&self.message).to_string(),
+                "error" => Color::Red.paint(&self.message).to_string(),
+                _ => Color::Green.paint(&self.message).to_string(),
+            };
+            write!(f, "{}: ", message)?;
         } else {
+            write!(f, "{} ", diag_number)?;
             write!(f, "{} ", self.lineref)?; // Plain lineref without color
+            write!(f, "{}: ", self.message)?;
         }
 
         // Print the message with color if necessary
-        let message = match self.level.as_str() {
-            "warning" => Color::Yellow.paint(&self.message).to_string(),
-            "error" => Color::Red.paint(&self.message).to_string(),
-            _ => Color::Green.paint(&self.message).to_string(),
-        };
-        write!(f, "{}: ", message)?;
-
         // Print the suggestion if present, with color if uses_color is true
         if let Some(suggestion) = &self.suggestion {
             let suggestion = self.update_suggestion_with_lineno(suggestion, file, line_number);
@@ -238,6 +245,9 @@ impl fmt::Debug for CargoDiagnostic {
 /// CargoProcessResult is returned when the cargo process completes.
 #[derive(Debug, Default, Clone)]
 pub struct CargoProcessResult {
+    pub target_name: String,
+    pub cmd: String,
+    pub args: Vec<String>,
     pub pid: u32,
     pub terminal_error: Option<TerminalError>,
     pub exit_status: Option<ExitStatus>,
@@ -656,8 +666,12 @@ impl CargoCommandExt for Command {
         let stats = Arc::new(Mutex::new(s.clone()));
         // Try to take ownership of the Vec<CargoDiagnostic> out of the Arc.
 
+        let (cmd, args) = builder.injected_args();
         // Create the CargoProcessHandle
         let result = CargoProcessResult {
+            target_name: builder.target_name.clone(),
+            cmd: cmd,
+            args: args,
             pid,
             terminal_error: None,
             exit_status: None,
@@ -1093,7 +1107,11 @@ impl CargoCommandExt for Command {
             diag_lock.clone()
         };
         let pid = child.id();
+        let (cmd, args) = builder.injected_args();
         let result = CargoProcessResult {
+            target_name: builder.target_name.clone(),
+            cmd: cmd,
+            args: args,
             pid,
             exit_status: None,
             start_time: Some(start_time),

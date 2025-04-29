@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.18</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.19</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -66,6 +66,8 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 - **configurable behavior:** – Optional equivalent mode – `cargo-e` can behave identically to `cargo run --example` with bare minimum dependency
 - **cargo and target stderr and stdout filtering:** `-f` sends all output from cargo and the target through a filter to determine accurate timing when `--run-all` is specified.  cargo warnings and errors are rewritten to be more concise, numbered, and timed format. Errors are written in realtime and a table of errors is displayed conviently at the end of output,  file references are all absolute and fully specified so your ctrl+clicks take you there.  If you require a terminal, don't use `-f`, and your output will be unfiltered.
 - **subcommands:** you may find that you like the rewritten cargo output and the additional detail provided in `-f` filtering.  Specify a `-s` subcommand to run a subcommand other than the default `run` that `cargo-e` uses normally.
+- **autosense/tool installer:** `cargo-e` will parse the output of a failed cargo builds and prompt to suggest the user to install the required library or tool runner.
+- **run_report.md:** on exit, a run_report.md is generated which includes details of the commands run and diagnostic information if the `-f` filtering is enabled.
   
 ## Introduction
 
@@ -289,7 +291,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.18</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.19</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 
