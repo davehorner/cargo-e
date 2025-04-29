@@ -51,7 +51,9 @@ fn test_single_example_functionality() -> Result<(), Box<dyn std::error::Error>>
     } else {
         // In non-equivalent mode, a single example should run automatically.
         // Thus, the output should contain "non-ext".
-        assert.success().stdout(predicate::str::contains("non-ext"));
+        assert
+            .success()
+            .stdout(predicate::str::contains("[ex.] sample_non_ext"));
     }
 
     Ok(())
