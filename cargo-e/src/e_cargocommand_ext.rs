@@ -28,6 +28,8 @@ use std::{fmt, thread};
 /// CargoStats tracks counts for different cargo events and also stores the first occurrence times.
 #[derive(Debug, Default, Clone)]
 pub struct CargoStats {
+    pub is_comiler_target: bool,
+    pub start_time: Option<SystemTime>,
     pub compiler_message_count: usize,
     pub compiler_artifact_count: usize,
     pub build_script_executed_count: usize,
@@ -646,10 +648,12 @@ impl CargoCommandExt for Command {
         let start_time = SystemTime::now();
         let diagnostics = Arc::clone(&builder.diagnostics);
         let s = CargoStats {
+            is_comiler_target: builder.is_compiler_target(), // Ensure this field is now valid
+            start_time: Some(start_time),
             build_finished_time: Some(start_time),
             ..Default::default()
         };
-        let stats = Arc::new(Mutex::new(s));
+        let stats = Arc::new(Mutex::new(s.clone()));
         // Try to take ownership of the Vec<CargoDiagnostic> out of the Arc.
 
         // Create the CargoProcessHandle
@@ -663,7 +667,7 @@ impl CargoCommandExt for Command {
             elapsed_time: None,
             build_elapsed: None,
             runtime_elapsed: None,
-            stats: CargoStats::default(),
+            stats: s, // CargoStats::default(),
             build_output_size: 0,
             runtime_output_size: 0,
             diagnostics: Vec::new(),
@@ -713,7 +717,12 @@ impl CargoCommandExt for Command {
         let pid = child.id();
         let start_time = SystemTime::now();
         let diagnostics = Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new()));
-        let stats = Arc::new(Mutex::new(CargoStats::default()));
+        let s = CargoStats {
+            is_comiler_target: builder.is_compiler_target(),
+            start_time: Some(start_time),
+            ..Default::default()
+        };
+        let stats = Arc::new(Mutex::new(s));
 
         // Two separate counters: one for build output and one for runtime output.
         let stderr_compiler_msg = Arc::new(Mutex::new(VecDeque::<String>::new()));

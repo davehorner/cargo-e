@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.18](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.17...cargo-e-v0.2.18) - 2025-04-29
+
+### Added
+
+- cargo error detection, tauri pnpm/npm install/build automation, automate tool runner installations.
+
 ## [0.2.17](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.16...cargo-e-v0.2.17) - 2025-04-20
 
 ### Added

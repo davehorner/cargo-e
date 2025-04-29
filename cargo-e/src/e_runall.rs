@@ -4,7 +4,7 @@ use crate::e_processmanager::ProcessManager;
 use crate::e_target::{CargoTarget, TargetKind};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
@@ -82,11 +82,20 @@ pub fn run_all_examples(
 
     // let manager = ProcessManager::new(&cli);
 
+    let mut total_ctrl_c = 0;
     let user_requested_quit = false;
     //for target in targets {
     for (idx, target) in targets.iter().enumerate() {
         println!("\nRunning target: {}", target.name);
 
+        if manager.has_signalled() > 0 {
+            manager.reset_signalled();
+            total_ctrl_c += 1;
+            if total_ctrl_c > 3 {
+                println!("User requested quit. 3 ctrl-c Exiting.");
+                return Ok(false);
+            }
+        }
         let current_bin = env!("CARGO_PKG_NAME");
         // Skip running our own binary.
         if target.kind == TargetKind::Binary && target.name == current_bin {
@@ -97,16 +106,12 @@ pub fn run_all_examples(
         let manifest_path = PathBuf::from(target.manifest_path.clone());
         let builder = CargoCommandBuilder::new(&manifest_path, &cli.subcommand, cli.filter)
             .with_target(&target)
-            .with_required_features(&target.manifest_path, &target)
+            // .with_required_features(&target.manifest_path, &target)
             .with_cli(cli)
             .with_extra_args(&cli.extra);
 
         // For debugging, print out the full command.
-        log::trace!(
-            "{} {}",
-            builder.alternate_cmd.as_deref().unwrap_or("cargo"),
-            builder.args.join(" ")
-        );
+        builder.print_command();
         // PROMPT let key = crate::e_prompts::prompt(&format!("Full command: {}", cmd_debug), 2)?;
         // if let Some('q') = key {
         //     user_requested_quit = true;
@@ -129,18 +134,39 @@ pub fn run_all_examples(
 
         //        let pid = Arc::new(builder).run(|pid, handle| {
         //     manager.register(handle);
-        let mut system = System::new_all();
+        let system = Arc::new(Mutex::new(System::new_all()));
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
         // Refresh CPU usage to get actual value.
-        system.refresh_processes_specifics(
+        let mut system_guard = system.lock().unwrap();
+        system_guard.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
             ProcessRefreshKind::nothing().with_cpu(),
         );
+        drop(system_guard);
         // })?;
         let pid = Arc::new(builder).run({
             let manager_ref = Arc::clone(&manager);
-            move |_pid, handle| {
+            let t = target.clone();
+            let len = targets.len();
+            let system_clone = system.clone();
+            move |pid, handle| {
+                let stats = handle.stats.lock().unwrap().clone();
+                // Extract the build_finished_time from the cloned stats.
+                let runtime_start = if stats.is_comiler_target {
+                    stats.build_finished_time
+                } else {
+                    stats.start_time
+                };
+                // let end_time = handle.result.end_time.clone();
+                let status_display = ProcessManager::format_process_status(
+                    pid,
+                    runtime_start,
+                    system_clone,
+                    &t,
+                    (idx + 1, len),
+                );
+                ProcessManager::update_status_line(&status_display, true).ok();
                 manager_ref.register(handle);
             }
         })?;
@@ -195,6 +221,8 @@ pub fn run_all_examples(
                     Ok(Some(status)) => {
                         // Process finished naturally.
                         println!("Process finished naturally.{:?}", status);
+                        // Remove the handle so it drops (and on Windows that will kill if still alive)
+                        manager.remove(pid);
                         break;
                     }
                     _ => {
@@ -203,11 +231,13 @@ pub fn run_all_examples(
                     }
                 }
                 if manager.has_signalled() > 0 {
-                    println!(
-                        "Detected Ctrl+C. Exiting run_all loop.{}",
-                        manager.has_signalled()
-                    );
-                    return Ok(false);
+                    println!("Detected Ctrl+C. {}", manager.has_signalled());
+                    manager.remove(pid); // Clean up the process handle
+                    if manager.has_signalled() > 1 {
+                        return Ok(false);
+                    }
+                    println!("Dectected Ctrl+C, coninuing to next target.");
+                    break;
                 }
                 // Here, use your non-blocking prompt function if available.
                 // For illustration, assume prompt_nonblocking returns Ok(Some(key)) if a key was pressed.
@@ -250,13 +280,17 @@ pub fn run_all_examples(
                     // Lock the stats and clone them.
                     let stats = handle.stats.lock().unwrap().clone();
                     // Extract the build_finished_time from the cloned stats.
-                    let runtime_start = stats.build_finished_time;
+                    let runtime_start = if stats.is_comiler_target {
+                        stats.build_finished_time
+                    } else {
+                        stats.start_time
+                    };
                     let end_time = handle.result.end_time;
                     drop(handle);
                     let status_display = ProcessManager::format_process_status(
                         pid,
-                        &process_handle,
-                        &system,
+                        runtime_start,
+                        system.clone(),
                         &target,
                         (idx + 1, targets.len()),
                     );
@@ -264,13 +298,18 @@ pub fn run_all_examples(
                     (stats, runtime_start, end_time, status_display)
                 };
                 // Refresh CPU usage to get actual value.
-                system.refresh_processes_specifics(
+                // Refresh CPU usage to get actual value.
+                let mut system_guard = system.lock().unwrap();
+                system_guard.refresh_processes_specifics(
                     ProcessesToUpdate::All,
                     true,
                     ProcessRefreshKind::nothing().with_cpu(),
                 );
+                drop(system_guard);
 
-                ProcessManager::update_status_line(&status_display, true).ok();
+                if cli.filter {
+                    ProcessManager::update_status_line(&status_display, true).ok();
+                }
                 // println!("start time: {:?} endtime {:?}", runtime_start, end_time);
                 if runtime_start.is_some() {
                     if start.is_none() {
@@ -283,6 +322,7 @@ pub fn run_all_examples(
                             target.name, pid
                         );
                         manager.kill_by_pid(pid).ok();
+                        manager.remove(pid);
                         // let mut global = GLOBAL_CHILDREN.lock().unwrap();
                         // if let Some(cargo_process_handle) = global.remove(&pid) {
                         //     let mut cargo_process_handle = cargo_process_handle.lock().unwrap();

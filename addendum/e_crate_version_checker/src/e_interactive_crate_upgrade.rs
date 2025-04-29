@@ -2,11 +2,11 @@ use std::io::IsTerminal;
 
 use crate::e_crate_update::update_crate;
 use crate::e_crate_update::version::get_latest_version;
+#[cfg(feature = "fortune")]
+use rand::{rng, seq::IteratorRandom};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-#[cfg(feature = "fortune")]
-use rand::{seq::IteratorRandom, rng};
 // Use parse-changelog to extract changelog sections when feature enabled
 #[cfg(feature = "changelog")]
 use parse_changelog::parse;
@@ -92,7 +92,8 @@ pub fn interactive_crate_upgrade(
     wait: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Allow overriding the current version for testing (e.g., force update flow)
-    let current_version = std::env::var("E_CRATE_CURRENT_VERSION").unwrap_or_else(|_| current_version.to_string());
+    let current_version =
+        std::env::var("E_CRATE_CURRENT_VERSION").unwrap_or_else(|_| current_version.to_string());
     // Skip terminal check if forced (for testing)
     if std::env::var("E_CRATE_FORCE_INTERACTIVE").is_err() && !std::io::stdin().is_terminal() {
         println!("Non-interactive mode detected; skipping update prompt.");
@@ -103,7 +104,11 @@ pub fn interactive_crate_upgrade(
     {
         let data = include_str!(env!("E_CRATE_FORTUNE_PATH"));
         let mut rng = rng();
-        if let Some(line) = data.lines().filter(|l| !l.trim().is_empty()).choose(&mut rng) {
+        if let Some(line) = data
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .choose(&mut rng)
+        {
             println!("{}", line);
         }
     }
@@ -128,30 +133,33 @@ pub fn interactive_crate_upgrade(
     ) {
         let current_tuple = (cur_major, cur_minor, cur_patch);
         let latest_tuple = (lat_major, lat_minor, lat_patch);
-                #[cfg(feature = "changelog")]
-                {
-    if latest_version != current_version {
-                    let changelog_str = FULL_CHANGELOG;
-                    match parse(changelog_str) {
-                        Ok(cl) => {
-                            if let Some(release) = cl.get(latest_version.as_str()) {
-                                let filtered_notes = release
-    .notes
-    .lines()
-    .filter(|line| !line.trim().is_empty())
-    .collect::<Vec<_>>()
-    .join("\n");
-                                println!("---\nversion {}:\n{}\n---", latest_version, filtered_notes);
-                            } else {
-                                println!("\nCould not find changelog section for version {}", latest_version);
-                            }
+        #[cfg(feature = "changelog")]
+        {
+            if latest_version != current_version {
+                let changelog_str = FULL_CHANGELOG;
+                match parse(changelog_str) {
+                    Ok(cl) => {
+                        if let Some(release) = cl.get(latest_version.as_str()) {
+                            let filtered_notes = release
+                                .notes
+                                .lines()
+                                .filter(|line| !line.trim().is_empty())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            println!("---\nversion {}:\n{}\n---", latest_version, filtered_notes);
+                        } else {
+                            println!(
+                                "\nCould not find changelog section for version {}",
+                                latest_version
+                            );
                         }
-                        Err(err) => {
-                            eprintln!("Failed to parse changelog: {}", err);
-                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to parse changelog: {}", err);
                     }
                 }
             }
+        }
         if current_tuple == latest_tuple {
             // // Up-to-date: either print fortune or notice depending on feature
             // #[cfg(feature = "fortune")]
@@ -164,7 +172,7 @@ pub fn interactive_crate_upgrade(
             // }
             // #[cfg(not(feature = "fortune"))]
             // {
-                println!("'{}' {} is latest.", crate_name, current_version);
+            println!("'{}' {} is latest.", crate_name, current_version);
             // }
             return Ok(());
         } else if current_tuple > latest_tuple {
@@ -195,8 +203,8 @@ pub fn interactive_crate_upgrade(
             crate_name, current_version, latest_version
         );
     } else {
-            println!("'{}' up-to-date! {}", crate_name, current_version);
-            return Ok(());
+        println!("'{}' up-to-date! {}", crate_name, current_version);
+        return Ok(());
     }
 
     // Compare versions and prompt the user accordingly.
