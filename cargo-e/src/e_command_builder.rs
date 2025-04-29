@@ -34,6 +34,7 @@ impl Default for TerminalError {
 /// A builder that constructs a Cargo command for a given target.
 #[derive(Clone)]
 pub struct CargoCommandBuilder {
+    pub target_name: String,
     pub manifest_path: PathBuf,
     pub args: Vec<String>,
     pub subcommand: String,
@@ -52,15 +53,21 @@ pub struct CargoCommandBuilder {
 }
 impl Default for CargoCommandBuilder {
     fn default() -> Self {
-        Self::new(&PathBuf::from("Cargo.toml"), "run".into(), false)
+        Self::new(
+            &String::new(),
+            &PathBuf::from("Cargo.toml"),
+            "run".into(),
+            false,
+        )
     }
 }
 impl CargoCommandBuilder {
     /// Creates a new, empty builder.
-    pub fn new(manifest: &PathBuf, subcommand: &str, is_filter: bool) -> Self {
+    pub fn new(target_name: &str, manifest: &PathBuf, subcommand: &str, is_filter: bool) -> Self {
         let (sender, _receiver) = channel::<TerminalError>();
         let sender = Arc::new(Mutex::new(sender));
         let mut builder = CargoCommandBuilder {
+            target_name: target_name.to_owned(),
             manifest_path: manifest.clone(),
             args: Vec::new(),
             subcommand: subcommand.to_string(),
@@ -607,8 +614,7 @@ impl CargoCommandBuilder {
                         let mut pending_diag = pending_diag.lock().unwrap();
                         if let Some(ref mut resp) = *pending_diag {
                             // Prepare the new note with the blue prefix
-                            let new_note =
-                                format!("\x1b[34m{}\x1b[0m: {}", "note", caps["msg"].to_string());
+                            let new_note = format!("note: {}", caps["msg"].to_string());
 
                             // Append or set the note
                             if let Some(existing_note) = &resp.note {
@@ -1548,6 +1554,7 @@ mod tests {
 
     #[test]
     fn test_command_builder_example() {
+        let target_name = "my_example".to_string();
         let target = CargoTarget {
             name: "my_example".to_string(),
             display_name: "My Example".to_string(),
@@ -1563,7 +1570,7 @@ mod tests {
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
 
         let manifest_path = PathBuf::from("Cargo.toml");
-        let args = CargoCommandBuilder::new(&manifest_path, "run", false)
+        let args = CargoCommandBuilder::new(&target_name, &manifest_path, "run", false)
             .with_target(&target)
             .with_extra_args(&extra_args)
             .build();

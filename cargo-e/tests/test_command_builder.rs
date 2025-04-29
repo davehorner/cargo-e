@@ -18,10 +18,15 @@ fn integration_test_builder() {
         ))),
     };
 
-    let args = CargoCommandBuilder::new(&target.manifest_path, &"run".to_string(), false)
-        .with_target(&target)
-        .with_extra_args(&["--flag".to_string(), "value".to_string()])
-        .build();
+    let args = CargoCommandBuilder::new(
+        "my_example",
+        &target.manifest_path,
+        &"run".to_string(),
+        false,
+    )
+    .with_target(&target)
+    .with_extra_args(&["--flag".to_string(), "value".to_string()])
+    .build();
 
     assert!(args.contains(&"run".to_string()));
 }

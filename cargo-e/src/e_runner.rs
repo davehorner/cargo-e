@@ -448,6 +448,7 @@ pub fn run_example(
     let manifest_path = PathBuf::from(target.manifest_path.clone());
     // Build the command using the CargoCommandBuilder.
     let mut builder = crate::e_command_builder::CargoCommandBuilder::new(
+        &target.name,
         &manifest_path,
         &cli.subcommand,
         cli.filter,

@@ -922,6 +922,7 @@ fn cli_loop(
             current_offset,
         ) {
             Ok(LoopResult::Quit) => {
+                manager_clone.generate_report();
                 println!("quitting.");
                 break;
             }

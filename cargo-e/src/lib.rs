@@ -41,11 +41,13 @@ pub mod e_installer;
 pub mod e_prebuild;
 pub mod e_processmanager;
 pub mod e_prompts;
+pub mod e_reports;
 pub mod e_runall;
 pub mod e_runner;
 pub mod e_target;
 pub mod e_tui;
 pub mod e_workspace;
+
 // Plugin system modules
 /// Extension API: unified CLI+targets for embedding cargo-e
 pub mod ext;
