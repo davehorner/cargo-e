@@ -426,14 +426,16 @@ pub fn ensure_node() -> Result<PathBuf> {
                 println!("Installing NVM via Chocolatey...");
                 let choco = ensure_choco()?;
                 let mut child = Command::new(choco)
-                    .args(&["install", "nvm"])//, "-y"])
+                    .args(&["install", "nvm"]) //, "-y"])
                     .stdin(Stdio::null())
                     .stdout(Stdio::inherit())
                     .stderr(Stdio::inherit())
                     .spawn()
                     .context("Failed to spawn `choco install nvm`")?;
 
-                child.wait().context("Error while waiting for `choco install nvm` to finish")?;
+                child
+                    .wait()
+                    .context("Error while waiting for `choco install nvm` to finish")?;
 
                 // Use NVM to install and use the latest LTS version of Node.js
                 let nvm = which("nvm").context("`nvm` not found in PATH after installation.")?;
@@ -445,7 +447,9 @@ pub fn ensure_node() -> Result<PathBuf> {
                     .spawn()
                     .context("Failed to spawn `nvm install lts`")?;
 
-                child.wait().context("Error while waiting for `nvm install lts` to finish")?;
+                child
+                    .wait()
+                    .context("Error while waiting for `nvm install lts` to finish")?;
 
                 let mut child = Command::new(&nvm)
                     .args(&["use", "lts"])
@@ -455,7 +459,9 @@ pub fn ensure_node() -> Result<PathBuf> {
                     .spawn()
                     .context("Failed to spawn `nvm use lts`")?;
 
-                child.wait().context("Error while waiting for `nvm use lts` to finish")?;
+                child
+                    .wait()
+                    .context("Error while waiting for `nvm use lts` to finish")?;
             }
             Ok(Some(false)) => {
                 anyhow::bail!("User declined to install Node.js.");
@@ -501,7 +507,9 @@ pub fn ensure_choco() -> Result<PathBuf> {
             Ok(Some(true)) => {
                 println!("Please run the following command in PowerShell to install Chocolatey:");
                 println!("Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))");
-                anyhow::bail!("Chocolatey installation is not automated. Please install it manually.");
+                anyhow::bail!(
+                    "Chocolatey installation is not automated. Please install it manually."
+                );
             }
             Ok(Some(false)) => {
                 anyhow::bail!("User declined to install Chocolatey.");

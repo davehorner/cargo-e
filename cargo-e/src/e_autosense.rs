@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 pub fn auto_sense_llvm() {
-    use which::which;
     use std::process::Command;
+    use which::which;
 
     // Check if choco is installed
     if which("choco").is_err() {

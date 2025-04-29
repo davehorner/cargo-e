@@ -649,7 +649,7 @@ fn select_and_run_target_loop(
                     current_index + i + 1
                 };
                 let base_line = format!(
-                    "  {:>width$}: [{}] {} ",//{:?} {:?}",
+                    "  {:>width$}: [{}] {} ", //{:?} {:?}",
                     line_number,
                     target_type,
                     target.display_name,

@@ -444,9 +444,7 @@ pub fn collect_samples(
                         // you had Example, new is ExtendedExample → upgrade
                         target.kind.clone()
                     }
-                    (TargetKind::Binary, TargetKind::ExtendedBinary) => {
-                        target.kind.clone()
-                    }
+                    (TargetKind::Binary, TargetKind::ExtendedBinary) => target.kind.clone(),
                     (_, TargetKind::ManifestTauriExample) | (_, TargetKind::ManifestTauri) => {
                         // println!("DEBUG: Tauri {}", target.name);
                         target.kind.clone()
@@ -461,9 +459,7 @@ pub fn collect_samples(
                         target.kind.clone()
                     }
                     // else keep old
-                    (old_kind, _) => {
-                        old_kind.clone()
-                    }
+                    (old_kind, _) => old_kind.clone(),
                 };
             })
             .or_insert(target);

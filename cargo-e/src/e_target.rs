@@ -1019,7 +1019,7 @@ pub fn dedup_targets(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
                         *existing = target.clone();
                         existing.toml_specified |= was_toml_specified | target.toml_specified;
                     }
-                    return;  // High-priority kinds dominate
+                    return; // High-priority kinds dominate
                 }
 
                 // Rule 2: Both kinds are normal (<= Manifest)
@@ -1053,31 +1053,31 @@ pub fn dedup_targets(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
             .or_insert(target.clone());
     }
 
-    let toml_specified_names: HashSet<String> = targets.iter()
-    .filter(|t| matches!(t.origin, Some(TargetOrigin::TomlSpecified(_))))
-    .map(|t| t.name.clone())
-    .collect();
+    let toml_specified_names: HashSet<String> = targets
+        .iter()
+        .filter(|t| matches!(t.origin, Some(TargetOrigin::TomlSpecified(_))))
+        .map(|t| t.name.clone())
+        .collect();
 
-// Update toml_specified flag based on origin analysis
-for target in grouped.values_mut() {
-    if toml_specified_names.contains(&target.name) {
-        target.toml_specified = true;
+    // Update toml_specified flag based on origin analysis
+    for target in grouped.values_mut() {
+        if toml_specified_names.contains(&target.name) {
+            target.toml_specified = true;
+        }
     }
-}
 
-// Collect, then sort by (kind, name)
-let mut sorted_targets: Vec<_> = grouped.into_values().collect();
+    // Collect, then sort by (kind, name)
+    let mut sorted_targets: Vec<_> = grouped.into_values().collect();
 
-sorted_targets.sort_by_key(|t| (t.kind.clone(), t.name.clone()));
+    sorted_targets.sort_by_key(|t| (t.kind.clone(), t.name.clone()));
 
-sorted_targets
+    sorted_targets
 }
 
 /// Calculates the depth of a path (number of components).
 fn path_depth(path: &Path) -> usize {
     path.components().count()
 }
-
 
 // /// Returns the "depth" of a path, i.e. the number of components.
 // pub fn path_depth(path: &Path) -> usize {

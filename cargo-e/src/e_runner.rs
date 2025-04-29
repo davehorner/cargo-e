@@ -8,6 +8,7 @@ use crate::e_target::CargoTarget;
 use crate::plugins::plugin_api::Target as PluginTarget;
 use anyhow::Result;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -293,6 +294,16 @@ pub async fn open_ai_summarize_for_target(target: &CargoTarget) {
     // }
 }
 
+fn library_hint(lib: &str) -> &str {
+    match lib {
+        "javascriptcoregtk-4.1" => "libjavascriptcoregtk-4.1-dev",
+        "libsoup-3.0" => "libsoup-3.0-dev",
+        "webkit2gtk-4.1" => "libwebkit2gtk-4.1-dev",
+        "openssl" => "libssl-dev",
+        _ => lib, // Fallback, assume same name
+    }
+}
+
 /// In "equivalent" mode, behave exactly like "cargo run --example <name>"
 #[cfg(feature = "equivalent")]
 pub fn run_equivalent_example(
@@ -493,7 +504,38 @@ pub fn run_example(
         );
         match builder.clone().capture_output() {
             Ok(output) => {
-                if output.contains("error: failed to load manifest for workspace member") {
+                let system_lib_regex = Regex::new(
+                    r"\s*The system library `([^`]+)` required by crate `([^`]+)` was not found\.",
+                )
+                .unwrap();
+
+                if let Some(captures) = system_lib_regex.captures(&output) {
+                    let library = &captures[1];
+                    let crate_name = &captures[2];
+                    println!(
+                        "cargo-e detected missing system library '{}' required by crate '{}'.",
+                        library, crate_name
+                    );
+
+                    // Suggest installation based on common package managers
+                    println!(
+                        "You might need to install '{}' via your system package manager.",
+                        library
+                    );
+                    println!("For example:");
+
+                    println!(
+                        "  • Debian/Ubuntu: sudo apt install {}",
+                        library_hint(library)
+                    );
+                    println!("  • Fedora: sudo dnf install {}", library_hint(library));
+                    println!("  • Arch: sudo pacman -S {}", library_hint(library));
+                    println!(
+                        "  • macOS (Homebrew): brew install {}",
+                        library_hint(library)
+                    );
+                    std::process::exit(0);
+                } else if output.contains("error: failed to load manifest for workspace member") {
                     println!("cargo-e error: failed to load manifest for workspace member, please check your workspace configuration.");
                     println!("cargo-e autorecovery: removing manfifest path from argument and changing to parent of Cargo.toml.");
                     let cwd = target

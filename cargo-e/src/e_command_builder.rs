@@ -14,7 +14,7 @@ use crate::e_cargocommand_ext::{CargoCommandExt, CargoDiagnostic, CargoProcessHa
 use crate::e_eventdispatcher::{
     CallbackResponse, CallbackType, CargoDiagnosticLevel, EventDispatcher,
 };
-use crate::e_runner::{spawn_cargo_process, GLOBAL_CHILDREN};
+use crate::e_runner::GLOBAL_CHILDREN;
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
 use std::sync::{Arc, Mutex};
 
@@ -1438,7 +1438,7 @@ impl CargoCommandBuilder {
     }
 
     pub fn is_compiler_target(&self) -> bool {
-        let supported_subcommands = ["run", "build", "check", "leptos","tauri"];
+        let supported_subcommands = ["run", "build", "check", "leptos", "tauri"];
         if let Some(alternate) = &self.alternate_cmd {
             if alternate != "cargo" {
                 return false;
