@@ -6,8 +6,11 @@ use std::process::{Command, Stdio};
 use which::which;
 
 /// Ensure `npm` is on PATH.  
+/// Ensures Node.js is installed first.  
 /// Returns the full path to the `npm` executable, or an error.
 pub fn ensure_npm() -> Result<PathBuf> {
+    // Ensure Node.js is installed
+    ensure_node()?;
     which("npm").context("`npm` not found in PATH. Please install Node.js and npm.")
 }
 
@@ -91,15 +94,19 @@ pub fn ensure_cross_env() -> Result<PathBuf, Box<dyn Error>> {
     which("cross-env").map_err(|_| "`cross-env` still not found after installation".into())
 }
 /// Ensure `pnpm` is on PATH.  
-/// If it’s missing, will use `npm` (via `ensure_npm`) to install `pnpm` globally.
+/// Ensures Node.js is installed first.  
+/// If it’s missing, will use `npm` (via `ensure_npm`) to install `pnpm` globally.  
 /// Returns the full path to the `pnpm` executable.
 pub fn ensure_pnpm() -> Result<PathBuf> {
-    // 1) If pnpm is already installed, we’re done
+    // Ensure Node.js is installed
+    ensure_node()?;
+
+    // Check if `pnpm` is already installed
     if let Ok(path) = which("pnpm") {
         return Ok(path);
     }
 
-    // 2) Otherwise, prompt the user to install it via npm
+    // Otherwise, prompt the user to install it via npm
     println!("`pnpm` is not installed. Install it now?");
     match yesno(
         "Do you want to install `pnpm` globally via npm?",
@@ -127,7 +134,7 @@ pub fn ensure_pnpm() -> Result<PathBuf> {
         Err(e) => bail!("error during prompt: {}", e),
     }
 
-    // 3) Re‐try locating `pnpm`
+    // Retry locating `pnpm`
     which("pnpm").context("`pnpm` still not found in PATH after installation")
 }
 
@@ -396,4 +403,120 @@ pub fn check_pnpm_and_install(workspace_parent: &Path) -> Result<PathBuf> {
         );
     }
     Ok(PathBuf::new())
+}
+
+/// Ensure `node` is on PATH.  
+/// If missing, attempts to install Node.js using `nvm` (automated for Windows, manual prompt otherwise).  
+/// Returns the full path to the `node` executable.
+pub fn ensure_node() -> Result<PathBuf> {
+    // Check if `node` is already installed
+    if let Ok(path) = which("node") {
+        return Ok(path);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, use Chocolatey to install NVM and set Node.js to LTS
+        println!("`node` is not installed.");
+        match yesno(
+            "Do you want to install Node.js using NVM (via Chocolatey)?",
+            Some(true),
+        ) {
+            Ok(Some(true)) => {
+                println!("Installing NVM via Chocolatey...");
+                let choco = ensure_choco()?;
+                let mut child = Command::new(choco)
+                    .args(&["install", "nvm"])//, "-y"])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .context("Failed to spawn `choco install nvm`")?;
+
+                child.wait().context("Error while waiting for `choco install nvm` to finish")?;
+
+                // Use NVM to install and use the latest LTS version of Node.js
+                let nvm = which("nvm").context("`nvm` not found in PATH after installation.")?;
+                let mut child = Command::new(&nvm)
+                    .args(&["install", "lts"])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .context("Failed to spawn `nvm install lts`")?;
+
+                child.wait().context("Error while waiting for `nvm install lts` to finish")?;
+
+                let mut child = Command::new(&nvm)
+                    .args(&["use", "lts"])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .context("Failed to spawn `nvm use lts`")?;
+
+                child.wait().context("Error while waiting for `nvm use lts` to finish")?;
+            }
+            Ok(Some(false)) => {
+                anyhow::bail!("User declined to install Node.js.");
+            }
+            Ok(None) => {
+                anyhow::bail!("Installation of Node.js cancelled (timeout).");
+            }
+            Err(e) => {
+                anyhow::bail!("Error during prompt: {}", e);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On non-Windows systems, prompt the user to install Node.js manually
+        println!("`node` is not installed. Please install Node.js manually.");
+        anyhow::bail!("Node.js installation is not automated for this platform.");
+    }
+
+    // Retry locating `node`
+    which("node").context("`node` still not found after installation")
+}
+
+/// Ensure `choco` (Chocolatey) is on PATH.  
+/// If missing, prompts the user to install Chocolatey manually.  
+/// Returns the full path to the `choco` executable.
+pub fn ensure_choco() -> Result<PathBuf> {
+    // Check if `choco` is already installed
+    if let Ok(path) = which("choco") {
+        return Ok(path);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, prompt the user to install Chocolatey manually
+        println!("`choco` (Chocolatey) is not installed.");
+        println!("It is required to proceed. Do you want to install it manually?");
+        match yesno(
+            "Do you want to install Chocolatey manually by following the instructions?",
+            Some(true),
+        ) {
+            Ok(Some(true)) => {
+                println!("Please run the following command in PowerShell to install Chocolatey:");
+                println!("Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))");
+                anyhow::bail!("Chocolatey installation is not automated. Please install it manually.");
+            }
+            Ok(Some(false)) => {
+                anyhow::bail!("User declined to install Chocolatey.");
+            }
+            Ok(None) => {
+                anyhow::bail!("Installation of Chocolatey cancelled (timeout).");
+            }
+            Err(e) => {
+                anyhow::bail!("Error during prompt: {}", e);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        anyhow::bail!("Chocolatey is only supported on Windows.");
+    }
 }

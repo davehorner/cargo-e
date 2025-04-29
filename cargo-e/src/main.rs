@@ -649,10 +649,12 @@ fn select_and_run_target_loop(
                     current_index + i + 1
                 };
                 let base_line = format!(
-                    "  {:>width$}: [{}] {}",
+                    "  {:>width$}: [{}] {} ",//{:?} {:?}",
                     line_number,
                     target_type,
                     target.display_name,
+                    //target.origin.as_ref().unwrap(),
+                    //target.name,
                     width = pad_width
                 );
                 let styled_line = if let Some(count) = run_history.get(&target.name) {

@@ -2,14 +2,14 @@
 use anyhow::{Context, Result};
 use log::{debug, trace};
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, HashSet},
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
 use toml::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TargetOrigin {
     DefaultBinary(PathBuf),
     SingleFile(PathBuf),
@@ -24,7 +24,7 @@ pub enum TargetOrigin {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, Copy, PartialOrd, Ord)]
 pub enum TargetKind {
     Unknown,
     UnknownExample,
@@ -989,48 +989,144 @@ impl CargoTarget {
     }
 }
 
-/// Returns the "depth" of a path, i.e. the number of components.
-pub fn path_depth(path: &Path) -> usize {
-    path.components().count()
-}
-
-/// Deduplicates targets that share the same (name, origin key). If duplicates are found,
-/// the target with the manifest path of greater depth is kept.
+/// Deduplicates `CargoTarget` entries by `name`, applying strict priority rules.
+///
+/// Priority Rules:
+/// 1. If the incoming target's `TargetKind` is **greater than `Manifest`**, it overrides any existing lower-priority target,
+///    regardless of `TargetOrigin` (including `TomlSpecified`).
+/// 2. If both the existing and incoming targets have `TargetKind > Manifest`, prefer the one with the higher `TargetKind`.
+/// 3. If neither target is high-priority (`<= Manifest`), compare `(TargetOrigin, TargetKind)` using natural enum ordering.
+/// 4. If origin and kind are equal, prefer the target with the deeper `manifest_path`.
+/// 5. If any target in the group has `toml_specified = true`, ensure the final target reflects this.
+///
+/// This guarantees deterministic, priority-driven deduplication while respecting special framework targets.
 pub fn dedup_targets(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
-    let mut grouped: HashMap<(String, Option<String>), CargoTarget> = HashMap::new();
+    let mut grouped: HashMap<String, CargoTarget> = HashMap::new();
 
-    for target in targets {
-        // We'll group targets by (target.name, origin_key)
-        // Create an origin key if available by canonicalizing the origin path.
-        let origin_key = target.origin.as_ref().and_then(|origin| match origin {
-            TargetOrigin::SingleFile(path)
-            | TargetOrigin::DefaultBinary(path)
-            | TargetOrigin::TomlSpecified(path)
-            | TargetOrigin::SubProject(path) => path
-                .canonicalize()
-                .ok()
-                .map(|p| p.to_string_lossy().into_owned()),
-            _ => None,
-        });
-        let key = (target.name.clone(), origin_key);
+    for target in &targets {
+        let key = target.name.clone();
 
         grouped
             .entry(key)
             .and_modify(|existing| {
-                let current_depth = path_depth(&target.manifest_path);
-                let existing_depth = path_depth(&existing.manifest_path);
-                // If the current target's manifest path is deeper, replace the existing target.
-                if current_depth > existing_depth {
-                    println!(
-                        "Replacing target with deeper manifest path: {} -> {}",
-                        existing.manifest_path.display(),
-                        target.manifest_path.display()
-                    );
-                    *existing = target.clone();
+                let target_high = target.kind > TargetKind::Manifest;
+                let existing_high = existing.kind > TargetKind::Manifest;
+
+                // Rule 1: If target is high-priority (> Manifest)
+                if target_high {
+                    if !existing_high || target.kind > existing.kind {
+                        let was_toml_specified = existing.toml_specified;
+                        *existing = target.clone();
+                        existing.toml_specified |= was_toml_specified | target.toml_specified;
+                    }
+                    return;  // High-priority kinds dominate
                 }
+
+                // Rule 2: Both kinds are normal (<= Manifest)
+                if target.kind > existing.kind {
+                    let was_toml_specified = existing.toml_specified;
+                    *existing = target.clone();
+                    existing.toml_specified |= was_toml_specified | target.toml_specified;
+                    return;
+                }
+
+                // Rule 3: If kinds are equal, compare origin
+                if target.kind == existing.kind {
+                    if target.origin.clone() > existing.origin.clone() {
+                        let was_toml_specified = existing.toml_specified;
+                        *existing = target.clone();
+                        existing.toml_specified |= was_toml_specified | target.toml_specified;
+                        return;
+                    }
+
+                    // Rule 4: If origin is also equal, compare path depth
+                    if target.origin == existing.origin {
+                        if path_depth(&target.manifest_path) > path_depth(&existing.manifest_path) {
+                            let was_toml_specified = existing.toml_specified;
+                            *existing = target.clone();
+                            existing.toml_specified |= was_toml_specified | target.toml_specified;
+                        }
+                    }
+                }
+                // No replacement needed if none of the conditions matched
             })
-            .or_insert(target);
+            .or_insert(target.clone());
     }
 
-    grouped.into_values().collect()
+    let toml_specified_names: HashSet<String> = targets.iter()
+    .filter(|t| matches!(t.origin, Some(TargetOrigin::TomlSpecified(_))))
+    .map(|t| t.name.clone())
+    .collect();
+
+// Update toml_specified flag based on origin analysis
+for target in grouped.values_mut() {
+    if toml_specified_names.contains(&target.name) {
+        target.toml_specified = true;
+    }
 }
+
+// Collect, then sort by (kind, name)
+let mut sorted_targets: Vec<_> = grouped.into_values().collect();
+
+sorted_targets.sort_by_key(|t| (t.kind.clone(), t.name.clone()));
+
+sorted_targets
+}
+
+/// Calculates the depth of a path (number of components).
+fn path_depth(path: &Path) -> usize {
+    path.components().count()
+}
+
+
+// /// Returns the "depth" of a path, i.e. the number of components.
+// pub fn path_depth(path: &Path) -> usize {
+//     path.components().count()
+// }
+
+// /// Deduplicates targets that share the same (name, origin key). If duplicates are found,
+// /// the target with the manifest path of greater depth is kept.
+// pub fn dedup_targets(targets: Vec<CargoTarget>) -> Vec<CargoTarget> {
+//     let mut grouped: HashMap<(String, Option<String>), CargoTarget> = HashMap::new();
+
+//     for target in targets {
+//         // We'll group targets by (target.name, origin_key)
+//         // Create an origin key if available by canonicalizing the origin path.
+//         let origin_key = target.origin.as_ref().and_then(|origin| match origin {
+//             TargetOrigin::SingleFile(path)
+//             | TargetOrigin::DefaultBinary(path)
+//             | TargetOrigin::TomlSpecified(path)
+//             | TargetOrigin::SubProject(path) => path
+//                 .canonicalize()
+//                 .ok()
+//                 .map(|p| p.to_string_lossy().into_owned()),
+//             _ => None,
+//         });
+//         let key = (target.name.clone(), origin_key);
+
+//         grouped
+//             .entry(key)
+//             .and_modify(|existing| {
+//                 let current_depth = path_depth(&target.manifest_path);
+//                 let existing_depth = path_depth(&existing.manifest_path);
+//                 // If the current target's manifest path is deeper, replace the existing target.
+//                 if current_depth > existing_depth {
+//                     println!(
+//                         "{} {} Replacing {:?} {:?} with {:?} {:?} manifest path: {} -> {}",
+//                         target.name,
+//                         existing.name,
+//                         target.kind,
+//                         existing.kind,
+//                         target.origin,
+//                         existing.origin,
+//                         existing.manifest_path.display(),
+//                         target.manifest_path.display()
+//                     );
+//                     *existing = target.clone();
+//                 }
+//             })
+//             .or_insert(target);
+//     }
+
+//     grouped.into_values().collect()
+// }

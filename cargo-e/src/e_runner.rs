@@ -572,6 +572,11 @@ pub fn run_example(
                             eprintln!("Error during prompt: {}", e);
                         }
                     }
+                  }  else if output.contains("Unable to find libclang")
+      || output.contains("couldn't find any valid shared libraries matching: ['clang.dll', 'libclang.dll']") 
+{
+    crate::e_autosense::auto_sense_llvm();
+
                 } else if output.contains("no such command: `dx`") {
                     println!("cargo dx is not installed, please install it with cargo install dioxus-cli");
                 } else if output.contains("no such command: `scriptisto`") {

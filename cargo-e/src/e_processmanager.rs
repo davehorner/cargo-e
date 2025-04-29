@@ -83,7 +83,6 @@ impl ProcessManager {
             }
         }) {
             Ok(_) => {
-                println!("ctrlc> Ctrl+C handler installed.");
                 thread::spawn(move || {
                     while rx.recv().is_ok() {
                         self_.signalled_count.fetch_add(1, Ordering::SeqCst);

@@ -45,6 +45,7 @@ pub mod e_runner;
 pub mod e_target;
 pub mod e_tui;
 pub mod e_workspace;
+pub mod e_autosense;
 // Plugin system modules
 /// Extension API: unified CLI+targets for embedding cargo-e
 pub mod ext;

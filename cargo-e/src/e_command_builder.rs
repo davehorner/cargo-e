@@ -1438,7 +1438,7 @@ impl CargoCommandBuilder {
     }
 
     pub fn is_compiler_target(&self) -> bool {
-        let supported_subcommands = ["run", "build", "check", "leptos"];
+        let supported_subcommands = ["run", "build", "check", "leptos","tauri"];
         if let Some(alternate) = &self.alternate_cmd {
             if alternate != "cargo" {
                 return false;
