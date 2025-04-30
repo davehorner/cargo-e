@@ -427,6 +427,7 @@ pub fn save_report_to_file(report: &str, file_path: &str) -> io::Result<()> {
 }
 
 pub fn create_gist(content: &str, description: &str) -> io::Result<()> {
+    crate::e_installer::ensure_github_gh().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?; // check for gh CLI
     let output = Command::new("gh")
         .args(&["gist", "create", "--public", "--desc", description])
         .stdin(std::process::Stdio::piped())

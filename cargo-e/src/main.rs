@@ -108,7 +108,6 @@ pub fn main() -> anyhow::Result<()> {
         // otherwise fallback to the compile-time version.
         let _ = interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait);
     }
-
     let manager = ProcessManager::new(&cli);
     // Control the maximum number of Cargo processes running concurrently.
     let num_threads = std::thread::available_parallelism()
@@ -279,8 +278,9 @@ pub fn main() -> anyhow::Result<()> {
                 if cli.tui {
                     do_tui_and_exit(manager, &cli, &fuzzy_matches);
                 }
-                cli_loop(manager, &cli, &fuzzy_matches, &[], &[]);
+                cli_loop(manager.clone(), &cli, &fuzzy_matches, &[], &[]);
             }
+            manager.generate_report(cli.gist);
             std::process::exit(1);
         }
     }
@@ -304,7 +304,7 @@ pub fn main() -> anyhow::Result<()> {
         match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
             Some('y') | Some(' ') | Some('\n') => {
                 println!("running {}...", example.name);
-                cargo_e::e_runner::run_example(manager, &cli, &example)?;
+                cargo_e::e_runner::run_example(manager.clone(), &cli, &example)?;
             }
             Some('n') => {
                 //println!("exiting without running.");
@@ -325,7 +325,7 @@ pub fn main() -> anyhow::Result<()> {
                 futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(example));
                 cargo_e::e_prompts::prompt_line("", 120).ok();
                 cli_loop(
-                    manager,
+                    manager.clone(),
                     &cli,
                     &unique_examples,
                     &builtin_examples,
@@ -353,8 +353,7 @@ pub fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
             None => {
-                cargo_e::e_runner::run_example(manager, &cli, builtin_examples[0])?;
-                std::process::exit(0);
+                cargo_e::e_runner::run_example(manager.clone(), &cli, builtin_examples[0])?;
             }
         }
         // Only one example exists: run it.
@@ -381,12 +380,13 @@ pub fn main() -> anyhow::Result<()> {
             }
             Ok(Some('n')) => {
                 cli_loop(
-                    manager,
+                    manager.clone(),
                     &cli,
                     &unique_examples,
                     &builtin_examples,
                     &builtin_binaries,
                 );
+                manager.generate_report(cli.gist);
                 std::process::exit(0);
             }
             Ok(Some('e')) => {
@@ -450,7 +450,7 @@ pub fn main() -> anyhow::Result<()> {
             do_tui_and_exit(manager, &cli, &unique_examples);
         }
         cli_loop(
-            manager,
+            manager.clone(),
             &cli,
             &unique_examples,
             &builtin_examples,
@@ -463,6 +463,7 @@ pub fn main() -> anyhow::Result<()> {
         //     std::process::exit(1);
         // }
     }
+    manager.generate_report(cli.gist);
     Ok(())
 }
 
@@ -922,7 +923,7 @@ fn cli_loop(
             current_offset,
         ) {
             Ok(LoopResult::Quit) => {
-                manager_clone.generate_report();
+                manager_clone.generate_report(cli.gist);
                 println!("quitting.");
                 break;
             }

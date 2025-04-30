@@ -908,11 +908,16 @@ impl ProcessManager {
         results.push(result);
     }
 
-    pub fn generate_report(&self) {
+    pub fn generate_report(&self, create_gist: bool) {
         let results = self.results.lock().unwrap();
         let report = crate::e_reports::generate_markdown_report(&results);
         if let Err(e) = crate::e_reports::save_report_to_file(&report, "run_report.md") {
             eprintln!("Failed to save report: {}", e);
+        }
+        if create_gist {
+           crate::e_reports::create_gist(&report, "run_report.md").unwrap_or_else(|e| {
+            eprintln!("Failed to create Gist: {}", e);
+          });
         }
     }
     //     pub fn wait(&self, pid: u32, _duration: Option<Duration>) -> anyhow::Result<CargoProcessResult> {

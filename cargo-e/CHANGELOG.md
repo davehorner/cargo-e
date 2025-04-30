@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.20](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.19...cargo-e-v0.2.20) - 2025-04-30
+
+### Added
+
+- add --gist to use github cli to create run_report gists.
+
 ## [0.2.19](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.18...cargo-e-v0.2.19) - 2025-04-29
 
 ### Added

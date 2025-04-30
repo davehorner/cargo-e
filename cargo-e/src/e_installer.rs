@@ -4,7 +4,38 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use which::which;
+#[cfg(windows)]
+pub fn is_admin() -> bool {
+    let shell = "[bool]([System.Security.Principal.WindowsPrincipal][System.Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)";
+    let output = std::process::Command::new("powershell")
+        .args(["-c", shell])
+        .output()
+        .expect("Failed to execute PowerShell command");
+    String::from_utf8(output.stdout).unwrap_or_default().trim() == "True"
+}
 
+#[cfg(unix)]
+pub fn is_admin() -> bool {
+    // Commented out the actual implementation for now
+    /*
+    use libc::{geteuid, getuid};
+    unsafe { getuid() == 0 || geteuid() == 0 }
+    */
+    unsafe {
+        println!("`is_admin` is not implemented for Unix systems yet.");
+        false
+    }
+}
+/// Check if the program is running as an administrator.
+/// Returns an error if the program is not running with administrative privileges.
+pub fn ensure_admin_privileges() -> Result<()> {
+    if !is_admin() {
+        return Err(anyhow::anyhow!(
+            "This program must be run as an administrator. Please restart it with administrative privileges."
+        ));
+    }
+    Ok(())
+}
 /// Ensure `npm` is on PATH.  
 /// Ensures Node.js is installed first.  
 /// Returns the full path to the `npm` executable, or an error.
@@ -484,6 +515,53 @@ pub fn ensure_node() -> Result<PathBuf> {
 
     // Retry locating `node`
     which("node").context("`node` still not found after installation")
+}
+
+/// Ensure the GitHub CLI (`gh`) is on PATH.  
+/// If missing, installs it using Chocolatey on Windows.  
+/// Returns the full path to the `gh` executable.
+pub fn ensure_github_gh() -> Result<PathBuf> {
+    // Check if `gh` is already installed
+    if let Ok(path) = which("gh") {
+        return Ok(path);
+    }
+    // Check if `gh.exe` exists in the default installation path
+    let default_path = Path::new("C:\\Program Files\\GitHub CLI\\gh.exe");
+    if default_path.exists() {
+        return Ok(default_path.to_path_buf());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Ensure Chocolatey is installed
+        let choco = ensure_choco()?;
+
+        // Install GitHub CLI using Chocolatey
+        println!("Installing GitHub CLI (`gh`) via Chocolatey...");
+        if let Err(e) = ensure_admin_privileges() {
+            eprintln!("Error: {}", e);
+            return Err(e);
+        }
+        let mut child = Command::new(choco)
+            .args(&["install", "gh","y"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .context("Failed to spawn `choco install gh`")?;
+
+        child.wait().context("Error while waiting for `choco install gh` to finish")?;
+        if default_path.exists() {
+            return Ok(default_path.to_path_buf());
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        anyhow::bail!("GitHub CLI installation is only automated on Windows.");
+    }
+
+    // Retry locating `gh`
+    which("gh").context("`gh` still not found after installation")
 }
 
 /// Ensure `choco` (Chocolatey) is on PATH.  
