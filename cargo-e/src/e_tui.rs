@@ -472,7 +472,7 @@ pub mod tui_interactive {
                 }
             }
         }
-        manager.generate_report();
+        
         disable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(
@@ -482,6 +482,7 @@ pub mod tui_interactive {
             Clear(ClearType::All)
         )?;
         terminal.show_cursor()?;
+        manager.generate_report(cli.gist);
         Ok(())
     }
 

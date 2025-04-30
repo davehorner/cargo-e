@@ -20,6 +20,8 @@ pub struct Cli {
     )]
     pub run_all: RunAll,
 
+    #[arg(long, help = "Create GIST run_report.md on exit.")]
+    pub gist: bool,
     #[arg(long, help = "Build and run in release mode.")]
     pub release: bool,
     #[arg(

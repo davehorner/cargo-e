@@ -381,7 +381,7 @@ pub fn run_all_examples(
             fs::write(&target.manifest_path, original)
                 .context("Failed to restore patched manifest")?;
         }
-        manager.generate_report();
+        manager.generate_report(cli.gist);
         // Check if the user requested to quit.
         if user_requested_quit {
             break;
