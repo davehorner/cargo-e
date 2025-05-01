@@ -615,6 +615,10 @@ pub fn run_example(
                             eprintln!("Error during prompt: {}", e);
                         }
                     }
+                    // needed for cargo-leptos but as part of tool installer
+                    //   } else if output.contains("Command 'perl' not found. Is perl installed?") {
+                    //     println!("cargo e sees a perl issue; maybe a prompt in the future or auto-resolution.");
+                    //     crate::e_autosense::auto_sense_perl();
                   }  else if output.contains("Unable to find libclang")
       || output.contains("couldn't find any valid shared libraries matching: ['clang.dll', 'libclang.dll']") 
 {

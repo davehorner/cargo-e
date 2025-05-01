@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-e"
-version = "0.2.20"
+version = "0.2.21"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -385,6 +385,7 @@ dependencies = [
  "genai",
  "git2",
  "glob",
+ "libc",
  "log",
  "mlua",
  "nix",

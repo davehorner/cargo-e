@@ -4,6 +4,8 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use which::which;
+
+// https://github.com/ahaoboy/is-admin
 #[cfg(windows)]
 pub fn is_admin() -> bool {
     let shell = "[bool]([System.Security.Principal.WindowsPrincipal][System.Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)";
@@ -14,18 +16,14 @@ pub fn is_admin() -> bool {
     String::from_utf8(output.stdout).unwrap_or_default().trim() == "True"
 }
 
+
+// https://github.com/ahaoboy/is-admin
 #[cfg(unix)]
 pub fn is_admin() -> bool {
-    // Commented out the actual implementation for now
-    /*
     use libc::{geteuid, getuid};
     unsafe { getuid() == 0 || geteuid() == 0 }
-    */
-    unsafe {
-        println!("`is_admin` is not implemented for Unix systems yet.");
-        false
-    }
 }
+
 /// Check if the program is running as an administrator.
 /// Returns an error if the program is not running with administrative privileges.
 pub fn ensure_admin_privileges() -> Result<()> {
@@ -542,14 +540,16 @@ pub fn ensure_github_gh() -> Result<PathBuf> {
             return Err(e);
         }
         let mut child = Command::new(choco)
-            .args(&["install", "gh","y"])
+            .args(&["install", "gh", "y"])
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
             .context("Failed to spawn `choco install gh`")?;
 
-        child.wait().context("Error while waiting for `choco install gh` to finish")?;
+        child
+            .wait()
+            .context("Error while waiting for `choco install gh` to finish")?;
         if default_path.exists() {
             return Ok(default_path.to_path_buf());
         }
@@ -605,4 +605,101 @@ pub fn ensure_choco() -> Result<PathBuf> {
     {
         anyhow::bail!("Chocolatey is only supported on Windows.");
     }
+}
+
+/// Ensure the `cargo-leptos` CLI is on PATH.  
+/// If missing, prompts the user to install it via `cargo install cargo-leptos`.  
+/// Returns the full path to the `cargo-leptos` executable.
+pub fn ensure_leptos() -> Result<PathBuf> {
+    // 1) Check if `cargo-leptos` is already on PATH
+    if let Ok(path) = which("cargo-leptos") {
+        return Ok(path);
+    }
+
+    // 2) Prompt the user to install it
+    println!("`cargo-leptos` CLI not found. Install it now?");
+    match yesno(
+        "Do you want to install the `cargo-leptos` CLI via `cargo install cargo-leptos`?",
+        Some(true),
+    ) {
+        Ok(Some(true)) => {
+            // Check if `perl` is available
+            if which("perl").is_err() {
+                println!("`perl` is not installed or not found in PATH.");
+                println!("OpenSSL requires `perl` for installation unless OpenSSL is already configured in your environment.");
+                println!("It is recommended to have a working `perl` distribution installed for openssl.");
+                ensure_perl();
+            }
+
+            println!("Installing `cargo-leptos` via `cargo install cargo-leptos`…");
+            let mut child = Command::new("cargo")
+                .args(&["install", "cargo-leptos"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .context("Failed to spawn `cargo install cargo-leptos`")?;
+
+            child
+                .wait()
+                .context("Error while waiting for `cargo install cargo-leptos` to finish")?;
+        }
+        Ok(Some(false)) => bail!("User skipped installing `cargo-leptos`."),
+        Ok(None) => bail!("Installation of `cargo-leptos` cancelled (timeout)."),
+        Err(e) => bail!("Error during prompt: {}", e),
+    }
+
+    // 3) Retry locating `cargo-leptos`
+    which("cargo-leptos").context("`cargo-leptos` still not found after installation")
+}
+
+#[cfg(target_os = "windows")]
+pub fn ensure_perl() {
+    use std::process::Command;
+    use which::which;
+
+    // Check if choco is installed
+    if which("choco").is_err() {
+        eprintln!("Chocolatey (choco) is not installed.");
+        println!("Please install Chocolatey from https://chocolatey.org/install to proceed with Perl installation.");
+        return;
+    }
+
+    println!("Perl is missing. You can install Strawberry Perl using Chocolatey (choco).");
+    println!("Suggestion: choco install strawberryperl");
+
+    match crate::e_prompts::yesno(
+        "Do you want to install Strawberry Perl using choco?",
+        Some(true), // Default to yes
+    ) {
+        Ok(Some(true)) => {
+            println!("Installing Strawberry Perl...");
+            match Command::new("choco")
+                .args(["install", "strawberryperl", "-y"])
+                .spawn()
+            {
+                Ok(mut child) => {
+                    child.wait().ok(); // Wait for installation to complete
+                    println!("Strawberry Perl installation completed.");
+                }
+                Err(e) => {
+                    eprintln!("Error installing Strawberry Perl via choco: {}", e);
+                }
+            }
+        }
+        Ok(Some(false)) => {
+            println!("Strawberry Perl installation skipped.");
+        }
+        Ok(None) => {
+            println!("Installation cancelled (timeout or invalid input).");
+        }
+        Err(e) => {
+            eprintln!("Error during prompt: {}", e);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn ensure_perl() {
+    println!("auto_sense_perl is only supported on Windows with Chocolatey.");
 }

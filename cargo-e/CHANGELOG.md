@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.21](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.20...cargo-e-v0.2.21) - 2025-04-30
+
+### Other
+
+- callbacks can set build_finished_time; leptos --run-all -f
+
 ## [0.2.20](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.19...cargo-e-v0.2.20) - 2025-04-30
 
 ### Added

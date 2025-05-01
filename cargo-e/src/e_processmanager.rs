@@ -915,9 +915,9 @@ impl ProcessManager {
             eprintln!("Failed to save report: {}", e);
         }
         if create_gist {
-           crate::e_reports::create_gist(&report, "run_report.md").unwrap_or_else(|e| {
-            eprintln!("Failed to create Gist: {}", e);
-          });
+            crate::e_reports::create_gist(&report, "run_report.md").unwrap_or_else(|e| {
+                eprintln!("Failed to create Gist: {}", e);
+            });
         }
     }
     //     pub fn wait(&self, pid: u32, _duration: Option<Duration>) -> anyhow::Result<CargoProcessResult> {
