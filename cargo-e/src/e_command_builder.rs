@@ -116,7 +116,7 @@ impl CargoCommandBuilder {
         let mut stdout_dispatcher = EventDispatcher::new();
         stdout_dispatcher.add_callback(
             r"listening on",
-            Box::new(|line, _captures, _state| {
+            Box::new(|line, _captures, _state, stats| {
                 println!("(STDOUT) Dispatcher caught: {}", line);
                 // Use a regex to capture a URL from the line.
                 if let Ok(url_regex) = Regex::new(r"(http://[^\s]+)") {
@@ -124,7 +124,7 @@ impl CargoCommandBuilder {
                         if let Some(url_match) = url_caps.get(1) {
                             let url = url_match.as_str();
                             // Call open::that on the captured URL.
-                            if let Err(e) = open::that(url) {
+                            if let Err(e) = open::that_detached(url) {
                                 eprintln!("Failed to open URL: {}. Error: {}", url, e);
                             } else {
                                 println!("Opened URL: {}", url);
@@ -134,19 +134,30 @@ impl CargoCommandBuilder {
                 } else {
                     eprintln!("Failed to create URL regex");
                 }
+                let mut stats = stats.lock().unwrap();
+                if stats.build_finished_time.is_none() {
+                    let now = SystemTime::now();
+                    stats.build_finished_time = Some(now);
+                }
                 None
             }),
         );
+
         stdout_dispatcher.add_callback(
             r"BuildFinished",
-            Box::new(|line, _captures, _state| {
+            Box::new(|line, _captures, _state, stats| {
                 println!("******* {}", line);
+                let mut stats = stats.lock().unwrap();
+                if stats.build_finished_time.is_none() {
+                    let now = SystemTime::now();
+                    stats.build_finished_time = Some(now);
+                }
                 None
             }),
         );
         stdout_dispatcher.add_callback(
             r"server listening at:",
-            Box::new(|line, _captures, state| {
+            Box::new(|line, _captures, state, stats| {
                 // If we're not already in multiline mode, this is the initial match.
                 if !state.load(Ordering::Relaxed) {
                     println!("Matched 'server listening at:' in: {}", line);
@@ -174,9 +185,14 @@ impl CargoCommandBuilder {
                     if let Some(url_caps) = url_regex.captures(line) {
                         let url = url_caps.get(1).unwrap().as_str();
                         // Call open::that on the captured URL.
-                        match open::that(url) {
+                        match open::that_detached(url) {
                             Ok(_) => println!("Opened URL: {}", url),
                             Err(e) => eprintln!("Failed to open URL: {}. Error: {}", url, e),
+                        }
+                        let mut stats = stats.lock().unwrap();
+                        if stats.build_finished_time.is_none() {
+                            let now = SystemTime::now();
+                            stats.build_finished_time = Some(now);
                         }
                         // End multiline mode.
                         state.store(false, Ordering::Relaxed);
@@ -211,7 +227,7 @@ impl CargoCommandBuilder {
         let diagnostics_arc = Arc::clone(&self.diagnostics);
         stderr_dispatcher.add_callback(
             r"^(?P<level>\w+)(\[(?P<error_code>E\d+)\])?:\s+(?P<msg>.+)$", // Regex for diagnostic line
-            Box::new(move |_line, caps, _multiline_flag| {
+            Box::new(move |_line, caps, _multiline_flag, _stats| {
                 if let Some(caps) = caps {
                     let mut counts = counts.lock().unwrap();
                     // Create a PendingDiag and save the message
@@ -319,7 +335,7 @@ impl CargoCommandBuilder {
             // Suggestion callback that adds subsequent lines as suggestions
             stderr_dispatcher.add_callback(
                 r"^(?P<msg>.*)$", // Capture all lines following the location
-                Box::new(move |line, _captures, _multiline_flag| {
+                Box::new(move |line, _captures, _multiline_flag, _stats| {
                     if suggestion_m.load(Ordering::Relaxed) {
                         // Only process lines that match the suggestion format
                         if let Some(caps) = suggestion_regex.captures(line.trim()) {
@@ -377,7 +393,7 @@ impl CargoCommandBuilder {
             // Callback for handling when an empty line or new diagnostic is received
             stderr_dispatcher.add_callback(
                 r"^\s*$", // Regex to capture empty line
-                Box::new(move |_line, _captures, _multiline_flag| {
+                Box::new(move |_line, _captures, _multiline_flag, _stats| {
                     // println!("Empty line detected: {}", line);
                     suggestion_m.store(false, Ordering::Relaxed);
                     // End of current diagnostic: take and process it.
@@ -479,7 +495,7 @@ impl CargoCommandBuilder {
             let suggestion_mode = Arc::clone(&suggestion_mode);
             stderr_dispatcher.add_callback(
                 r"^(?P<msg>.*)$", // Capture all lines following the location
-                Box::new(move |line, _captures, _multiline_flag| {
+                Box::new(move |line, _captures, _multiline_flag, _stats| {
                     // Lock the location to fetch the original diagnostic info
                     if let Ok(location_guard) = location_lock.lock() {
                         if let Some(loc) = location_guard.as_ref() {
@@ -561,7 +577,7 @@ impl CargoCommandBuilder {
             stderr_dispatcher.add_callback(
                 // r"^\s*-->\s+(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+)$",
                 r"^\s*-->\s+(?P<file>.+?)(?::(?P<line>\d+))?(?::(?P<col>\d+))?\s*$",
-                Box::new(move |_line, caps, _multiline_flag| {
+                Box::new(move |_line, caps, _multiline_flag, _stats| {
                     log::trace!("Location line: {}", _line);
                     // if multiline_flag.load(Ordering::Relaxed) {
                     if let Some(caps) = caps {
@@ -609,7 +625,7 @@ impl CargoCommandBuilder {
             let pending_diag = Arc::clone(&pending_diag);
             stderr_dispatcher.add_callback(
                 r"^\s*=\s*note:\s*(?P<msg>.+)$",
-                Box::new(move |_line, caps, _state| {
+                Box::new(move |_line, caps, _state, _stats| {
                     if let Some(caps) = caps {
                         let mut pending_diag = pending_diag.lock().unwrap();
                         if let Some(ref mut resp) = *pending_diag {
@@ -636,7 +652,7 @@ impl CargoCommandBuilder {
             let pending_diag = Arc::clone(&pending_diag);
             stderr_dispatcher.add_callback(
                 r"^\s*(?:\=|\|)\s*help:\s*(?P<msg>.+)$", // Regex to match both '=' and '|' before help:
-                Box::new(move |_line, caps, _state| {
+                Box::new(move |_line, caps, _state, _stats| {
                     if let Some(caps) = caps {
                         let mut pending_diag = pending_diag.lock().unwrap();
                         if let Some(ref mut resp) = *pending_diag {
@@ -661,14 +677,20 @@ impl CargoCommandBuilder {
 
         stderr_dispatcher.add_callback(
     r"(?:\x1b\[[0-9;]*[A-Za-z])*\s*Serving(?:\x1b\[[0-9;]*[A-Za-z])*\s+at\s+(http://[^\s]+)",
-    Box::new(|line, captures, _state| {
+    Box::new(|line, captures, _state, stats | {
         if let Some(caps) = captures {
             let url = caps.get(1).unwrap().as_str();
+            let url = url.replace("0.0.0.0", "127.0.0.1");
             println!("(STDERR) Captured URL: {}", url);
-            match open::that(url) {
-                Ok(_) => println!("(STDERR) Opened URL: {}", url),
+            match open::that_detached(&url) {
+                Ok(_) => println!("(STDERR) Opened URL: {}",&url),
                 Err(e) => eprintln!("(STDERR) Failed to open URL: {}. Error: {:?}", url, e),
             }
+             let mut stats = stats.lock().unwrap();
+             if stats.build_finished_time.is_none() {
+              let now = SystemTime::now();
+             stats.build_finished_time = Some(now);
+             }
             Some(CallbackResponse {
                 callback_type: CallbackType::OpenedUrl, // Choose as appropriate
                 message: Some(format!("Captured and opened URL: {}", url)),
@@ -692,12 +714,17 @@ impl CargoCommandBuilder {
             let finished_flag = Arc::clone(&finished_flag);
             stderr_dispatcher.add_callback(
         r"^Finished\s+`(?P<profile>[^`]+)`\s+profile\s+\[(?P<opts>[^\]]+)\]\s+target\(s\)\s+in\s+(?P<dur>[0-9.]+s)$",
-        Box::new(move |_line, caps, _multiline_flag| {
+        Box::new(move |_line, caps, _multiline_flag, stats | {
             if let Some(caps) = caps {
                 finished_flag.store(true, Ordering::Relaxed);
                 let profile = &caps["profile"];
                 let opts    = &caps["opts"];
                 let dur     = &caps["dur"];
+                             let mut stats = stats.lock().unwrap();
+             if stats.build_finished_time.is_none() {
+              let now = SystemTime::now();
+             stats.build_finished_time = Some(now);
+             }
                 Some(CallbackResponse {
                     callback_type: CallbackType::Note,
                     message: Some(format!("Finished `{}` [{}] in {}", profile, opts, dur)),
@@ -715,7 +742,7 @@ impl CargoCommandBuilder {
             let summary_flag = Arc::clone(&summary_flag);
             stderr_dispatcher.add_callback(
     r"^(?P<level>warning|error):\s+`(?P<name>[^`]+)`\s+\((?P<otype>lib|bin)\)\s+generated\s+(?P<count>\d+)\s+(?P<kind>warnings|errors).*run\s+`(?P<cmd>[^`]+)`\s+to apply\s+(?P<fixes>\d+)\s+suggestions",
-    Box::new(move |_line, caps, multiline_flag| {
+    Box::new(move |_line, caps, multiline_flag, _stats | {
         let summary_flag = Arc::clone(&summary_flag);
         if let Some(caps) = caps {
             summary_flag.store(true, Ordering::Relaxed);
@@ -822,7 +849,7 @@ impl CargoCommandBuilder {
 
         stderr_dispatcher.add_callback(
             r"IO\(Custom \{ kind: NotConnected",
-            Box::new(move |line, _captures, _state| {
+            Box::new(move |line, _captures, _state, _stats| {
                 println!("(STDERR) Terminal error detected: {:?}", &line);
                 let result = if line.contains("NotConnected") {
                     TerminalError::NoTerminal
@@ -844,11 +871,29 @@ impl CargoCommandBuilder {
         );
         stderr_dispatcher.add_callback(
             r".*",
-            Box::new(|line, _captures, _state| {
+            Box::new(|line, _captures, _state, _stats| {
                 log::trace!("stdraw[{:?}]", line);
                 None // We're just printing, so no callback response is needed.
             }),
         );
+        // need to implement autosense/filtering for tool installers; TBD
+        // stderr_dispatcher.add_callback(
+        //     r"Command 'perl' not found\. Is perl installed\?",
+        //     Box::new(|line, _captures, _state, stats| {
+        //     println!("cargo e sees a perl issue; maybe a prompt in the future or auto-resolution.");
+        //     crate::e_autosense::auto_sense_perl();
+        //     None
+        //     }),
+        // );
+        // need to implement autosense/filtering for tool installers; TBD
+        // stderr_dispatcher.add_callback(
+        //     r"Error configuring OpenSSL build:\s+Command 'perl' not found\. Is perl installed\?",
+        //     Box::new(|line, _captures, _state, stats| {
+        //     println!("Detected OpenSSL build error due to missing 'perl'. Attempting auto-resolution.");
+        //     crate::e_autosense::auto_sense_perl();
+        //     None
+        //     }),
+        // );
         self.stderr_dispatcher = Some(Arc::new(stderr_dispatcher));
 
         // let mut progress_dispatcher = EventDispatcher::new();
@@ -1283,14 +1328,26 @@ impl CargoCommandBuilder {
                         {
                             // Use cargo leptos watch
                             println!("Detected 'cargo leptos watch' in {}", readme.display());
+                            crate::e_installer::ensure_leptos().unwrap_or_else(|_| {
+                                eprintln!("Error: Unable to ensure leptos installation.");
+                                PathBuf::new() // Return an empty PathBuf as a fallback
+                            });
                             self.execution_dir =
                                 target.manifest_path.parent().map(|p| p.to_path_buf());
-                            self.execution_dir =
-                                Some(target.manifest_path.parent().unwrap().to_path_buf());
+
                             self.alternate_cmd = Some("cargo".to_string());
                             self.args.push("leptos".into());
                             self.args.push("watch".into());
                             self = self.with_required_features(&target.manifest_path, target);
+                            if let Some(exec_dir) = &self.execution_dir {
+                                if exec_dir.join("package.json").exists() {
+                                    println!(
+                                        "Found package.json in execution directory: {}",
+                                        exec_dir.display()
+                                    );
+                                    crate::e_installer::check_npm_and_install(exec_dir).ok();
+                                }
+                            }
                             return self;
                         }
                     }
@@ -1318,7 +1375,15 @@ impl CargoCommandBuilder {
                         target.manifest_path.display()
                     );
                 }
-
+                if let Some(exec_dir) = &self.execution_dir {
+                    if exec_dir.join("package.json").exists() {
+                        println!(
+                            "Found package.json in execution directory: {}",
+                            exec_dir.display()
+                        );
+                        crate::e_installer::check_npm_and_install(exec_dir).ok();
+                    }
+                }
                 self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
                 self.args.push("serve".into());
                 self.args.push("--open".into());
@@ -1446,6 +1511,9 @@ impl CargoCommandBuilder {
     pub fn is_compiler_target(&self) -> bool {
         let supported_subcommands = ["run", "build", "check", "leptos", "tauri"];
         if let Some(alternate) = &self.alternate_cmd {
+            if alternate == "trunk" {
+                return true;
+            }
             if alternate != "cargo" {
                 return false;
             }

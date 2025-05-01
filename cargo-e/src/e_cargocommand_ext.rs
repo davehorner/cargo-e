@@ -748,7 +748,8 @@ impl CargoCommandExt for Command {
         let progress_disp_clone_stdout = progress_dispatcher.clone();
         let stage_disp_clone = stage_dispatcher.clone();
 
-        let stats_clone = Arc::clone(&stats);
+        let stats_stdout_clone = Arc::clone(&stats);
+        let stats_stderr_clone = Arc::clone(&stats);
         let _build_counter_stdout = Arc::clone(&build_progress_counter);
         let _runtime_counter_stdout = Arc::clone(&runtime_progress_counter);
 
@@ -792,7 +793,10 @@ impl CargoCommandExt for Command {
                                     };
                                     let progress = (current as f64 / total as f64) * 100.0;
                                     if let Some(ref pd) = progress_disp_clone_stdout {
-                                        pd.dispatch(&format!("Progress: {:.2}%", progress));
+                                        pd.dispatch(
+                                            &format!("Progress: {:.2}%", progress),
+                                            stats_stdout_clone.clone(),
+                                        );
                                     }
                                 }
 
@@ -803,34 +807,43 @@ impl CargoCommandExt for Command {
                                         // Mark the end of the build phase.
                                         if _in_build_phase {
                                             _in_build_phase = false;
-                                            let mut s = stats_clone.lock().unwrap();
+                                            let mut s = stats_stdout_clone.lock().unwrap();
                                             s.build_finished_count += 1;
                                             s.build_finished_time.get_or_insert(now);
+                                            drop(s);
                                             // self.result.build_finished_time = Some(now);
                                             if let Some(ref sd) = stage_disp_clone {
-                                                sd.dispatch(&format!(
-                                                    "Stage: BuildFinished occurred at {:?}",
-                                                    now
-                                                ));
+                                                sd.dispatch(
+                                                    &format!(
+                                                        "Stage: BuildFinished occurred at {:?}",
+                                                        now
+                                                    ),
+                                                    stats_stdout_clone.clone(),
+                                                );
                                             }
                                             if let Some(ref sd) = stage_disp_clone {
                                                 sd.dispatch(
                                                     "Stage: Switching to runtime passthrough",
+                                                    stats_stdout_clone.clone(),
                                                 );
                                             }
                                         }
                                     }
                                     Message::CompilerMessage(msg) => {
                                         // println!("parsed{}: {:?}", pid, msg);
-                                        let mut s = stats_clone.lock().unwrap();
+                                        let mut s = stats_stdout_clone.lock().unwrap();
                                         s.compiler_message_count += 1;
                                         if s.compiler_message_time.is_none() {
                                             s.compiler_message_time = Some(now);
+                                            drop(s);
                                             if let Some(ref sd) = stage_disp_clone {
-                                                sd.dispatch(&format!(
-                                                    "Stage: CompilerMessage occurred at {:?}",
-                                                    now
-                                                ));
+                                                sd.dispatch(
+                                                    &format!(
+                                                        "Stage: CompilerMessage occurred at {:?}",
+                                                        now
+                                                    ),
+                                                    stats_stdout_clone.clone(),
+                                                );
                                             }
                                         }
                                         let mut msg_vec =
@@ -847,28 +860,36 @@ impl CargoCommandExt for Command {
                                         // }
                                     }
                                     Message::CompilerArtifact(_) => {
-                                        let mut s = stats_clone.lock().unwrap();
+                                        let mut s = stats_stdout_clone.lock().unwrap();
                                         s.compiler_artifact_count += 1;
                                         if s.compiler_artifact_time.is_none() {
                                             s.compiler_artifact_time = Some(now);
+                                            drop(s);
                                             if let Some(ref sd) = stage_disp_clone {
-                                                sd.dispatch(&format!(
-                                                    "Stage: CompilerArtifact occurred at {:?}",
-                                                    now
-                                                ));
+                                                sd.dispatch(
+                                                    &format!(
+                                                        "Stage: CompilerArtifact occurred at {:?}",
+                                                        now
+                                                    ),
+                                                    stats_stdout_clone.clone(),
+                                                );
                                             }
                                         }
                                     }
                                     Message::BuildScriptExecuted(_) => {
-                                        let mut s = stats_clone.lock().unwrap();
+                                        let mut s = stats_stdout_clone.lock().unwrap();
                                         s.build_script_executed_count += 1;
                                         if s.build_script_executed_time.is_none() {
                                             s.build_script_executed_time = Some(now);
+                                            drop(s);
                                             if let Some(ref sd) = stage_disp_clone {
-                                                sd.dispatch(&format!(
+                                                sd.dispatch(
+                                                    &format!(
                                                     "Stage: BuildScriptExecuted occurred at {:?}",
                                                     now
-                                                ));
+                                                ),
+                                                    stats_stdout_clone.clone(),
+                                                );
                                             }
                                         }
                                     }
@@ -882,14 +903,18 @@ impl CargoCommandExt for Command {
                                 if _in_build_phase {
                                     _in_build_phase = false;
                                     let now = SystemTime::now();
-                                    let mut s = stats_clone.lock().unwrap();
+                                    let mut s = stats_stdout_clone.lock().unwrap();
                                     s.build_finished_count += 1;
                                     s.build_finished_time.get_or_insert(now);
+                                    drop(s);
                                     if let Some(ref sd) = stage_disp_clone {
-                                        sd.dispatch(&format!(
-                                            "Stage: BuildFinished (assumed) occurred at {:?}",
-                                            now
-                                        ));
+                                        sd.dispatch(
+                                            &format!(
+                                                "Stage: BuildFinished (assumed) occurred at {:?}",
+                                                now
+                                            ),
+                                            stats_stdout_clone.clone(),
+                                        );
                                     }
                                     buf.lock().unwrap().push(line.to_string());
                                 } else {
@@ -902,7 +927,7 @@ impl CargoCommandExt for Command {
                                     println!("{}", line);
                                 }
                                 if let Some(ref disp) = _stdout_disp_clone {
-                                    disp.dispatch(&line);
+                                    disp.dispatch(&line, stats_stdout_clone.clone());
                                 }
                                 // Print the runtime output.
                                 // println!("{}: {}", pid, line);
@@ -917,7 +942,10 @@ impl CargoCommandExt for Command {
                                     let current = _runtime_counter_stdout.load(Ordering::Relaxed);
                                     let progress = (current as f64 / total as f64) * 100.0;
                                     if let Some(ref pd) = progress_disp_clone_stdout {
-                                        pd.dispatch(&format!("Progress: {:.2}%", progress));
+                                        pd.dispatch(
+                                            &format!("Progress: {:.2}%", progress),
+                                            stats_stdout_clone.clone(),
+                                        );
                                     }
                                 }
                             }
@@ -960,7 +988,7 @@ impl CargoCommandExt for Command {
                     for line in message.lines().map(|line| line) {
                         if let Some(ref disp) = stderr_disp_clone {
                             // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
-                            let responses = disp.dispatch(line);
+                            let responses = disp.dispatch(line, stats_stderr_clone.clone());
 
                             // Iterate over the responses.
                             for ret in responses {
@@ -1030,7 +1058,7 @@ impl CargoCommandExt for Command {
                         };
                         if let Some(ref disp) = stderr_disp_clone {
                             // Dispatch the line and receive the Vec<Option<CallbackResponse>>.
-                            let responses = disp.dispatch(&line);
+                            let responses = disp.dispatch(&line, stats_stderr_clone.clone());
                             let mut has_match = false;
                             // Iterate over the responses.
                             for ret in responses {
@@ -1120,7 +1148,7 @@ impl CargoCommandExt for Command {
             elapsed_time: None,
             build_elapsed: None,
             runtime_elapsed: None,
-            stats: CargoStats::default(),
+            stats: stats.lock().unwrap().clone(),
             build_output_size: 0,
             runtime_output_size: 0,
             terminal_error: Some(tflag),

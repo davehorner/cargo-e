@@ -472,7 +472,7 @@ pub mod tui_interactive {
                 }
             }
         }
-        
+
         disable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(
