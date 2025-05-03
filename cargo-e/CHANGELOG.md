@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.22](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.21...cargo-e-v0.2.22) - 2025-05-03
+
+### Added
+
+- *(plugins)* update script detection and command building
+
+### Other
+
+- *(e_runner)* remove unused extra args handling in run_example function
+
 ## [0.2.21](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.20...cargo-e-v0.2.21) - 2025-04-30
 
 ### Other

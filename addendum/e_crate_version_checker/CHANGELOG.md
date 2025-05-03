@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.
 
 
 
+
+## [0.1.21](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.20...e_crate_version_checker-v0.1.21) - 2025-05-03
+
+### Other
+
+- update fortune grok3.  readme and CHANGELOG.
+
 ## [0.1.20](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.19...e_crate_version_checker-v0.1.20) - 2025-04-29
 
 ### Added
