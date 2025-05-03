@@ -457,10 +457,6 @@ pub fn run_example(
     .with_required_features(&target.manifest_path, target)
     .with_cli(cli);
 
-    if !cli.extra.is_empty() {
-        builder = builder.with_extra_args(&cli.extra);
-    }
-
     // Build the command.
     let mut cmd = builder.clone().build_command();
 
