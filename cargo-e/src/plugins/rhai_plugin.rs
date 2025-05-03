@@ -53,6 +53,8 @@ impl RhaiPlugin {
         log::trace!("RhaiPlugin::load: script length {} bytes", code.len());
         // Create a Rhai engine and register built-in cargo-e functions
         let mut engine = Engine::new();
+        let script_path_str = path.to_string_lossy().into_owned();
+        engine.register_fn("script_path", move || script_path_str.clone());
         // Built-in to collect Cargo targets via cargo-e library, returning JSON of Targets
         fn cargo_e_collect_json() -> String {
             // Determine parallelism for target collection

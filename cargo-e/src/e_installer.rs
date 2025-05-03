@@ -16,7 +16,6 @@ pub fn is_admin() -> bool {
     String::from_utf8(output.stdout).unwrap_or_default().trim() == "True"
 }
 
-
 // https://github.com/ahaoboy/is-admin
 #[cfg(unix)]
 pub fn is_admin() -> bool {
