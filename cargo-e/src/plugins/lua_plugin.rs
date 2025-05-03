@@ -25,7 +25,13 @@ impl LuaPlugin {
 
         // Create a Lua context and leak it for 'static lifetime
         let lua: &'static Lua = Box::leak(Box::new(Lua::new()));
-
+        let script_path_str = path.to_string_lossy().into_owned();
+        let func = lua
+            .create_function(move |_, ()| Ok(script_path_str.clone()))
+            .map_err(|e| anyhow::anyhow!("failed to create Lua function: {:?}", e))?;
+        lua.globals()
+            .set("script_path", func)
+            .map_err(|e| anyhow::anyhow!("failed to set global 'script_path': {:?}", e))?;
         // Evaluate the Lua code, expecting it to return a table
         let plugin_tbl: Table = lua
             .load(&code)

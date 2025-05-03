@@ -33,15 +33,25 @@ fn run(dir, target) {
     }
 }
 
+// Heuristic: if the script filename is "C:\…" it’s Windows
+fn is_windows_script() {
+    !script_path().starts_with("/")
+}
+
 // External fallback: invoked via build_command when run() throws or is absent
 fn build_command(dir, target) {
-    // On Windows, use cmd.exe /C echo
-    // On Unix, you could replace 'cmd','/C' with '/bin/echo'
-    let msg = "🛑  external fallback for " + target;
-    "{\"prog\":\"cmd\",\"args\":[\"/C\",\"echo\",\"" + msg + "\"],\"cwd\":null}"
+    let msg = script_path()+" 🛑  external fallback for " + target;
+    if is_windows_script() {
+        // Windows: use cmd.exe /C echo
+        "{\"prog\":\"cmd\",\"args\":[\"/C\",\"echo\",\"" + msg + "\"],\"cwd\":null}"
+    } else {
+        // macOS/Linux: use /bin/echo
+        "{\"prog\":\"/bin/echo\",\"args\":[\"" + msg + "\"],\"cwd\":null}"
+    }
 }
 
 // Optional per-target override for 'external'; uncomment to override the fallback
 // fn external(dir, target) {
 //     ["0", "🚀  per-target external() invoked"]
 // }
+
