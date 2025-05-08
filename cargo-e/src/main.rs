@@ -65,11 +65,12 @@ pub fn main() -> anyhow::Result<()> {
     if args.len() > 1 && args[1] == "e" {
         args.remove(1);
     }
-    let cli = Cli::parse_from(args);
+    let cli = Cli::parse_from(args.clone());
     if cli.version {
         cargo_e::e_cli::print_version_and_features();
         exit(0);
     }
+    let subcommand_provided_explicitly = args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
 
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
@@ -267,6 +268,12 @@ pub fn main() -> anyhow::Result<()> {
                     fuzzy_matches.len(),
                     explicit
                 );
+                if fuzzy_matches.len()==1 && subcommand_provided_explicitly {
+                    println!("Subcommand provided explicitly with 1 target.\nRunning {}...", fuzzy_matches[0].name);
+                    cargo_e::e_runner::run_example(manager.clone(), &cli, &fuzzy_matches[0])?;
+                    return Ok(());
+                }
+
                 if cli.run_all != RunAll::NotSpecified {
                     //PROMPT cargo_e::e_prompts::prompt(&"", 2).ok();
                     // Pass in your default packages, which are now generic.
@@ -290,158 +297,13 @@ pub fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    if builtin_examples.len() == 1 {
+    if builtin_examples.len() == 1 || (builtin_examples.is_empty() && builtin_binaries.len() == 1) {
         #[cfg(feature = "tui")]
         if cli.tui {
             do_tui_and_exit(manager, &cli, &unique_examples);
         }
 
-        let example = builtin_examples[0];
-        let message = format!(
-            "{} example found. run? (Yes / no / edit / tui / info)     waiting {} seconds.",
-            example.name, cli.wait
-        );
-        match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
-            Some('y') | Some(' ') | Some('\n') => {
-                println!("running {}...", example.name);
-                cargo_e::e_runner::run_example(manager.clone(), &cli, &example)?;
-            }
-            Some('n') => {
-                //println!("exiting without running.");
-                cli_loop(
-                    manager,
-                    &cli,
-                    &unique_examples,
-                    &builtin_examples,
-                    &builtin_binaries,
-                );
-                std::process::exit(0);
-            }
-            Some('e') => {
-                use futures::executor::block_on;
-                block_on(cargo_e::e_findmain::open_vscode_for_sample(&example));
-            }
-            Some('i') => {
-                futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(example));
-                cargo_e::e_prompts::prompt_line("", 120).ok();
-                cli_loop(
-                    manager.clone(),
-                    &cli,
-                    &unique_examples,
-                    &builtin_examples,
-                    &builtin_binaries,
-                );
-            }
-            Some('t') => {
-                #[cfg(feature = "tui")]
-                do_tui_and_exit(manager, &cli, &examples);
-                #[cfg(not(feature = "tui"))]
-                {
-                    println!("tui not enabled.");
-                    cli_loop(
-                        manager,
-                        &cli,
-                        &unique_examples,
-                        &builtin_examples,
-                        &builtin_binaries,
-                    );
-                    std::process::exit(0);
-                }
-            }
-            Some(other) => {
-                println!("{}. exiting.", other);
-                std::process::exit(1);
-            }
-            None => {
-                cargo_e::e_runner::run_example(manager.clone(), &cli, builtin_examples[0])?;
-            }
-        }
-        // Only one example exists: run it.
-    } else if builtin_examples.is_empty() && builtin_binaries.len() == 1 {
-        //provide_notice_of_no_examples(manager.clone(), &cli, &unique_examples).ok();
-        #[cfg(feature = "tui")]
-        if cli.tui {
-            do_tui_and_exit(manager.clone(), &cli, &unique_examples);
-        }
-        // No examples, but one binary exists.
-        let binary = builtin_binaries[0];
-        // Prompt the user for what to do.
-        let message = format!(
-            "{} binary found.  run? (Yes / no / edit / tui / info)     waiting {} seconds.",
-            binary.name, cli.wait
-        );
-        match cargo_e::e_prompts::prompt(&message, cli.wait) {
-            Ok(Some('y')) | Ok(Some(' ')) => {
-                cargo_e::e_runner::run_example(manager.clone(), &cli, binary)?;
-            }
-            Ok(Some('i')) => {
-                futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(binary));
-                cargo_e::e_prompts::prompt_line("", 120).ok();
-            }
-            Ok(Some('n')) => {
-                cli_loop(
-                    manager.clone(),
-                    &cli,
-                    &unique_examples,
-                    &builtin_examples,
-                    &builtin_binaries,
-                );
-                manager.generate_report(cli.gist);
-                std::process::exit(0);
-            }
-            Ok(Some('e')) => {
-                use futures::executor::block_on;
-                block_on(cargo_e::e_findmain::open_vscode_for_sample(binary));
-            }
-            Ok(Some('t')) => {
-                #[cfg(feature = "tui")]
-                {
-                    do_tui_and_exit(manager, &cli, &examples);
-                }
-            }
-            Ok(Some(other)) => {
-                println!("Unrecognized option: {:?}. Exiting.", other);
-                std::process::exit(0);
-            }
-            Ok(None) => {
-                cargo_e::e_runner::run_example(manager.clone(), &cli, binary)?;
-            }
-            Err(err) => {
-                eprintln!("Failed to read prompt: {}", err);
-                // either exit or propagate
-                return Err(err.into());
-            }
-        }
-        // match cargo_e::e_prompts::prompt(&message, cli.wait) {
-        //     Some('y') => {
-        //         // Run the binary.
-        //         cargo_e::e_runner::run_example(manager.clone(),&cli, binary)?;
-        //     }
-        //     Some('i') => {
-        //         futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(binary));
-        //         cargo_e::e_prompts::prompt_line("", 120).ok();
-        //     }
-        //     Some('n') => {
-        //         //println!("exiting without running.");
-        //         cli_loop(manager, &cli, &unique_examples, &builtin_examples, &builtin_binaries);
-        //         std::process::exit(0);
-        //     }
-        //     Some('e') => {
-        //         use futures::executor::block_on;
-        //         block_on(cargo_e::e_findmain::open_vscode_for_sample(binary));
-        //     }
-        //     Some('t') => {
-        //         // Open the TUI.
-        //         #[cfg(feature = "tui")]
-        //         {
-        //             do_tui_and_exit(manager, &cli, &examples);
-        //         }
-        //     }
-        //     _ => {
-        //         println!("Unrecognized option: {:?}. Exiting.", other);
-        //         std::process::exit(0);
-        //     }
-        // }
+        handle_single_target(manager.clone(), &cli, builtin_examples[0], &unique_examples, &builtin_examples, &builtin_binaries,subcommand_provided_explicitly)?;
     } else {
         provide_notice_of_no_examples(manager.clone(), &cli, &unique_examples).ok();
 
@@ -1012,4 +874,65 @@ pub fn run_rust_script_with_ctrlc_handling() {
             }
         }
     }
+}
+
+fn handle_single_target(
+    manager: Arc<ProcessManager>,
+    cli: &Cli,
+    target: &CargoTarget,
+    unique_examples: &[CargoTarget],
+    builtin_examples: &[&CargoTarget],
+    builtin_binaries: &[&CargoTarget],
+    subcommand_provided_explicitly: bool,
+) -> anyhow::Result<()> {
+   if subcommand_provided_explicitly {
+        // Skip prompting if the subcommand is explicit
+        println!("Subcommand provided explicitly. Running {}...", target.name);
+        cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
+        return Ok(());
+    }
+
+    let message = format!(
+        "{} found. run? (Yes / no / edit / tui / info)     waiting {} seconds.",
+        target.name, cli.wait
+    );
+
+    match cargo_e::e_prompts::prompt(&message, cli.wait.max(3))? {
+        Some('y') | Some(' ') | Some('\n') => {
+            println!("running {}...", target.name);
+            cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
+        }
+        Some('n') => {
+            cli_loop(manager, cli, unique_examples, builtin_examples, builtin_binaries);
+            std::process::exit(0);
+        }
+        Some('e') => {
+            use futures::executor::block_on;
+            block_on(cargo_e::e_findmain::open_vscode_for_sample(target));
+        }
+        Some('i') => {
+            futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(target));
+            cargo_e::e_prompts::prompt_line("", 120).ok();
+            cli_loop(manager.clone(), cli, unique_examples, builtin_examples, builtin_binaries);
+        }
+        Some('t') => {
+            #[cfg(feature = "tui")]
+            do_tui_and_exit(manager, cli, unique_examples);
+            #[cfg(not(feature = "tui"))]
+            {
+                println!("tui not enabled.");
+                cli_loop(manager, cli, unique_examples, builtin_examples, builtin_binaries);
+                std::process::exit(0);
+            }
+        }
+        Some(other) => {
+            println!("{}. exiting.", other);
+            std::process::exit(1);
+        }
+        None => {
+            cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
+        }
+    }
+
+    Ok(())
 }

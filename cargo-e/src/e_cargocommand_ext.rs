@@ -140,13 +140,13 @@ impl CargoDiagnostic {
 impl fmt::Debug for CargoDiagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Capitalize the first letter of the level
-        // let struct_name = self
-        //     .level
-        //     .chars()
-        //     .next()
-        //     .unwrap_or(' ')
-        //     .to_uppercase()
-        //     .to_string();
+        let level_cap = self
+            .level
+            .chars()
+            .next()
+            .unwrap_or(' ')
+            .to_uppercase()
+            .to_string();
 
         // Extract the file and line number from lineref (e.g., "cargo-e\src\e_command_builder.rs:79:8")
         let lineref_regex = regex::Regex::new(r"(?P<file>.*):(?P<line>\d+):(?P<col>\d+)").unwrap();
@@ -161,54 +161,44 @@ impl fmt::Debug for CargoDiagnostic {
             .and_then(|caps| caps.name("line").map(|m| m.as_str().parse().unwrap_or(0)))
             .unwrap_or(0);
 
-        // Print the diagnostic number and level (e.g., W01: or E001:)
-        let diag_number = if let Some(dn) = &self.diag_number {
+        // Format the diagnostic number with padding
+        let padded_diag_number = if let Some(dn) = &self.diag_number {
             format!("{:0width$}", dn, width = self.diag_num_padding.unwrap_or(0))
-        // Apply padding to the number
         } else {
             String::new()
         };
 
-        // Color the diagnostic number based on the level
-        let diag_number = match self.level.as_str() {
-            "warning" => format!("W{}:", diag_number),
-            "error" => format!("E{}:", diag_number),
-            "help" => format!("H{}:", diag_number),
-            _ => format!("N{}:", diag_number), // Default to green for notes
-        };
-        let diag_number_colored = match self.level.as_str() {
-            "warning" => Color::Yellow.paint(format!("W{}:", diag_number)),
-            "error" => Color::Red.paint(format!("E{}:", diag_number)),
-            "help" => Color::Purple.paint(format!("H{}:", diag_number)),
-            _ => Color::Green.paint(format!("N{}:", diag_number)), // Default to green for notes
+        // Combine the level and diagnostic number
+        let diag_number = format!("{}{}:", level_cap, padded_diag_number);
+
+        // Color the diagnostic number if color is enabled
+        let diag_number_colored = if self.uses_color {
+            match self.level.as_str() {
+                "warning" => Color::Yellow.paint(&diag_number).to_string(),
+                "error" => Color::Red.paint(&diag_number).to_string(),
+                "help" => Color::Purple.paint(&diag_number).to_string(),
+                _ => Color::Green.paint(&diag_number).to_string(),
+            }
+        } else {
+            diag_number.clone()
         };
 
-        // Print the struct name (capitalized level) and lineref
-        // Print the struct name (capitalized level) and lineref
-        // write!(f, "{}: ", struct_name)?;
-
-        // Always show lineref with underline if uses_color is true
+        // Print the diagnostic number and lineref
         if self.uses_color {
             write!(f, "{} ", diag_number_colored)?;
             let underlined_text = Style::new().underline().paint(&self.lineref).to_string();
             write!(f, "\x1b[4m{}\x1b[0m ", underlined_text)?; // Apply underline using ANSI codes
-            let message = match self.level.as_str() {
-                "warning" => Color::Yellow.paint(&self.message).to_string(),
-                "error" => Color::Red.paint(&self.message).to_string(),
-                _ => Color::Green.paint(&self.message).to_string(),
-            };
-            write!(f, "{}: ", message)?;
         } else {
             write!(f, "{} ", diag_number)?;
             write!(f, "{} ", self.lineref)?; // Plain lineref without color
-            write!(f, "{}: ", self.message)?;
         }
 
-        // Print the message with color if necessary
-        // Print the suggestion if present, with color if uses_color is true
+        // Print the message
+        write!(f, "{}: ", self.message)?;
+
+        // Print the suggestion if present
         if let Some(suggestion) = &self.suggestion {
             let suggestion = self.update_suggestion_with_lineno(suggestion, file, line_number);
-
             let suggestion_text = if self.uses_color {
                 Color::Green.paint(suggestion).to_string()
             } else {
@@ -217,7 +207,7 @@ impl fmt::Debug for CargoDiagnostic {
             write!(f, "{} ", suggestion_text)?;
         }
 
-        // Print the note if present, with color if uses_color is true
+        // Print the note if present
         if let Some(note) = &self.note {
             let note_text = if self.uses_color {
                 Color::Blue.paint(note).to_string()
@@ -227,7 +217,7 @@ impl fmt::Debug for CargoDiagnostic {
             write!(f, "\n{}", note_text)?;
         }
 
-        // Print the help if present, with color if uses_color is true
+        // Print the help if present
         if let Some(help) = &self.help {
             let help_text = if self.uses_color {
                 Color::LightYellow.paint(help).to_string()

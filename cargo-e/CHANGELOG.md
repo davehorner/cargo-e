@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.23](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.22...cargo-e-v0.2.23) - 2025-05-08
+
+### Fixed
+
+- -s subcommand bypass prompt. fix extra args and features being
+
 ## [0.2.22](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.21...cargo-e-v0.2.22) - 2025-05-03
 
 ### Added

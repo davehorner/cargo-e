@@ -107,7 +107,6 @@ pub fn run_all_examples(
         let builder =
             CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
                 .with_target(&target)
-                // .with_required_features(&target.manifest_path, &target)
                 .with_cli(cli)
                 .with_extra_args(&cli.extra);
 

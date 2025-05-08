@@ -531,7 +531,6 @@ pub mod tui_interactive {
         let builder =
             CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
                 .with_target(target)
-                .with_required_features(&manifest_path, target)
                 .with_cli(cli);
         let cmd = builder.build_command();
 
