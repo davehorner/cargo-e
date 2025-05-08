@@ -641,9 +641,8 @@ pub fn run_example(
     }
     if result.is_filter {
         result.print_exact();
-        result.print_short();
         result.print_compact();
-
+        result.print_short();
         // manager.print_shortened_output();
         manager.print_prefixed_summary();
         // manager.print_compact();

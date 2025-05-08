@@ -1275,19 +1275,38 @@ impl ProcessManager {
             // Collect warnings.
             let warnings: Vec<_> = diags.iter().filter(|d| d.level.eq("warning")).collect();
 
-            // Determine width for zero-padding.
-            let width = warnings.len().to_string().len().max(1);
+            // Determine width for zero-padding for warnings.
+            let warning_width = warnings.len().to_string().len().max(1);
             println!(
                 "\n\n--- Warnings for PID {} --- {} {}",
                 handle.0,
-                width,
+                warning_width,
                 warnings.len()
             );
 
             for (i, diag) in warnings.iter().enumerate() {
-                // Format the index with leading zeros.
-                let index = format!("{:0width$}", i + 1, width = width);
+                // Format the index with leading zeros for warnings.
+                let index = format!("{:0width$}", i + 1, width = warning_width);
                 // Print the warning with the index.
+                println!("{}: {}", index, diag.message.trim());
+            }
+
+            // Collect errors.
+            let errors: Vec<_> = diags.iter().filter(|d| d.level.eq("error")).collect();
+
+            // Determine width for zero-padding for errors.
+            let error_width = errors.len().to_string().len().max(1);
+            println!(
+                "\n\n--- Errors for PID {} --- {} {}",
+                handle.0,
+                error_width,
+                errors.len()
+            );
+
+            for (i, diag) in errors.iter().enumerate() {
+                // Format the index with leading zeros for errors.
+                let index = format!("{:0width$}", i + 1, width = error_width);
+                // Print the error with the index.
                 println!("{}: {}", index, diag.message.trim());
             }
         }

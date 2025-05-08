@@ -1482,13 +1482,15 @@ impl CargoCommandBuilder {
     /// This method queries your manifest helper function and, if features are found,
     /// appends "--features" and the feature list.
     pub fn with_required_features(mut self, manifest: &PathBuf, target: &CargoTarget) -> Self {
-        if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
+        if !self.args.contains(&"--features".to_string()) {
+            if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
             manifest,
             &target.kind,
             &target.name,
-        ) {
+            ) {
             self.args.push("--features".to_string());
             self.args.push(features);
+            }
         }
         self
     }
