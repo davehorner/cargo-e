@@ -303,7 +303,21 @@ pub fn main() -> anyhow::Result<()> {
             do_tui_and_exit(manager, &cli, &unique_examples);
         }
 
-        handle_single_target(manager.clone(), &cli, builtin_examples[0], &unique_examples, &builtin_examples, &builtin_binaries,subcommand_provided_explicitly)?;
+        let target = if builtin_examples.len() == 1 {
+            builtin_examples[0]
+        } else {
+            builtin_binaries[0]
+        };
+
+        handle_single_target(
+            manager.clone(),
+            &cli,
+            target,
+            &unique_examples,
+            &builtin_examples,
+            &builtin_binaries,
+            subcommand_provided_explicitly,
+        )?;
     } else {
         provide_notice_of_no_examples(manager.clone(), &cli, &unique_examples).ok();
 

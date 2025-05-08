@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-e"
-version = "0.2.23"
+version = "0.2.24"
 dependencies = [
  "anyhow",
  "assert_cmd",
