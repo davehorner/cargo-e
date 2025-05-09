@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.10...e_ai_summarize-v0.1.11) - 2025-05-09
+
+### Other
+
+- *(diagnostics)* print allow statements instead of warn. print urls instead of for more information, see. '|', '^', '-', '_'  condensed to a single line comment. full diag padding and other formatting. fix issue with targets that were not builtin example or binary executing when -s specified
+
 ## [0.1.10](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.9...e_ai_summarize-v0.1.10) - 2025-04-29
 
 ### Added

@@ -12,6 +12,13 @@ All notable changes to this project will be documented in this file.
 
 
 
+
+## [0.1.22](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.21...e_crate_version_checker-v0.1.22) - 2025-05-09
+
+### Other
+
+- *(diagnostics)* print allow statements instead of warn. print urls instead of for more information, see. '|', '^', '-', '_'  condensed to a single line comment. full diag padding and other formatting. fix issue with targets that were not builtin example or binary executing when -s specified
+
 ## [0.1.21](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.20...e_crate_version_checker-v0.1.21) - 2025-05-03
 
 ### Other

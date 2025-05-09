@@ -70,7 +70,8 @@ pub fn main() -> anyhow::Result<()> {
         cargo_e::e_cli::print_version_and_features();
         exit(0);
     }
-    let subcommand_provided_explicitly = args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
+    let subcommand_provided_explicitly =
+        args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
 
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
@@ -268,8 +269,11 @@ pub fn main() -> anyhow::Result<()> {
                     fuzzy_matches.len(),
                     explicit
                 );
-                if fuzzy_matches.len()==1 && subcommand_provided_explicitly {
-                    println!("Subcommand provided explicitly with 1 target.\nRunning {}...", fuzzy_matches[0].name);
+                if fuzzy_matches.len() == 1 && subcommand_provided_explicitly {
+                    println!(
+                        "Subcommand provided explicitly with 1 target.\nRunning {}...",
+                        fuzzy_matches[0].name
+                    );
                     cargo_e::e_runner::run_example(manager.clone(), &cli, &fuzzy_matches[0])?;
                     return Ok(());
                 }
@@ -297,7 +301,10 @@ pub fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    if builtin_examples.len() == 1 || (builtin_examples.is_empty() && builtin_binaries.len() == 1) {
+    if builtin_examples.len() == 1
+        || (builtin_examples.is_empty() && builtin_binaries.len() == 1)
+        || unique_examples.len() == 1
+    {
         #[cfg(feature = "tui")]
         if cli.tui {
             do_tui_and_exit(manager, &cli, &unique_examples);
@@ -305,8 +312,10 @@ pub fn main() -> anyhow::Result<()> {
 
         let target = if builtin_examples.len() == 1 {
             builtin_examples[0]
-        } else {
+        } else if builtin_binaries.len() == 1 {
             builtin_binaries[0]
+        } else {
+            &unique_examples[0]
         };
 
         handle_single_target(
@@ -319,7 +328,9 @@ pub fn main() -> anyhow::Result<()> {
             subcommand_provided_explicitly,
         )?;
     } else {
-        provide_notice_of_no_examples(manager.clone(), &cli, &unique_examples).ok();
+        if !subcommand_provided_explicitly {
+            provide_notice_of_no_examples(manager.clone(), &cli, &unique_examples).ok();
+        }
 
         #[cfg(feature = "tui")]
         if cli.tui {
@@ -899,7 +910,7 @@ fn handle_single_target(
     builtin_binaries: &[&CargoTarget],
     subcommand_provided_explicitly: bool,
 ) -> anyhow::Result<()> {
-   if subcommand_provided_explicitly {
+    if subcommand_provided_explicitly {
         // Skip prompting if the subcommand is explicit
         println!("Subcommand provided explicitly. Running {}...", target.name);
         cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
@@ -917,7 +928,13 @@ fn handle_single_target(
             cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
         }
         Some('n') => {
-            cli_loop(manager, cli, unique_examples, builtin_examples, builtin_binaries);
+            cli_loop(
+                manager,
+                cli,
+                unique_examples,
+                builtin_examples,
+                builtin_binaries,
+            );
             std::process::exit(0);
         }
         Some('e') => {
@@ -927,7 +944,13 @@ fn handle_single_target(
         Some('i') => {
             futures::executor::block_on(crate::e_runner::open_ai_summarize_for_target(target));
             cargo_e::e_prompts::prompt_line("", 120).ok();
-            cli_loop(manager.clone(), cli, unique_examples, builtin_examples, builtin_binaries);
+            cli_loop(
+                manager.clone(),
+                cli,
+                unique_examples,
+                builtin_examples,
+                builtin_binaries,
+            );
         }
         Some('t') => {
             #[cfg(feature = "tui")]
@@ -935,7 +958,13 @@ fn handle_single_target(
             #[cfg(not(feature = "tui"))]
             {
                 println!("tui not enabled.");
-                cli_loop(manager, cli, unique_examples, builtin_examples, builtin_binaries);
+                cli_loop(
+                    manager,
+                    cli,
+                    unique_examples,
+                    builtin_examples,
+                    builtin_binaries,
+                );
                 std::process::exit(0);
             }
         }

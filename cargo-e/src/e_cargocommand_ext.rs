@@ -105,13 +105,14 @@ impl CargoDiagnostic {
         suggestion
             .lines()
             .filter_map(|line| {
-                let binding = line.replace(['|', '^'], "");
+                let binding = line.replace(['|', '^', '-', '_'], "");
                 let cleaned_line = binding.trim();
 
                 // If the line becomes empty after removing | and ^, skip it
                 if cleaned_line.is_empty() {
                     return None; // Skip empty lines
                 }
+
                 if let Some(caps) = suggestion_regex.captures(line.trim()) {
                     let suggestion_line: usize = caps["line"].parse().unwrap_or(line_number); // If parsing fails, use the default line number
                                                                                               // Replace the line number if it doesn't match the diagnostic's line number
@@ -199,22 +200,84 @@ impl fmt::Debug for CargoDiagnostic {
         // Print the suggestion if present
         if let Some(suggestion) = &self.suggestion {
             let suggestion = self.update_suggestion_with_lineno(suggestion, file, line_number);
+            let suggestion = suggestion.replace(
+                "help: if this is intentional, prefix it with an underscore: ",
+                "",
+            );
+            let suggestion = regex::Regex::new(r"\^{3,}")
+                .map(|re| re.replace_all(&suggestion, "^^").to_string())
+                .unwrap_or_else(|_| suggestion.clone());
+
+            let suggestion = regex::Regex::new(r"-{3,}")
+                .map(|re| re.replace_all(&suggestion, "^-").to_string())
+                .unwrap_or_else(|_| suggestion.clone());
+
             let suggestion_text = if self.uses_color {
-                Color::Green.paint(suggestion).to_string()
+                Color::Green.paint(suggestion.clone()).to_string()
             } else {
                 suggestion.clone()
             };
-            write!(f, "{} ", suggestion_text)?;
+
+            let mut lines = suggestion.lines();
+            if let Some(first_line) = lines.next() {
+                let mut formatted_suggestion = first_line.to_string();
+                for line in lines {
+                    if line.trim_start().starts_with(['|', '^', '-', '_']) {
+                        let cleaned_line = line
+                            .trim_start_matches(|c| c == '|' || c == '^' || c == '-' || c == '_')
+                            .trim_start();
+
+                        let cleaned_line = if self.uses_color {
+                            Color::Blue
+                                .paint(&format!(" // {}", cleaned_line))
+                                .to_string()
+                        } else {
+                            format!(" // {}", cleaned_line)
+                        };
+
+                        formatted_suggestion.push_str(&cleaned_line);
+                    } else {
+                        formatted_suggestion.push('\n');
+                        formatted_suggestion.push_str(line);
+                    }
+                }
+
+                let formatted_suggestion = formatted_suggestion
+                    .lines()
+                    .map(|line| format!("     {}", line))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                write!(f, "{} ", formatted_suggestion)?;
+            } else {
+                let suggestion_text = suggestion_text
+                    .lines()
+                    .map(|line| format!("     {}", line))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                write!(f, "{} ", suggestion_text)?;
+            }
         }
 
         // Print the note if present
         if let Some(note) = &self.note {
-            let note_text = if self.uses_color {
-                Color::Blue.paint(note).to_string()
+            let note = regex::Regex::new(r"for more information, see <(https?://[^>]+)>")
+                .map(|re| re.replace_all(&note, "$1").to_string())
+                .unwrap_or_else(|_| note.clone());
+
+            let note = regex::Regex::new(r"`#\[warn\((.*?)\)\]` on by default")
+                .map(|re| re.replace_all(&note, "#[allow($1)]").to_string())
+                .unwrap_or_else(|_| note.clone());
+            let note = if self.uses_color {
+                Color::Blue.paint(&note).to_string()
             } else {
                 note.clone()
             };
-            write!(f, "\n{}", note_text)?;
+            let formatted_note = note
+                .lines()
+                .map(|line| format!("  {}", line))
+                .collect::<Vec<String>>()
+                .join("\n");
+            write!(f, "\n{}", formatted_note)?;
         }
 
         // Print the help if present
@@ -224,7 +287,7 @@ impl fmt::Debug for CargoDiagnostic {
             } else {
                 help.clone()
             };
-            write!(f, "\n{} ", help_text)?;
+            write!(f, "\n  {} ", help_text)?;
         }
 
         // Finish the debug formatting
@@ -301,15 +364,33 @@ impl CargoProcessResult {
             return;
         }
         let total = self.diagnostics.len();
-        println!("--- All Diagnostics ({} total) ---", total);
+        let pid = self.pid; // Assuming `pid` is accessible in this context
+        println!("--- All Diagnostics for PID {} ({} total) ---", pid, total);
+
         for diag in self.diagnostics.iter() {
-            println!(
-                "{} {}: {} {}",
-                diag.level,
-                diag.diag_number.unwrap_or_default(),
-                diag.lineref,
-                diag.message.trim()
-            );
+            let max_lineref_len = self
+                .diagnostics
+                .iter()
+                .map(|d| d.lineref.len())
+                .max()
+                .unwrap_or(0);
+
+            let padded_diag_number = if let Some(dn) = &diag.diag_number {
+                format!("{:0width$}", dn, width = diag.diag_num_padding.unwrap_or(0))
+            } else {
+                String::new()
+            };
+
+            if diag.level != "help" && diag.level != "note" {
+                println!(
+                    "{}{}: {:<width$} {}",
+                    diag.level,
+                    padded_diag_number,
+                    diag.lineref,
+                    diag.message.lines().next().unwrap_or("").trim(),
+                    width = max_lineref_len
+                );
+            }
         }
     }
 }

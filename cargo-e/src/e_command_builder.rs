@@ -1484,12 +1484,12 @@ impl CargoCommandBuilder {
     pub fn with_required_features(mut self, manifest: &PathBuf, target: &CargoTarget) -> Self {
         if !self.args.contains(&"--features".to_string()) {
             if let Some(features) = crate::e_manifest::get_required_features_from_manifest(
-            manifest,
-            &target.kind,
-            &target.name,
+                manifest,
+                &target.kind,
+                &target.name,
             ) {
-            self.args.push("--features".to_string());
-            self.args.push(features);
+                self.args.push("--features".to_string());
+                self.args.push(features);
             }
         }
         self
