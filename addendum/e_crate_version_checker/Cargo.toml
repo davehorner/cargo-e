@@ -2,7 +2,7 @@
 name = "e_crate_version_checker"
 description = "A tool to check for newer versions of Rust crates on crates.io and interactively update them."
 license = "MIT OR Apache-2.0"
-version = "0.1.21"
+version = "0.1.22"
 authors = ["David Horner"]
 edition = "2021"
 rust-version = "1.81.0"
@@ -30,4 +30,4 @@ rand = { version = "0.9", optional = true }
   
 [build-dependencies]
 # Used to generate fortunes at compile time
-genai = "0.2"
+genai = "0.3"
