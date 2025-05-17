@@ -188,4 +188,24 @@ impl EventDispatcher {
         }
         responses
     }
+
+    /// Process all lines from a BufRead, dispatching to callbacks.
+    pub fn process_stream<R: std::io::BufRead>(
+        &self,
+        reader: R,
+        stats: Arc<Mutex<CargoStats>>,
+    ) -> Vec<CallbackResponse> {
+        let mut responses = Vec::new();
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                let res = self.dispatch(&line, Arc::clone(&stats));
+                for r in res {
+                    if let Some(cb) = r {
+                        responses.push(cb);
+                    }
+                }
+            }
+        }
+        responses
+    }
 }

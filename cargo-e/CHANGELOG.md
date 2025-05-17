@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.26](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.25...cargo-e-v0.2.26) - 2025-05-17
+
+### Added
+
+- panic and backtrace treatments. add is_could_not_compile field to track compilation failures and improve diagnostics handling in CargoCommandExt and related components
+
 ## [0.2.25](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.24...cargo-e-v0.2.25) - 2025-05-09
 
 ### Added

@@ -29,6 +29,7 @@ use std::{fmt, thread};
 #[derive(Debug, Default, Clone)]
 pub struct CargoStats {
     pub is_comiler_target: bool,
+    pub is_could_not_compile: bool,
     pub start_time: Option<SystemTime>,
     pub compiler_message_count: usize,
     pub compiler_artifact_count: usize,
@@ -315,6 +316,7 @@ pub struct CargoProcessResult {
     pub runtime_output_size: usize,
     pub diagnostics: Vec<CargoDiagnostic>,
     pub is_filter: bool,
+    pub is_could_not_compile: bool,
 }
 
 impl CargoProcessResult {
@@ -757,6 +759,7 @@ impl CargoCommandExt for Command {
             runtime_output_size: 0,
             diagnostics: Vec::new(),
             is_filter: builder.is_filter,
+            is_could_not_compile: false,
         };
 
         // Return the CargoProcessHandle that owns the child process
@@ -804,6 +807,7 @@ impl CargoCommandExt for Command {
         let diagnostics = Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new()));
         let s = CargoStats {
             is_comiler_target: builder.is_compiler_target(),
+            is_could_not_compile: false,
             start_time: Some(start_time),
             ..Default::default()
         };
@@ -1207,6 +1211,7 @@ impl CargoCommandExt for Command {
         };
         let pid = child.id();
         let (cmd, args) = builder.injected_args();
+        let stats_snapshot = stats.lock().unwrap().clone();
         let result = CargoProcessResult {
             target_name: builder.target_name.clone(),
             cmd: cmd,
@@ -1219,12 +1224,13 @@ impl CargoCommandExt for Command {
             elapsed_time: None,
             build_elapsed: None,
             runtime_elapsed: None,
-            stats: stats.lock().unwrap().clone(),
+            stats: stats_snapshot.clone(),
             build_output_size: 0,
             runtime_output_size: 0,
             terminal_error: Some(tflag),
             diagnostics: final_diagnostics,
             is_filter: builder.is_filter,
+            is_could_not_compile: stats_snapshot.is_could_not_compile,
         };
         CargoProcessHandle {
             child,

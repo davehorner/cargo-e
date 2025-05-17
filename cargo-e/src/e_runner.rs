@@ -631,7 +631,7 @@ pub fn run_example(
                 ) {
                     println!("cargo e sees a dioxus issue; maybe a prompt in the future or auto-resolution.");
                 } else {
-                    println!("cargo error: {}", output);
+                    //println!("cargo error: {}", output);
                 }
             }
             Err(e) => {
@@ -639,14 +639,13 @@ pub fn run_example(
             }
         }
     }
-    if result.is_filter {
+    // let is_run_command = matches!(cli.subcommand.as_str(), "run" | "r");
+    // if !is_run_command && result.is_filter || ( result.is_filter && !result.is_could_not_compile ) {
         result.print_exact();
         result.print_compact();
         result.print_short();
-        // manager.print_shortened_output();
         manager.print_prefixed_summary();
-        // manager.print_compact();
-    }
+    // }
 
     // let handle=    Arc::new(builder).run_wait()?;
     // Spawn the process.
