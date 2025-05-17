@@ -76,6 +76,50 @@ pub fn main() -> anyhow::Result<()> {
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
 
+    // let is_install_command = matches!(cli.subcommand.as_str(), "install" | "i");
+    // if is_install_command {
+    //     let install_path = if let Some(ref explicit) = cli.explicit_example {
+    //         explicit.as_str()
+    //     } else {
+    //         "."
+    //     };
+
+    //     let mut cmd = std::process::Command::new("cargo");
+    //     cmd.arg("install")
+    //         .arg("--path")
+    //         .arg(install_path)
+    //         .stdout(std::process::Stdio::piped())
+    //         .stderr(std::process::Stdio::piped());
+
+    //     let mut child = cmd.spawn()?;
+    //     let output = child.wait_with_output()?; // Wait for process and capture output
+
+    //     // Combine stdout and stderr
+    //     let mut combined = Vec::new();
+    //     combined.extend_from_slice(&output.stdout);
+    //     combined.extend_from_slice(&output.stderr);
+
+    //     use std::io::BufReader;
+    //     let reader = BufReader::new(&combined[..]);
+    //     let dispatcher = cargo_e::e_eventdispatcher::EventDispatcher::new(); // or your configured dispatcher
+    //     let stats = std::sync::Arc::new(std::sync::Mutex::new(cargo_e::e_cargocommand_ext::CargoStats::default()));
+    //     let responses = dispatcher.process_stream(reader, stats);
+
+    //     let mut any_output = false;
+    //     for resp in &responses {
+    //         println!("Response: {:?}", resp);
+    //         if let Some(msg) = &resp.message {
+    //             println!("{}", msg);
+    //             any_output = true;
+    //         }
+    //     }
+    //     // Fallback: print raw output if nothing was shown
+    //     if !any_output {
+    //         print!("{}", String::from_utf8_lossy(&combined));
+    //     }
+
+    //     std::process::exit(output.status.code().unwrap_or(1));
+    // }
     // // Here we run "cargo run --example funny_example" so that the build phase and runtime output are distinct.
     // println!("=== Running: cargo run --example funny_example ===");
     // let mut command = Command::new("cargo");

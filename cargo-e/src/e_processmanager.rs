@@ -826,6 +826,7 @@ impl ProcessManager {
                     build_output_size: 0,   // Default value set to 0
                     runtime_output_size: 0, // Placeholder, should be set properly in actual use
                     is_filter: false,       // Placeholder, should be set properly in actual use
+                    is_could_not_compile: false, // Placeholder, should be set properly in actual use
                 };
                 self.record_result(result.clone());
                 anyhow::anyhow!("Process handle with PID {} not found", pid)
