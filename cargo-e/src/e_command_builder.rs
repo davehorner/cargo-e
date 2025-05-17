@@ -248,31 +248,46 @@ impl CargoCommandBuilder {
         stderr_dispatcher.add_callback(
             r"^thread '([^']+)' panicked at (.+):([^\s:]+):(\d+):(\d+)",
             Box::new(|line, captures, _state, _stats| {
-            if let Some(caps) = captures {
-                let thread = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
-                let message = caps.get(2).map(|m| m.as_str()).unwrap_or("unknown panic");
-                let file = caps.get(3).map(|m| m.as_str()).unwrap_or("unknown file");
-                let line_num = caps.get(4).map(|m| m.as_str()).unwrap_or("0").parse().unwrap_or(0);
-                let col_num = caps.get(5).map(|m| m.as_str()).unwrap_or("0").parse().unwrap_or(0);
-println!("\n\n\n");
-println!("{}", line);
-println!("Panic detected: thread='{}', message='{}', file='{}:{}:{}'", thread, message, file, line_num, col_num);
-println!("\n\n\n");
-                Some(CallbackResponse {
-                callback_type: CallbackType::Error,
-                message: Some(format!("thread '{}' panicked at {} ({}:{}:{})", thread, message, file, line_num, col_num)),
-                file: Some(file.to_string()),
-                line: Some(line_num),
-                column: Some(col_num),
-                suggestion: None,
-                terminal_status: None,
-                })
-            } else {
-                None
-            }
+                if let Some(caps) = captures {
+                    let thread = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
+                    let message = caps.get(2).map(|m| m.as_str()).unwrap_or("unknown panic");
+                    let file = caps.get(3).map(|m| m.as_str()).unwrap_or("unknown file");
+                    let line_num = caps
+                        .get(4)
+                        .map(|m| m.as_str())
+                        .unwrap_or("0")
+                        .parse()
+                        .unwrap_or(0);
+                    let col_num = caps
+                        .get(5)
+                        .map(|m| m.as_str())
+                        .unwrap_or("0")
+                        .parse()
+                        .unwrap_or(0);
+                    println!("\n\n\n");
+                    println!("{}", line);
+                    println!(
+                        "Panic detected: thread='{}', message='{}', file='{}:{}:{}'",
+                        thread, message, file, line_num, col_num
+                    );
+                    println!("\n\n\n");
+                    Some(CallbackResponse {
+                        callback_type: CallbackType::Error,
+                        message: Some(format!(
+                            "thread '{}' panicked at {} ({}:{}:{})",
+                            thread, message, file, line_num, col_num
+                        )),
+                        file: Some(file.to_string()),
+                        line: Some(line_num),
+                        column: Some(col_num),
+                        suggestion: None,
+                        terminal_status: None,
+                    })
+                } else {
+                    None
+                }
             }),
         );
-
 
         // Add a callback to detect "could not compile" errors
         stderr_dispatcher.add_callback(
@@ -305,7 +320,6 @@ println!("\n\n\n");
             None // No callback response needed
             }),
         );
-
 
         // Clone diagnostics_arc for this closure to avoid move
         let diagnostics_arc_for_diag = Arc::clone(&diagnostics_arc);
@@ -386,16 +400,18 @@ println!("\n\n\n");
             let look_behind = Arc::clone(&look_behind);
             // This callback runs for every stderr line to update the look-behind buffer
             stderr_dispatcher.add_callback(
-            r"^(?P<msg>.*)$",
-            Box::new(move |line, _captures, _state, _stats| {
-                let mut buf = look_behind.lock().unwrap();
-                if line.trim().is_empty() { return None; }
-                buf.push(line.to_string());
-                if buf.len() > 6 {
-                buf.remove(0);
-                }
-                None
-            }),
+                r"^(?P<msg>.*)$",
+                Box::new(move |line, _captures, _state, _stats| {
+                    let mut buf = look_behind.lock().unwrap();
+                    if line.trim().is_empty() {
+                        return None;
+                    }
+                    buf.push(line.to_string());
+                    if buf.len() > 6 {
+                        buf.remove(0);
+                    }
+                    None
+                }),
             );
         }
 
@@ -410,125 +426,131 @@ println!("\n\n\n");
 
             // Enable backtrace mode when we see "stack backtrace:"
             {
-            let backtrace_mode = Arc::clone(&backtrace_mode);
-            let backtrace_lines = Arc::clone(&backtrace_lines);
-            let stored_lines_behind = Arc::clone(&stored_lines_behind);
-            let look_behind = Arc::clone(&look_behind);
-            stderr_dispatcher.add_callback(
-                r"stack backtrace:",
-                Box::new(move |_line, _captures, _state, _stats| {
-                backtrace_mode.store(true, Ordering::Relaxed);
-                backtrace_lines.lock().unwrap().clear();
-                // Save the current look_behind buffer into a shared stored_lines_behind for later use
-                {
-                    let look_behind_buf = look_behind.lock().unwrap();
-                    let mut stored = stored_lines_behind.lock().unwrap();
-                    *stored = look_behind_buf.clone();
-                }
-                None
-                }),
-            );
+                let backtrace_mode = Arc::clone(&backtrace_mode);
+                let backtrace_lines = Arc::clone(&backtrace_lines);
+                let stored_lines_behind = Arc::clone(&stored_lines_behind);
+                let look_behind = Arc::clone(&look_behind);
+                stderr_dispatcher.add_callback(
+                    r"stack backtrace:",
+                    Box::new(move |_line, _captures, _state, _stats| {
+                        backtrace_mode.store(true, Ordering::Relaxed);
+                        backtrace_lines.lock().unwrap().clear();
+                        // Save the current look_behind buffer into a shared stored_lines_behind for later use
+                        {
+                            let look_behind_buf = look_behind.lock().unwrap();
+                            let mut stored = stored_lines_behind.lock().unwrap();
+                            *stored = look_behind_buf.clone();
+                        }
+                        None
+                    }),
+                );
             }
 
             // Process backtrace lines, filter and summarize
             {
-            let backtrace_mode = Arc::clone(&backtrace_mode);
-            let backtrace_lines = Arc::clone(&backtrace_lines);
-            let pending_diag = Arc::clone(&pending_diag);
-            let diagnostics_arc = Arc::clone(&diagnostics_arc);
-            let look_behind = Arc::clone(&look_behind);
+                let backtrace_mode = Arc::clone(&backtrace_mode);
+                let backtrace_lines = Arc::clone(&backtrace_lines);
+                let pending_diag = Arc::clone(&pending_diag);
+                let diagnostics_arc = Arc::clone(&diagnostics_arc);
+                let look_behind = Arc::clone(&look_behind);
 
-            // Regex for numbered backtrace line: "  0: type::path"
-            let re_number_type = Regex::new(r"^\s*(\d+):\s+(.*)$").unwrap();
-            // Regex for "at path:line"
-            let re_at_path = Regex::new(r"^\s*at\s+([^\s:]+):(\d+)").unwrap();
+                // Regex for numbered backtrace line: "  0: type::path"
+                let re_number_type = Regex::new(r"^\s*(\d+):\s+(.*)$").unwrap();
+                // Regex for "at path:line"
+                let re_at_path = Regex::new(r"^\s*at\s+([^\s:]+):(\d+)").unwrap();
 
-            stderr_dispatcher.add_callback(
-                r"^(?P<msg>.*)$",
-                Box::new(move |mut line, _captures, _state, _stats| {
-                if backtrace_mode.load(Ordering::Relaxed) {
-                    line = line.trim();
-                    // End of backtrace if empty line or new diagnostic/note
-                    if line.trim().is_empty()
-                    || line.starts_with("note:")
-                    || line.starts_with("error:")
-                    {
-                    let mut bt_lines = Vec::new();
-                    let mut skip_next = false;
-                    let mut last_number_type: Option<(String, String)> = None;
-                    for l in backtrace_lines.lock().unwrap().iter() {
-                        if let Some(caps) = re_number_type.captures(l) {
-                        // Save the (number, type) line, but don't push yet
-                        last_number_type = Some((caps[1].to_string(), caps[2].to_string()));
-                        skip_next = true;
-                        } else if skip_next && re_at_path.is_match(l) {
-                        let path_caps = re_at_path.captures(l).unwrap();
-                        let path = path_caps.get(1).unwrap().as_str();
-                        let line_num = path_caps.get(2).unwrap().as_str();
-                        if path.starts_with("/rustc") || path.contains(".cargo") || path.contains(".rustup") {
-                            // Skip both the number: type and the at line
-                            // (do not push either)
-                        } else {
-                            // Push both the number: type and the at line, on the same line
-                            if let Some((num, typ)) = last_number_type.take() {
-                            // Canonicalize the path if possible for better readability
-                            let path = match std::fs::canonicalize(path) {
-                                Ok(canon) => canon.display().to_string(),
-                                Err(_) => path.to_string(),
-                            };
+                stderr_dispatcher.add_callback(
+                    r"^(?P<msg>.*)$",
+                    Box::new(move |mut line, _captures, _state, _stats| {
+                        if backtrace_mode.load(Ordering::Relaxed) {
+                            line = line.trim();
+                            // End of backtrace if empty line or new diagnostic/note
+                            if line.trim().is_empty()
+                                || line.starts_with("note:")
+                                || line.starts_with("error:")
+                            {
+                                let mut bt_lines = Vec::new();
+                                let mut skip_next = false;
+                                let mut last_number_type: Option<(String, String)> = None;
+                                for l in backtrace_lines.lock().unwrap().iter() {
+                                    if let Some(caps) = re_number_type.captures(l) {
+                                        // Save the (number, type) line, but don't push yet
+                                        last_number_type =
+                                            Some((caps[1].to_string(), caps[2].to_string()));
+                                        skip_next = true;
+                                    } else if skip_next && re_at_path.is_match(l) {
+                                        let path_caps = re_at_path.captures(l).unwrap();
+                                        let path = path_caps.get(1).unwrap().as_str();
+                                        let line_num = path_caps.get(2).unwrap().as_str();
+                                        if path.starts_with("/rustc")
+                                            || path.contains(".cargo")
+                                            || path.contains(".rustup")
+                                        {
+                                            // Skip both the number: type and the at line
+                                            // (do not push either)
+                                        } else {
+                                            // Push both the number: type and the at line, on the same line
+                                            if let Some((num, typ)) = last_number_type.take() {
+                                                // Canonicalize the path if possible for better readability
+                                                let path = match std::fs::canonicalize(path) {
+                                                    Ok(canon) => canon.display().to_string(),
+                                                    Err(_) => path.to_string(),
+                                                };
 
-                            bt_lines.push(format!("{}: {} @ {}:{}", num, typ, path, line_num));
+                                                bt_lines.push(format!(
+                                                    "{}: {} @ {}:{}",
+                                                    num, typ, path, line_num
+                                                ));
+                                            }
+                                        }
+                                        skip_next = false;
+                                    } else if let Some((num, typ)) = last_number_type.take() {
+                                        // If the previous number: type was not followed by an at line, push it
+                                        bt_lines.push(format!("{}: {}", num, typ));
+                                        if !l.trim().is_empty() {
+                                            bt_lines.push(l.clone());
+                                        }
+                                        skip_next = false;
+                                    } else if !l.trim().is_empty() {
+                                        bt_lines.push(l.clone());
+                                        skip_next = false;
+                                    }
+                                }
+                                if !bt_lines.is_empty() {
+                                    let mut pending_diag = pending_diag.lock().unwrap();
+                                    if let Some(ref mut diag) = *pending_diag {
+                                        // --- Insert stored_lines_behind lines before backtrace_lines ---
+                                        let stored_lines = {
+                                            let buf = stored_lines_behind.lock().unwrap();
+                                            buf.clone()
+                                        };
+                                        let note = diag.note.get_or_insert_with(String::new);
+                                        if !stored_lines.is_empty() {
+                                            note.push_str(&stored_lines.join("\n"));
+                                            note.push('\n');
+                                        }
+                                        note.push_str(&bt_lines.join("\n"));
+                                        let mut diags = diagnostics_arc.lock().unwrap();
+                                        diags.push(diag.clone());
+                                    }
+                                }
+                                backtrace_mode.store(false, Ordering::Relaxed);
+                                backtrace_lines.lock().unwrap().clear();
+                                return None;
                             }
-                        }
-                        skip_next = false;
-                        } else if let Some((num, typ)) = last_number_type.take() {
-                        // If the previous number: type was not followed by an at line, push it
-                        bt_lines.push(format!("{}: {}", num, typ));
-                        if !l.trim().is_empty() {
-                            bt_lines.push(l.clone());
-                        }
-                        skip_next = false;
-                        } else if !l.trim().is_empty() {
-                        bt_lines.push(l.clone());
-                        skip_next = false;
-                        }
-                    }
-                    if !bt_lines.is_empty() {
-                        let mut pending_diag = pending_diag.lock().unwrap();
-                        if let Some(ref mut diag) = *pending_diag {
-                            // --- Insert stored_lines_behind lines before backtrace_lines ---
-                            let stored_lines = {
-                                let buf = stored_lines_behind.lock().unwrap();
-                                buf.clone()
-                            };
-                            let note = diag.note.get_or_insert_with(String::new);
-                            if !stored_lines.is_empty() {
-                                note.push_str(&stored_lines.join("\n"));
-                                note.push('\n');
-                            }
-                            note.push_str(&bt_lines.join("\n"));
-                            let mut diags = diagnostics_arc.lock().unwrap();
-                            diags.push(diag.clone());
-                        }
-                    }
-                    backtrace_mode.store(false, Ordering::Relaxed);
-                    backtrace_lines.lock().unwrap().clear();
-                    return None;
-                    }
 
-                    // Only keep lines that are part of the backtrace
-                    if re_number_type.is_match(line) || re_at_path.is_match(line) {
-                    backtrace_lines.lock().unwrap().push(line.to_string());
-                    }
-                    // Ignore further lines
-                    return None;
-                }
-                None
-                }),
-            );
+                            // Only keep lines that are part of the backtrace
+                            if re_number_type.is_match(line) || re_at_path.is_match(line) {
+                                backtrace_lines.lock().unwrap().push(line.to_string());
+                            }
+                            // Ignore further lines
+                            return None;
+                        }
+                        None
+                    }),
+                );
             }
         }
-   
 
         // suggestion callback
         {
@@ -537,56 +559,56 @@ println!("\n\n\n");
 
             // Suggestion callback that adds subsequent lines as suggestions
             stderr_dispatcher.add_callback(
-            r"^(?P<msg>.*)$", // Capture all lines following the location
-            Box::new(move |line, _captures, _multiline_flag, _stats| {
-                if suggestion_m.load(Ordering::Relaxed) {
-                // Only process lines that match the suggestion format
-                if let Some(caps) = suggestion_regex.captures(line.trim()) {
-                    // Capture the line number and code from the suggestion line
-                    // let line_num = caps[1].parse::<usize>().unwrap_or(0);
-                    let code = caps[2].to_string();
+                r"^(?P<msg>.*)$", // Capture all lines following the location
+                Box::new(move |line, _captures, _multiline_flag, _stats| {
+                    if suggestion_m.load(Ordering::Relaxed) {
+                        // Only process lines that match the suggestion format
+                        if let Some(caps) = suggestion_regex.captures(line.trim()) {
+                            // Capture the line number and code from the suggestion line
+                            // let line_num = caps[1].parse::<usize>().unwrap_or(0);
+                            let code = caps[2].to_string();
 
-                    // Lock the pending_diag to add the suggestion
-                    if let Ok(mut lock) = location_lock_clone.lock() {
-                    if let Some(mut loc) = lock.take() {
-                        // let file = loc.file.clone().unwrap_or_default();
-                        // let col = loc.column.unwrap_or(0);
+                            // Lock the pending_diag to add the suggestion
+                            if let Ok(mut lock) = location_lock_clone.lock() {
+                                if let Some(mut loc) = lock.take() {
+                                    // let file = loc.file.clone().unwrap_or_default();
+                                    // let col = loc.column.unwrap_or(0);
 
-                        // Concatenate the suggestion line to the message
-                        let mut msg = loc.message.unwrap_or_default();
-                        msg.push_str(&format!("\n{}", code));
+                                    // Concatenate the suggestion line to the message
+                                    let mut msg = loc.message.unwrap_or_default();
+                                    msg.push_str(&format!("\n{}", code));
 
-                        // Print the concatenated suggestion for debugging
-                        // println!("daveSuggestion for {}:{}:{} - {}", file, line_num, col, msg);
+                                    // Print the concatenated suggestion for debugging
+                                    // println!("daveSuggestion for {}:{}:{} - {}", file, line_num, col, msg);
 
-                        // Update the location with the new concatenated message
-                        loc.message = Some(msg.clone());
-                        // println!("Updating location lock with new suggestion: {}", msg);
-                        // Save the updated location back to shared state
-                        // if let Ok(mut lock) = location_lock_clone.lock() {
-                        // println!("Updating location lock with new suggestion: {}", msg);
-                        lock.replace(loc);
-                        // } else {
-                        //     eprintln!("Failed to acquire lock for location_lock_clone");
-                        // }
+                                    // Update the location with the new concatenated message
+                                    loc.message = Some(msg.clone());
+                                    // println!("Updating location lock with new suggestion: {}", msg);
+                                    // Save the updated location back to shared state
+                                    // if let Ok(mut lock) = location_lock_clone.lock() {
+                                    // println!("Updating location lock with new suggestion: {}", msg);
+                                    lock.replace(loc);
+                                    // } else {
+                                    //     eprintln!("Failed to acquire lock for location_lock_clone");
+                                    // }
+                                }
+                                // return Some(CallbackResponse {
+                                //     callback_type: CallbackType::Warning, // Treat subsequent lines as warnings
+                                //     message: Some(msg.clone()),
+                                //     file: Some(file),
+                                //     line: Some(line_num),
+                                //     column: Some(col),
+                                //     suggestion: Some(msg),  // This is the suggestion part
+                                //     terminal_status: None,
+                                // });
+                            }
+                        }
+                    } else {
+                        // println!("Suggestion mode is not active. Ignoring line: {}", line);
                     }
-                    // return Some(CallbackResponse {
-                    //     callback_type: CallbackType::Warning, // Treat subsequent lines as warnings
-                    //     message: Some(msg.clone()),
-                    //     file: Some(file),
-                    //     line: Some(line_num),
-                    //     column: Some(col),
-                    //     suggestion: Some(msg),  // This is the suggestion part
-                    //     terminal_status: None,
-                    // });
-                    }
-                }
-                } else {
-                // println!("Suggestion mode is not active. Ignoring line: {}", line);
-                }
 
-                None
-            }),
+                    None
+                }),
             );
         }
         {
@@ -1795,7 +1817,7 @@ println!("\n\n\n");
 ///   1. If the path is relative, try to resolve it relative to the current working directory.
 ///   2. If that file does not exist, try to resolve it relative to the parent directory of the manifest path.
 ///   3. Otherwise, return the original relative path.
-fn resolve_file_path(manifest_path: &PathBuf, file_str: &str) -> PathBuf {
+pub(crate) fn resolve_file_path(manifest_path: &PathBuf, file_str: &str) -> PathBuf {
     let file_path = Path::new(file_str);
     if file_path.is_relative() {
         // 1. Try resolving relative to the current working directory.

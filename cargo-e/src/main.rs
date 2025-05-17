@@ -76,50 +76,172 @@ pub fn main() -> anyhow::Result<()> {
     #[cfg(feature = "equivalent")]
     run_equivalent_example(&cli).ok(); // this std::process::exit()s
 
-    // let is_install_command = matches!(cli.subcommand.as_str(), "install" | "i");
-    // if is_install_command {
-    //     let install_path = if let Some(ref explicit) = cli.explicit_example {
-    //         explicit.as_str()
-    //     } else {
-    //         "."
-    //     };
+    let is_install_command = matches!(cli.subcommand.as_str(), "install" | "i");
+    // Handle install command with diagnostic processing (without modifying cli)
+    if is_install_command && std::env::var("CARGO_E_INSTALL_CHILD").is_err() {
+        let install_path = if let Some(ref explicit) = cli.explicit_example {
+            explicit.as_str()
+        } else {
+            "."
+        };
+        // Re-invoke this binary with an extra env var to indicate child mode.
+        let mut args: Vec<String> = std::env::args().collect();
+        let bin = args.remove(0);
 
-    //     let mut cmd = std::process::Command::new("cargo");
-    //     cmd.arg("install")
-    //         .arg("--path")
-    //         .arg(install_path)
-    //         .stdout(std::process::Stdio::piped())
-    //         .stderr(std::process::Stdio::piped());
+        // On Windows, use PowerShell to detach and redirect output.
+        #[cfg(target_os = "windows")]
+        {
+            let cargo = which::which("cargo").unwrap();
+            let mut cmd = Command::new("powershell");
+            cmd.arg("-NoProfile")
+                .arg("-Command")
+                .arg(format!(
+                    "Start-Process -WindowStyle Hidden -FilePath '{}' -ArgumentList 'install','--path','{}' -Wait -RedirectStandardOutput 1install_out.txt -RedirectStandardError 1install_err.txt; \
+                    $version = & '{}' --version; Write-Host `n$version; \
+                    & '{}' --stdout 1install_out.txt --stderr 1install_err.txt; \
+                    Write-Host \"Install finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')\"\
+                    ",// pause",
+                    cargo.display(),
+                    install_path,
+                    bin,
+                    bin
+                ))
+                .env("CARGO_E_INSTALL_CHILD", "1");
+            println!("{:?}", cmd);
+            let _ = cmd.spawn()?; // Detach and exit
+            println!("Spawned install process in background.");
+            std::process::exit(0);
+        }
+        // On Unix, use setsid to detach.
+        // #[cfg(not(target_os = "windows"))]
+        // {
+        //     let mut cmd = std::process::Command::new("setsid");
+        //     cmd.arg(&bin)
+        //         .args(&args)
+        //         .env("CARGO_E_INSTALL_CHILD", "1");
+        //     let _ = cmd.spawn()?; // Detach and exit
+        //     println!("Spawned install process in background.");
+        //     std::process::exit(0);
+        // }
+    }
 
-    //     let mut child = cmd.spawn()?;
-    //     let output = child.wait_with_output()?; // Wait for process and capture output
+    // This block runs in the child process (CARGO_E_INSTALL_CHILD=1)
+    if is_install_command {
+        let install_path = if let Some(ref explicit) = cli.explicit_example {
+            explicit.as_str()
+        } else {
+            "."
+        };
 
-    //     // Combine stdout and stderr
-    //     let mut combined = Vec::new();
-    //     combined.extend_from_slice(&output.stdout);
-    //     combined.extend_from_slice(&output.stderr);
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.arg("install")
+            .arg("--path")
+            .arg(install_path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
-    //     use std::io::BufReader;
-    //     let reader = BufReader::new(&combined[..]);
-    //     let dispatcher = cargo_e::e_eventdispatcher::EventDispatcher::new(); // or your configured dispatcher
-    //     let stats = std::sync::Arc::new(std::sync::Mutex::new(cargo_e::e_cargocommand_ext::CargoStats::default()));
-    //     let responses = dispatcher.process_stream(reader, stats);
+        let child = cmd.spawn()?;
+        let output = child.wait_with_output()?; // Wait for process and capture output
 
-    //     let mut any_output = false;
-    //     for resp in &responses {
-    //         println!("Response: {:?}", resp);
-    //         if let Some(msg) = &resp.message {
-    //             println!("{}", msg);
-    //             any_output = true;
-    //         }
-    //     }
-    //     // Fallback: print raw output if nothing was shown
-    //     if !any_output {
-    //         print!("{}", String::from_utf8_lossy(&combined));
-    //     }
+        // Write stdout and stderr to files
+        std::fs::write("1install_out.txt", &output.stdout)?;
+        std::fs::write("1install_err.txt", &output.stderr)?;
 
-    //     std::process::exit(output.status.code().unwrap_or(1));
-    // }
+        // Print version after install
+        let bin = std::env::current_exe()?;
+        let version_output = std::process::Command::new(&bin).arg("--version").output()?;
+        print!("{}", String::from_utf8_lossy(&version_output.stdout));
+
+        // Now call bin again with --stdout and --stderr to process diagnostics
+        let status = std::process::Command::new(&bin)
+            .arg("--stdout")
+            .arg("1install_out.txt")
+            .arg("--stderr")
+            .arg("1install_err.txt")
+            .status()?;
+
+        std::process::exit(output.status.code().unwrap_or(1));
+    }
+
+    // Handle --stdout and --stderr flags for diagnostic processing
+    let mut args_iter = std::env::args().peekable();
+    let mut stdout_path = None;
+    let mut stderr_path = None;
+    while let Some(arg) = args_iter.next() {
+        if arg == "--stdout" {
+            stdout_path = args_iter.next();
+        } else if arg == "--stderr" {
+            stderr_path = args_iter.next();
+        }
+    }
+    if let (Some(stdout_path), Some(stderr_path)) = (stdout_path, stderr_path) {
+        use cargo_e::e_cargocommand_ext::CargoDiagnostic;
+        use cargo_e::e_cargocommand_ext::CargoStats;
+        use cargo_e::e_diagnostics_dispatchers::{
+            create_stderr_dispatcher, create_stdout_dispatcher,
+        };
+        use std::io::{BufRead, BufReader};
+        use std::sync::{Arc, Mutex};
+
+        let diagnostics = Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new()));
+        let manifest_path = std::env::current_dir()?
+            .join("Cargo.toml")
+            .to_string_lossy()
+            .to_string();
+        let cargo_stats = Arc::new(Mutex::new(CargoStats::default()));
+        let _stdout_dispatcher = create_stdout_dispatcher();
+        let _stderr_dispatcher =
+            create_stderr_dispatcher(diagnostics.clone(), manifest_path.clone());
+
+        let mut any_output = false;
+
+        // Process stdout file
+        if let Ok(file) = std::fs::File::open(&stdout_path) {
+            let reader = BufReader::new(file);
+            for line in reader.lines() {
+                let line = line?;
+                if _stdout_dispatcher
+                    .dispatch(&line, cargo_stats.clone())
+                    .iter()
+                    .any(|r| r.is_some())
+                {
+                    any_output = true;
+                }
+            }
+        }
+
+        // Process stderr file
+        if let Ok(file) = std::fs::File::open(&stderr_path) {
+            let reader = BufReader::new(file);
+            for line in reader.lines() {
+                let line = line?;
+                if _stderr_dispatcher
+                    .dispatch(&line, cargo_stats.clone())
+                    .iter()
+                    .any(|r| r.is_some())
+                {
+                    any_output = true;
+                }
+            }
+        }
+
+        // Print debug info for each diagnostic
+        for diag in diagnostics.lock().unwrap().iter() {
+            println!("{:?}", diag);
+        }
+
+        // Fallback: print raw output if nothing was shown
+        if !any_output {
+            if let Ok(out) = std::fs::read_to_string(&stdout_path) {
+                print!("{}", out);
+            }
+            if let Ok(err) = std::fs::read_to_string(&stderr_path) {
+                print!("{}", err);
+            }
+        }
+
+        std::process::exit(0);
+    }
     // // Here we run "cargo run --example funny_example" so that the build phase and runtime output are distinct.
     // println!("=== Running: cargo run --example funny_example ===");
     // let mut command = Command::new("cargo");
@@ -983,6 +1105,7 @@ fn handle_single_target(
         }
         Some('e') => {
             use futures::executor::block_on;
+
             block_on(cargo_e::e_findmain::open_vscode_for_sample(target));
         }
         Some('i') => {

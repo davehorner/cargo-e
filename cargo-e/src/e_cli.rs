@@ -5,6 +5,22 @@ use clap::Parser;
 #[command(disable_version_flag = true)]
 pub struct Cli {
     /// Run all examples for a given number of seconds.
+
+    /// Path to read/write the stdout of the executed command.
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Path to read/write the stdout of the executed command."
+    )]
+    pub stdout: Option<std::path::PathBuf>,
+
+    /// Path to read/write the stderr of the executed command.
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Path to read/write the stderr of the executed command."
+    )]
+    pub stderr: Option<std::path::PathBuf>,
     ///
     /// If provided with a value (e.g. `--run-all 10`), each target will run for 10 seconds.
     /// If provided without a value (i.e. just `--run-all`), it means run forever.
