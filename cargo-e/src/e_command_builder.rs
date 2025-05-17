@@ -1795,7 +1795,7 @@ println!("\n\n\n");
 ///   1. If the path is relative, try to resolve it relative to the current working directory.
 ///   2. If that file does not exist, try to resolve it relative to the parent directory of the manifest path.
 ///   3. Otherwise, return the original relative path.
-fn resolve_file_path(manifest_path: &PathBuf, file_str: &str) -> PathBuf {
+pub(crate) fn resolve_file_path(manifest_path: &PathBuf, file_str: &str) -> PathBuf {
     let file_path = Path::new(file_str);
     if file_path.is_relative() {
         // 1. Try resolving relative to the current working directory.
