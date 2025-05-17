@@ -1,1 +1,7 @@
-﻿25/05/17|ee1be0b|0.2.26
+﻿25/05/17|56299e8|0.2.27
+## [0.2.27](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.26...cargo-e-v0.2.27) - 2025-05-17
+
+### Added
+
+- `cargo e -s i` install . or explicit path; this filters the output
+
