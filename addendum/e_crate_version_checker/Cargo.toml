@@ -2,16 +2,17 @@
 name = "e_crate_version_checker"
 description = "A tool to check for newer versions of Rust crates on crates.io and interactively update them."
 license = "MIT OR Apache-2.0"
-version = "0.1.22"
+version = "0.1.23"
 authors = ["David Horner"]
 edition = "2021"
 rust-version = "1.81.0"
 publish = true
 
 [features]
-default = ["check-version","uses_reqwest","uses_serde"]
+default = ["check-version","uses_github"]
 check-version = []
 check-version-program-start = []
+uses_github = ["uses_reqwest","uses_serde"]
 uses_reqwest = ["dep:reqwest"]
 uses_serde = ["dep:serde","dep:serde_json"]
 # uses_semver = ["dep:semver"]

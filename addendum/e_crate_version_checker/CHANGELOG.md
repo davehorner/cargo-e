@@ -2,16 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.23](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.22...e_crate_version_checker-v0.1.23) - 2025-05-19
 
+### Added
 
-
-
-
-
-
-
-
-
+- add GitHub last release support
 
 ## [0.1.22](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.21...e_crate_version_checker-v0.1.22) - 2025-05-09
 

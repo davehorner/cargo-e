@@ -1,7 +1,6 @@
-﻿25/05/17|56299e8|0.2.27
-## [0.2.27](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.26...cargo-e-v0.2.27) - 2025-05-17
+﻿25/05/19|6b04ce6|0.2.28
+## [0.2.28](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.27...cargo-e-v0.2.28) - 2025-05-19
 
-### Added
+### Other
 
-- `cargo e -s i` install . or explicit path; this filters the output
-
+- updated the following local packages: e_crate_version_checker - using LAST_RELEASE via github for update check.
