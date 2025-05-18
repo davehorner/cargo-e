@@ -823,7 +823,7 @@ impl ProcessManager {
                     build_elapsed: None,  // Placeholder, should be set properly in actual use
                     runtime_elapsed: None, // Placeholder, should be set properly in actual use
                     stats: crate::e_cargocommand_ext::CargoStats::default(), // Provide a default instance of CargoStats
-                    build_output_size: 0,   // Default value set to 0
+                    build_output_size: 0,        // Default value set to 0
                     runtime_output_size: 0, // Placeholder, should be set properly in actual use
                     is_filter: false,       // Placeholder, should be set properly in actual use
                     is_could_not_compile: false, // Placeholder, should be set properly in actual use

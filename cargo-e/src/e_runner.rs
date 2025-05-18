@@ -641,10 +641,10 @@ pub fn run_example(
     }
     // let is_run_command = matches!(cli.subcommand.as_str(), "run" | "r");
     // if !is_run_command && result.is_filter || ( result.is_filter && !result.is_could_not_compile ) {
-        result.print_exact();
-        result.print_compact();
-        result.print_short();
-        manager.print_prefixed_summary();
+    result.print_exact();
+    result.print_compact();
+    result.print_short();
+    manager.print_prefixed_summary();
     // }
 
     // let handle=    Arc::new(builder).run_wait()?;

@@ -33,6 +33,7 @@ pub mod e_autosense;
 pub mod e_cargocommand_ext;
 pub mod e_collect;
 pub mod e_command_builder;
+pub mod e_diagnostics_dispatchers;
 pub mod e_discovery;
 pub mod e_eventdispatcher;
 pub mod e_features;
