@@ -1,17 +1,55 @@
-# Step 1: Run release-plz to bump, commit, and tag
-release-plz update --allow-dirty
+# Step 0: Run release-plz
+Write-Host "Running: release-plz update --allow-dirty"
+& release-plz update --allow-dirty
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "release-plz failed"
+    exit 1
+}
 
-# Step 2: Get the 7-character short SHA of HEAD
+# Step 1: Update README.md with version from Cargo.toml
+
+# Read version from Cargo.toml
+$cargoToml = Get-Content "Cargo.toml"
+$versionLine = $cargoToml | Where-Object { $_ -match '^\s*version\s*=' }
+if (-not $versionLine -or $versionLine -notmatch '=\s*"(.*?)"') {
+    Write-Error "Could not find or parse version in Cargo.toml"
+    exit 1
+}
+$version = $matches[1]
+Write-Host "Found version: $version"
+
+# Read README.md
+$readmePath = "README.md"
+$readmeContent = Get-Content $readmePath -Raw
+
+# Compare with ../README.md
+$parentPath = "..\README.md"
+if (-not (Test-Path $parentPath)) {
+    Write-Error "Parent README not found at $parentPath"
+    exit 1
+}
+$parentContent = Get-Content $parentPath -Raw
+if ($readmeContent -ne $parentContent) {
+    Write-Error "Parent README.md content differs from local README.md. Aborting update."
+    exit 1
+}
+
+# Replace version in README content
+$newContent = [regex]::Replace($readmeContent, '>(\d+\.\d+\.\d+)<', ">$version<")
+
+# Write updated content to README.md and ../README.md
+[System.IO.File]::WriteAllText($readmePath, $newContent, [System.Text.UTF8Encoding]::new($true))
+[System.IO.File]::WriteAllText($parentPath, $newContent, [System.Text.UTF8Encoding]::new($true))
+Write-Host "Updated README.md and ../README.md with version $version"
+
+# Step 2: Extract git short SHA
 $sha = git rev-parse --short=7 HEAD
+Write-Host "Found SHA: $sha"
 
-# Step 3: Extract version from Cargo.toml
-$version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' |
-            ForEach-Object { $_.Matches[0].Groups[1].Value })
-
-# Step 4: Read CHANGELOG.md lines
+# Step 3: Read and parse CHANGELOG.md
 $lines = Get-Content -Path CHANGELOG.md
 
-# Step 5: Find the first version header (skipping [Unreleased])
+# Find first version section
 $startIndex = $null
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match '^## \[\d+\.\d+\.\d+\]') {
@@ -19,13 +57,12 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
         break
     }
 }
-
 if ($startIndex -eq $null) {
-    Write-Error "Could not find a version header in CHANGELOG.md"
+    Write-Error "Could not find version section in CHANGELOG.md"
     exit 1
 }
 
-# Step 6: Find the end of the current section (next version header or end of file)
+# Find end of the section
 $endIndex = $lines.Count
 for ($i = $startIndex + 1; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match '^## \[\d+\.\d+\.\d+\]') {
@@ -33,12 +70,10 @@ for ($i = $startIndex + 1; $i -lt $lines.Count; $i++) {
         break
     }
 }
-
-# Step 7: Extract changelog body
 $changelogBodyLines = $lines[$startIndex..($endIndex - 1)]
 $changelogBody = $changelogBodyLines -join "`n"
 
-# Step 8: Extract date from version header
+# Extract date
 if ($lines[$startIndex] -match '- (\d{4})-(\d{2})-(\d{2})') {
     $year = $matches[1].Substring(2)
     $month = $matches[2]
@@ -47,13 +82,17 @@ if ($lines[$startIndex] -match '- (\d{4})-(\d{2})-(\d{2})') {
 } else {
     $date = Get-Date -Format 'yy/MM/dd'
 }
+Write-Host "Using release date: $date"
 
-# Step 9: Build LAST_RELEASE content
-$content = "$date|$sha|$version`n$changelogBody"
+# Step 4: Write LAST_RELEASE
+$lastReleaseContent = "$date|$sha|$version`n$changelogBody"
+[System.IO.File]::WriteAllText("LAST_RELEASE", $lastReleaseContent, [System.Text.UTF8Encoding]::new($true))
 
-# Step 10: Write to LAST_RELEASE with UTF8 encoding, no trailing newline
-Set-Content -Path LAST_RELEASE -Value $content -Encoding UTF8
+Write-Host "Wrote LAST_RELEASE"
 
-# Step 11: Amend the last commit to include LAST_RELEASE
+# Step 5: Amend commit
+git add .\README.md
+git add ..\README.md
 git add LAST_RELEASE
 git commit --amend --no-edit
+Write-Host "Amended last commit to include LAST_RELEASE"

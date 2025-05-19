@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 
 use crate::e_crate_update::update_crate;
-use crate::e_crate_update::version::get_latest_version;
+use crate::prelude::version::get_version_info;
 #[cfg(feature = "fortune")]
 use rand::{rng, seq::IteratorRandom};
 use std::sync::mpsc;
@@ -113,13 +113,33 @@ pub fn interactive_crate_upgrade(
         }
     }
 
-    // Retrieve the latest version from crates.io, handling missing crates gracefully
-    let latest_version = match get_latest_version(crate_name) {
-        Ok(v) => v,
-        Err(e) => {
-            // Print only the error message
-            eprintln!("{}", e);
-            return Ok(());
+    let (latest_version, changelog) = {
+        #[cfg(feature = "uses_github")]
+        {
+            let url = env!("GITHUB_LAST_RELEASE_URL");
+            let (_date, _commit, version, changelog_raw) = get_version_info(url)?;
+            // Remove empty lines from changelog
+            let changelog = changelog_raw
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            // println!(
+            //     "LAST_RELEASE: date={}, commit={}, version={}, changelog={}",
+            //     date, commit, version, changelog
+            // );
+            (version, changelog)
+        }
+        #[cfg(not(feature = "uses_github"))]
+        {
+            let version = match get_latest_version(crate_name) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return Ok(());
+                }
+            };
+            (version, String::new())
         }
     };
     if current_version == "0.0.0" {
@@ -133,7 +153,8 @@ pub fn interactive_crate_upgrade(
     ) {
         let current_tuple = (cur_major, cur_minor, cur_patch);
         let latest_tuple = (lat_major, lat_minor, lat_patch);
-        #[cfg(feature = "changelog")]
+        // Print changelog if feature is enabled and versions differ
+        #[cfg(all(feature = "changelog", not(feature = "uses_github")))]
         {
             if latest_version != current_version {
                 let changelog_str = FULL_CHANGELOG;
@@ -208,6 +229,13 @@ pub fn interactive_crate_upgrade(
     }
 
     // Compare versions and prompt the user accordingly.
+    // Print changelog if using GitHub and changelog is available
+    #[cfg(feature = "uses_github")]
+    {
+        if latest_version != current_version && !changelog.is_empty() {
+            println!("\n{}\n", changelog);
+        }
+    }
     println!(" want to install? [Yes/no] (wait {} seconds)", wait);
     std::io::Write::flush(&mut std::io::stdout())?;
 

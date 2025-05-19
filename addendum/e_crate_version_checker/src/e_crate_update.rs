@@ -73,7 +73,10 @@ pub mod version {
         krate: CrateInfo,
     }
 
-    /// Retrieves the latest version of the specified crate from crates.io.
+    /// Retrieves the latest version of the specified crate.
+    ///
+    /// If the `uses_github` feature is enabled, fetches the version from the GitHub LAST_RELEASE file.
+    /// Otherwise, fetches from crates.io.
     ///
     /// # Arguments
     ///
@@ -82,11 +85,10 @@ pub mod version {
     /// # Returns
     ///
     /// On success, returns the latest version as a `String`.
-    pub fn get_latest_version(crate_name: &str) -> Result<String, Box<dyn Error>> {
-        let __url = format!("https://crates.io/api/v1/crates/{}", crate_name);
+    pub fn get_latest_version(_crate_name: &str) -> Result<String, Box<dyn Error>> {
+        let __url = format!("https://crates.io/api/v1/crates/{}", _crate_name);
         #[cfg(all(feature = "uses_reqwest", feature = "uses_serde"))]
         {
-            // println!("[TRACE] Fetching URL: {}", url);
             let client = reqwest::blocking::Client::new();
             let resp = client
                 .get(&__url)
@@ -97,18 +99,16 @@ pub mod version {
                 .send()?;
             let status = resp.status();
             if !status.is_success() {
-                // Handle crate not found vs other HTTP errors
                 if status.as_u16() == 404 {
-                    return Err(format!("crate '{}' not found on crates.io", crate_name).into());
+                    return Err(format!("crate '{}' not found on crates.io", _crate_name).into());
                 } else {
                     return Err(format!(
                         "HTTP error {} fetching crate info for '{}'",
-                        status, crate_name
+                        status, _crate_name
                     )
                     .into());
                 }
             }
-            // Parse JSON body for crate info
             let crate_response: CrateResponse = resp.json()?;
             Ok(crate_response.krate.max_version)
         }
@@ -116,6 +116,54 @@ pub mod version {
         {
             Err("Required features (uses_reqwest and uses_serde) are not enabled".into())
         }
+    }
+
+    pub fn get_version_info(
+        url: &'static str,
+    ) -> Result<(String, String, String, String), Box<dyn Error + 'static>> {
+        let client = reqwest::blocking::Client::new();
+        let resp = client
+            .get(url)
+            .header(
+                reqwest::header::USER_AGENT,
+                user_agent::get_user_agent_checked(),
+            )
+            .send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(format!("HTTP error {} fetching LAST_RELEASE from GitHub", status).into());
+        }
+        let body = resp.text()?;
+        let (date, commit, version, changelog) = parse_github_last_release(&body)?;
+        Ok((date, commit, version, changelog))
+    }
+
+    /// Parses the contents of the GitHub LAST_RELEASE file.
+    ///
+    /// Returns a tuple: (date, commit, version, changelog)
+    pub fn parse_github_last_release(
+        body: &str,
+    ) -> Result<(String, String, String, String), Box<dyn Error>> {
+        let mut lines = body.lines();
+        let first_line = lines.next().ok_or("LAST_RELEASE file is empty")?;
+        let mut parts = first_line.split('|');
+        let date = parts
+            .next()
+            .ok_or("Missing date in LAST_RELEASE")?
+            .trim()
+            .to_string();
+        let commit = parts
+            .next()
+            .ok_or("Missing commit in LAST_RELEASE")?
+            .trim()
+            .to_string();
+        let version = parts
+            .next()
+            .ok_or("Missing version in LAST_RELEASE")?
+            .trim()
+            .to_string();
+        let changelog = lines.collect::<Vec<_>>().join("\n");
+        Ok((date, commit, version, changelog))
     }
 
     /// Checks if a newer version is available compared to the provided current version.
@@ -334,7 +382,10 @@ pub mod version {
             })
         }
         #[cfg(not(feature = "uses_serde"))]
-        return None;
+        {
+            eprintln!("Feature 'uses_serde' is not enabled");
+            return None;
+        }
     }
 }
 
@@ -490,7 +541,7 @@ fn spawn_self_update(crate_name: &str, latest_version: &str) -> Result<(), Box<d
 
     // Launch PowerShell in its own window via cmd /C start.
     let ps_result = Command::new("cmd")
-        .args(&[
+        .args([
             "/C",
             "start",
             "", // This is the window title; change as desired.
@@ -534,7 +585,7 @@ fn spawn_self_update(crate_name: &str, latest_version: &str) -> Result<(), Box<d
             let batch_path_str = format!("{}", batch_path.display());
             // Launch the batch file in its own window via cmd /C start.
             Command::new("cmd")
-                .args(&["/C", "start", "", &batch_path_str])
+                .args(["/C", "start", "", &batch_path_str])
                 .spawn()?;
 
             Ok(())
