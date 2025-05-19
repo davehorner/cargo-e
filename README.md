@@ -1,4 +1,4 @@
-﻿<a href="https://crates.io/crates/cargo-e" rel="nofollow noopener noreferrer">
+<a href="https://crates.io/crates/cargo-e" rel="nofollow noopener noreferrer">
   <img src="https://img.shields.io/crates/v/cargo-e.svg" alt="Crates.io">
 </a>
 
@@ -63,7 +63,7 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 - **[vscode](https://github.com/microsoft/vscode) integration:** Jump directly into your source `code` and navigate to the `fn main` entry point automatically. ('e' key in TUI)
 - **[bacon](https://github.com/Canop/bacon) integration:** Run `bacon` on your project/example. ('b' key in TUI)
 - **workspace integration:** Automatically detects and uses workspace manifests for multi-crate projects. (-w option)
-- **configurable behavior:** â€“ Optional equivalent mode â€“ `cargo-e` can behave identically to `cargo run --example` with bare minimum dependency
+- **configurable behavior:** – Optional equivalent mode – `cargo-e` can behave identically to `cargo run --example` with bare minimum dependency
 - **cargo and target stderr and stdout filtering:** `-f` sends all output from cargo and the target through a filter to determine accurate timing when `--run-all` is specified.  cargo warnings and errors are rewritten to be more concise, numbered, and timed format. Errors are written in realtime and a table of errors is displayed conviently at the end of output,  file references are all absolute and fully specified so your ctrl+clicks take you there.  If you require a terminal, don't use `-f`, and your output will be unfiltered.
 - **subcommands:** you may find that you like the rewritten cargo output and the additional detail provided in `-f` filtering.  Specify a `-s` subcommand to run a subcommand other than the default `run` that `cargo-e` uses normally.
 - **autosense/tool installer:** `cargo-e` will parse the output of a failed cargo builds and prompt to suggest the user to install the required library or tool runner.
@@ -77,7 +77,7 @@ If you read `cargo --help`, you'll notice short keys such as `r` for run and `b`
 
 Running the single example if there is only one example defined is a primary feature of `cargo-e`; it's what brought about this project. `--example` and `--bin` are often parsed, so changing Cargo's behavior is out of the question. In fact, this tool relies upon `--example` returning the list of examples instead of running the single example.
 
-Projects organize examples in different ways â€“ some using binaries, others placing them in an `examples` directory â€“ `cargo-e` helps navigate and execute targets across diverse structures. Whether your project uses bins, examples, or even workspace configurations, `cargo-e` unifies these scenarios and simplifies the process of running and exploring your sample code.
+Projects organize examples in different ways – some using binaries, others placing them in an `examples` directory – `cargo-e` helps navigate and execute targets across diverse structures. Whether your project uses bins, examples, or even workspace configurations, `cargo-e` unifies these scenarios and simplifies the process of running and exploring your sample code.
 
 ## Installation
 
@@ -161,7 +161,7 @@ If there is only one example, it will run that example, did I mention that alrea
   ```
   `--run-all` by itself (without a numeric value) 
 
-     will set the run mode to "forever"â€”meaning each target is allowed to run until it terminates naturally.
+     will set the run mode to "forever"—meaning each target is allowed to run until it terminates naturally.
 
   `--run-all 10`
     
@@ -196,7 +196,7 @@ cargo install cargo-e --no-default-features --features "tui concurrent funny-doc
 ```
 This command installs cargo-e without the "check-version" feature, ensuring that no version check or upgrade prompt occurs at runtime. The funny-docs are a joke to be filled in.  The joke is that a user would actually open `rust docs --open` and read the funny or find a guide worth reading.  It is the default docs.  Did you read the guide?
 
-Note: Disabling the version check means you forgo a mechanism designed to ensure that you're not using less desirable builds.
+Note: Disabling the version check means you forgo a mechanism designed to ensure that you’re not using less desirable builds.
 
 ## Work Arounds for Cargo
 
@@ -210,7 +210,7 @@ Several tools and techniques have been developed to ease the exploration and exe
 
 - **Built-in Cargo Support:**  
   
-    Cargo provides support for running examples with the `cargo run --example` command. However, this approach places the example at the level of an option, requiring users to type out a longer commandâ€”at least 19 characters per invocationâ€”and, in many cases, two separate invocations (one for seeing and another to actually do). This extra keystroke overhead can make the process less efficient for quick experimentation.
+    Cargo provides support for running examples with the `cargo run --example` command. However, this approach places the example at the level of an option, requiring users to type out a longer command—at least 19 characters per invocation—and, in many cases, two separate invocations (one for seeing and another to actually do). This extra keystroke overhead can make the process less efficient for quick experimentation.
 
 - **cargo-examples:**  
   
@@ -235,9 +235,9 @@ Several tools and techniques have been developed to ease the exploration and exe
 Many developers create their own custom scripts or tools to expose examples and binaries, leading to several issues:
 
   - **Inconsistency Across Projects:** Each project tends to have its own unique implementation. This inconsistency means that even though some crates offer excellent examples, these examples are often hidden or not uniformly accessible to users.
-  - **Hidden Valuable Examples:** Custom solutions may showcase wonderful, context-specific examples, but their lack of standardization makes them difficult to discover without prior knowledge of the project's internal tooling.
+  - **Hidden Valuable Examples:** Custom solutions may showcase wonderful, context-specific examples, but their lack of standardization makes them difficult to discover without prior knowledge of the project’s internal tooling.
   - **Extra Compilation and Maintenance Effort:** These ad-hoc methods usually require additional effort to compile and manage. The time spent on maintaining such tools often exceeds their practical benefits.
-  - **Safety Concerns When Executing Code:** Custom scripts may have hard-coded paths, exceptional test cases, or other assumptions specific to a developer's environment. As a result, running every test, binary, or example without careful vetting can introduce risks. The lack of uniform safety checks means that it's not always safe to execute all available code without considering these potential pitfalls.
+  - **Safety Concerns When Executing Code:** Custom scripts may have hard-coded paths, exceptional test cases, or other assumptions specific to a developer’s environment. As a result, running every test, binary, or example without careful vetting can introduce risks. The lack of uniform safety checks means that it's not always safe to execute all available code without considering these potential pitfalls.
 
   While a unified tool like **`cargo-e`** may not eliminate every security concern, it mitigates some risks by providing a more predictable and consistent interface for running other people's code (`OPC`). This helps developers avoid the common pitfalls associated with individually maintained scripts and ad-hoc solutions.
 
@@ -263,11 +263,11 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 ## Not a Digital Junk Drawer
 
-  Crates can easily become digital junk drawersâ€”random directories and executables thrown around like confetti. When developers adopt the "stick it anywhere" with no annotation/metadata, the result is a cluttered mess of custom scripts and ad-hoc tools that expose testers systems to risk by just running everything.
+  Crates can easily become digital junk drawers—random directories and executables thrown around like confetti. When developers adopt the "stick it anywhere" with no annotation/metadata, the result is a cluttered mess of custom scripts and ad-hoc tools that expose testers systems to risk by just running everything.
 
-## Embracing Cargo's Convention
+## Embracing Cargo’s Convention
 
-  When you bypass Cargo's metadata-driven approach by using custom, ad-hoc methods, you lose the inherent benefits that come from a well-defined project structure that follow some convention. Cargo.toml encapsulates critical metadataâ€”like dependency management, versioning, and build instructionsâ€”that ensures consistency and predictability across Rust projects.
+  When you bypass Cargo’s metadata-driven approach by using custom, ad-hoc methods, you lose the inherent benefits that come from a well-defined project structure that follow some convention. Cargo.toml encapsulates critical metadata—like dependency management, versioning, and build instructions—that ensures consistency and predictability across Rust projects.
 
 ## Contributing
 
