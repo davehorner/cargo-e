@@ -1438,16 +1438,15 @@ impl CargoCommandBuilder {
                     .parent()
                     .unwrap_or(Path::new(".."));
 
+                // Ensure npm dependencies are handled at the workspace parent level
                 let pnpm =
                     crate::e_installer::check_pnpm_and_install(manifest_dir).unwrap_or_else(|_| {
                         eprintln!("Error: Unable to check pnpm dependencies.");
-                        std::process::exit(1);
+                        PathBuf::new()
                     });
-                // Ensure npm dependencies are handled at the workspace parent level
                 if pnpm == PathBuf::new() {
                     crate::e_installer::check_npm_and_install(manifest_dir).unwrap_or_else(|_| {
                         eprintln!("Error: Unable to check npm dependencies.");
-                        std::process::exit(1);
                     });
                 }
 

@@ -17,6 +17,7 @@
 //!
 //! See the [GitHub repository](https://github.com/davehorner/cargo-e) for more details.
 
+use cargo_e::e_cli::custom_cli;
 use cargo_e::e_cli::RunAll;
 use cargo_e::e_processmanager::ProcessManager;
 use cargo_e::e_runner;
@@ -61,11 +62,12 @@ pub fn main() -> anyhow::Result<()> {
 
     let mut args: Vec<String> = env::args().collect();
 
-    // If the first argument after the binary name is "e", remove it.
-    if args.len() > 1 && args[1] == "e" {
-        args.remove(1);
+    let (run_at_a_time, filtered_args) = custom_cli(&mut args);
+
+    let mut cli = Cli::parse_from(filtered_args);
+    if let Some(n) = run_at_a_time {
+        cli.run_at_a_time = n;
     }
-    let cli = Cli::parse_from(args.clone());
     if cli.version {
         cargo_e::e_cli::print_version_and_features();
         exit(0);

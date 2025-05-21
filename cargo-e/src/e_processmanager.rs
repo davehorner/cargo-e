@@ -21,6 +21,7 @@ use crossterm::{
 };
 use std::io::{self, Write};
 use std::sync::atomic::Ordering;
+use std::sync::Mutex as StdMutex;
 #[cfg(unix)]
 use {
     nix::sys::signal::{kill as nix_kill, Signal},
@@ -47,14 +48,51 @@ impl ProcessObserver for ProcessManager {
 pub trait ProcessObserver: Send + Sync + 'static {
     fn on_spawn(&self, pid: u32, handle: CargoProcessHandle);
 }
+pub trait SignalTimeTracker {
+    /// Returns the time when the last signal was received, if any.
+    fn last_signal_time(&self) -> Option<SystemTime>;
+    /// Returns the duration between the last two signals, if at least two signals were received.
+    fn time_between_signals(&self) -> Option<Duration>;
+}
 
+pub struct SignalTimes {
+    times: StdMutex<Vec<SystemTime>>,
+}
+
+impl SignalTimes {
+    pub fn new() -> Self {
+        Self {
+            times: StdMutex::new(Vec::new()),
+        }
+    }
+    pub fn record_signal(&self) {
+        let mut times = self.times.lock().unwrap();
+        times.push(SystemTime::now());
+    }
+}
+
+impl SignalTimeTracker for SignalTimes {
+    fn last_signal_time(&self) -> Option<SystemTime> {
+        let times = self.times.lock().unwrap();
+        times.last().cloned()
+    }
+    fn time_between_signals(&self) -> Option<Duration> {
+        let times = self.times.lock().unwrap();
+        if times.len() >= 2 {
+            let last = times[times.len() - 1];
+            let prev = times[times.len() - 2];
+            last.duration_since(prev).ok()
+        } else {
+            None
+        }
+    }
+}
 pub struct ProcessManager {
     signalled_count: AtomicUsize,
     signal_tx: Sender<()>,
     processes: Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>,
-    // #[cfg(feature = "uses_async")]
-    // notifier: Notify,
     results: Mutex<Vec<CargoProcessResult>>,
+    signal_times: SignalTimes, // <-- Add this line
 }
 
 impl ProcessManager {
@@ -65,11 +103,18 @@ impl ProcessManager {
             signal_tx: tx.clone(),
             processes: Mutex::new(HashMap::new()),
             results: Mutex::new(Vec::new()),
+            signal_times: SignalTimes::new(), // <-- Add this line
         });
         ProcessManager::install_handler(Arc::clone(&manager), rx);
         manager
     }
 
+    pub fn last_signal_time(&self) -> Option<SystemTime> {
+        self.signal_times.last_signal_time()
+    }
+    pub fn time_between_signals(&self) -> Option<Duration> {
+        self.signal_times.time_between_signals()
+    }
     pub fn reset_signalled(&self) {
         self.signalled_count.store(0, Ordering::SeqCst);
     }
@@ -104,6 +149,7 @@ impl ProcessManager {
     }
 
     fn handle_signal(&self) {
+        self.signal_times.record_signal();
         println!("ctrlc>");
         let mut processes = self.processes.lock().unwrap();
         for (pid, handle) in processes.iter() {
@@ -116,7 +162,6 @@ impl ProcessManager {
                 };
                 h.result.diagnostics = final_diagnostics.clone();
 
-                // Ensure `es` is properly defined or assigned
                 if let Some(exit_status) = h.child.try_wait().ok().flatten() {
                     h.result.exit_status = Some(exit_status);
                 }
@@ -583,10 +628,7 @@ impl ProcessManager {
     //                         break;
     //                     }
     //                     Ok(None) => {
-    //                         eprintln!(
-    //                             "Process {} still running after attempt {}.",
-    //                             pid, attempts
-    //                         );
+    //                         eprintln!("Process {} still running after attempt {}.", pid, attempts);
     //                     }
     //                     Err(e) => {
     //                         eprintln!("Error rechecking process {}: {}", pid, e);
