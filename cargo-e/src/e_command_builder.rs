@@ -1442,7 +1442,7 @@ impl CargoCommandBuilder {
                 let pnpm =
                     crate::e_installer::check_pnpm_and_install(manifest_dir).unwrap_or_else(|_| {
                         eprintln!("Error: Unable to check pnpm dependencies.");
-                        PathBuf::new() 
+                        PathBuf::new()
                     });
                 if pnpm == PathBuf::new() {
                     crate::e_installer::check_npm_and_install(manifest_dir).unwrap_or_else(|_| { 

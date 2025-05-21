@@ -108,7 +108,7 @@ impl ProcessManager {
         ProcessManager::install_handler(Arc::clone(&manager), rx);
         manager
     }
-    
+
     pub fn last_signal_time(&self) -> Option<SystemTime> {
         self.signal_times.last_signal_time()
     }

@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.28</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.29</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -167,6 +167,11 @@ If there is only one example, it will run that example, did I mention that alrea
     
      means that each target will be run for 10 seconds. After 10 seconds, Cargo-e will prompt for a key press; if no key is pressed (or if a non-quit key is pressed), the running process will be killed, and the next target is started.
 
+  `startt -f -g1x4 cargo e --run-all --run-at-a-time 4`
+    
+     cargo-e can be called by [startt](https://crates.io/crates/startt) to run the targets in a grid; given `--run-at-a-time` argument it will run the targets concurrently and `startt` will position the windows in a grid.
+
+
 Displays detailed help information. Use the -h option for additional details on all available flags.
 
 ## Features and Configuration
@@ -291,7 +296,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.28</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.29</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 

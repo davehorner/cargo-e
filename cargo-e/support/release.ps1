@@ -35,12 +35,12 @@ if ($readmeContent -ne $parentContent) {
 }
 
 # Replace version in README content
-$newContent = [regex]::Replace($readmeContent, '>(\d+\.\d+\.\d+)<', ">$version<")
+#$newContent = [regex]::Replace($readmeContent, '>(\d+\.\d+\.\d+)<', ">$version<")
 
 # Write updated content to README.md and ../README.md
-[System.IO.File]::WriteAllText($readmePath, $newContent, [System.Text.UTF8Encoding]::new($true))
-[System.IO.File]::WriteAllText($parentPath, $newContent, [System.Text.UTF8Encoding]::new($true))
-Write-Host "Updated README.md and ../README.md with version $version"
+#[System.IO.File]::WriteAllText($readmePath, $newContent, [System.Text.UTF8Encoding]::new($true))
+#[System.IO.File]::WriteAllText($parentPath, $newContent, [System.Text.UTF8Encoding]::new($true))
+#Write-Host "Updated README.md and ../README.md with version $version"
 
 # Step 2: Extract git short SHA
 $sha = git rev-parse --short=7 HEAD

@@ -106,16 +106,21 @@ pub fn run_all_examples(
                 }
 
                 let manifest_path = PathBuf::from(target.manifest_path.clone());
-                let builder =
-                    CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
-                        .with_target(&target)
-                        .with_cli(&cli)
-                        .with_extra_args(&cli.extra);
+                let builder = CargoCommandBuilder::new(
+                    &target.name,
+                    &manifest_path,
+                    &cli.subcommand,
+                    cli.filter,
+                )
+                .with_target(&target)
+                .with_cli(&cli)
+                .with_extra_args(&cli.extra);
 
                 builder.print_command();
 
-                let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)
-                    .context("Failed to patch manifest for run")?;
+                let maybe_backup =
+                    crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)
+                        .context("Failed to patch manifest for run")?;
 
                 let system = Arc::new(Mutex::new(System::new_all()));
                 std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
@@ -165,27 +170,27 @@ pub fn run_all_examples(
                             break;
                         }
                         _ => {
-                                                 // Process is still running.
-                        //println!("Process is still running.");
+                            // Process is still running.
+                            //println!("Process is still running.");
                         }
                     }
-                if manager.has_signalled() > 0 {
-                    println!("Detected Ctrl+C. {}", manager.has_signalled());
-                    manager.remove(pid); // Clean up the process handle
-                
-                    if manager.has_signalled() > 1 {
-                        if let Some(dur) = manager.time_between_signals() {
-                            if dur < Duration::from_millis(350) {
-                                println!("User requested quit two times quickly (<350ms).");
-                                user_requested_quit_thread.store(true, Ordering::SeqCst);
-                                break;
+                    if manager.has_signalled() > 0 {
+                        println!("Detected Ctrl+C. {}", manager.has_signalled());
+                        manager.remove(pid); // Clean up the process handle
+
+                        if manager.has_signalled() > 1 {
+                            if let Some(dur) = manager.time_between_signals() {
+                                if dur < Duration::from_millis(350) {
+                                    println!("User requested quit two times quickly (<350ms).");
+                                    user_requested_quit_thread.store(true, Ordering::SeqCst);
+                                    break;
+                                }
                             }
                         }
+                        println!("Dectected Ctrl+C, coninuing to next target.");
+                        manager.reset_signalled();
+                        break;
                     }
-                    println!("Dectected Ctrl+C, coninuing to next target.");
-                    manager.reset_signalled();
-                    break;
-                }
 
                     let (_stats, runtime_start, end_time, status_display) = {
                         let process_handle = manager.get(pid).unwrap();
@@ -233,8 +238,8 @@ pub fn run_all_examples(
                         }
                         std::thread::sleep(Duration::from_millis(500));
                     } else if end_time.is_some() {
-                    println!("Process finished naturally.");
-                    manager.remove(pid);
+                        println!("Process finished naturally.");
+                        manager.remove(pid);
                         break;
                     }
                     std::thread::sleep(Duration::from_millis(100));
@@ -245,7 +250,7 @@ pub fn run_all_examples(
                         .context("Failed to restore patched manifest")?;
                 }
                 manager.generate_report(cli.gist);
-                
+
                 Ok(())
                 // --- End: original per-target logic ---
             });
@@ -254,10 +259,10 @@ pub fn run_all_examples(
             }
             handles.push(handle);
         }
-     // Check if the user requested to quit.
-           if user_requested_quit.load(Ordering::SeqCst) {
-                break;
-            }
+        // Check if the user requested to quit.
+        if user_requested_quit.load(Ordering::SeqCst) {
+            break;
+        }
         // Wait for all threads in this chunk to finish
         for handle in handles {
             let _ = handle.join();

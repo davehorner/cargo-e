@@ -278,7 +278,10 @@ pub fn custom_cli(args: &mut Vec<String>) -> (Option<usize>, Vec<&String>) {
     // default
     let mut filtered_args = vec![];
     for arg in &*args {
-        if let Some(num) = arg.strip_prefix("--run-").and_then(|s| s.strip_suffix("-at-a-time")) {
+        if let Some(num) = arg
+            .strip_prefix("--run-")
+            .and_then(|s| s.strip_suffix("-at-a-time"))
+        {
             if let Ok(n) = num.parse() {
                 println!("run-at-a-time: {}", n);
                 run_at_a_time = Some(n);
