@@ -4,6 +4,7 @@ use crate::e_processmanager::ProcessManager;
 use crate::e_target::{CargoTarget, TargetKind};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
@@ -67,7 +68,6 @@ pub fn run_all_examples(
     cli: &crate::Cli,
     filtered_targets: &[CargoTarget],
 ) -> Result<bool> {
-    // let _ = crate::e_runner::register_ctrlc_handler();
     // Adjust RUSTFLAGS if --quiet was provided.
     set_rustflags_if_quiet(cli.quiet);
 
@@ -80,226 +80,45 @@ pub fn run_all_examples(
     let mut targets = filtered_targets.to_vec();
     targets.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
-    // let manager = ProcessManager::new(&cli);
+    let user_requested_quit = Arc::new(AtomicBool::new(false));
 
-    let mut total_ctrl_c = 0;
-    let user_requested_quit = false;
-    //for target in targets {
-    for (idx, target) in targets.iter().enumerate() {
-        println!("\nRunning target: {}", target.name);
+    let chunk_size = cli.run_at_a_time;
+    let mut idx = 0;
+    while idx < targets.len() {
+        let chunk = &targets[idx..std::cmp::min(idx + chunk_size, targets.len())];
+        let mut handles = vec![];
 
-        if manager.has_signalled() > 0 {
-            manager.reset_signalled();
-            total_ctrl_c += 1;
-            if total_ctrl_c > 3 {
-                println!("User requested quit. 3 ctrl-c Exiting.");
-                return Ok(false);
-            }
-        }
-        let current_bin = env!("CARGO_PKG_NAME");
-        // Skip running our own binary.
-        if target.kind == TargetKind::Binary && target.name == current_bin {
-            continue;
-        }
+        for (chunk_idx, target) in chunk.iter().enumerate() {
+            let manager = Arc::clone(&manager);
+            let cli = cli.clone();
+            let target = target.clone();
+            let targets_len = targets.len();
+            let idx = idx + chunk_idx;
+            let user_requested_quit_thread = Arc::clone(&user_requested_quit);
 
-        // Build the command using CargoCommandBuilder.
-        let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder =
-            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
-                .with_target(&target)
-                .with_cli(cli)
-                .with_extra_args(&cli.extra);
-
-        // For debugging, print out the full command.
-        builder.print_command();
-        // PROMPT let key = crate::e_prompts::prompt(&format!("Full command: {}", cmd_debug), 2)?;
-        // if let Some('q') = key {
-        //     user_requested_quit = true;
-        //     println!("User requested quit.");
-        //     break;
-        // }
-
-        // Build the std::process::Command.
-        // let mut command = builder.build_command();
-        // #[cfg(target_os = "windows")]
-        // {
-        //     command.creation_flags(CREATE_NEW_PROCESS_GROUP);
-        // }
-
-        // Before spawning, check for workspace manifest errors and patch if necessary.
-        let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)
-            .context("Failed to patch manifest for run")?;
-
-        //    let pid=    Arc::new(builder).run()?;
-
-        //        let pid = Arc::new(builder).run(|pid, handle| {
-        //     manager.register(handle);
-        let system = Arc::new(Mutex::new(System::new_all()));
-        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-        // Refresh CPU usage to get actual value.
-        let mut system_guard = system.lock().unwrap();
-        system_guard.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            ProcessRefreshKind::nothing().with_cpu(),
-        );
-        drop(system_guard);
-        // })?;
-        let pid = Arc::new(builder).run({
-            let manager_ref = Arc::clone(&manager);
-            let t = target.clone();
-            let len = targets.len();
-            let system_clone = system.clone();
-            move |pid, handle| {
-                let stats = handle.stats.lock().unwrap().clone();
-                // Extract the build_finished_time from the cloned stats.
-                let runtime_start = if stats.is_comiler_target {
-                    stats.build_finished_time
-                } else {
-                    stats.start_time
-                };
-                // let end_time = handle.result.end_time.clone();
-                let status_display = ProcessManager::format_process_status(
-                    pid,
-                    runtime_start,
-                    system_clone,
-                    &t,
-                    (idx + 1, len),
-                );
-                ProcessManager::update_status_line(&status_display, true).ok();
-                manager_ref.register(handle);
-            }
-        })?;
-
-        // Spawn the child process.
-        // let mut child = command
-        //     .spawn()
-        //     .with_context(|| format!("Failed to spawn cargo run for target {}", target.name))?;
-        // {
-        //     let mut global = GLOBAL_CHILD.lock().unwrap();
-        //     *global = Some(child);
-        // }
-
-        // Let the target run for the specified duration.
-        // let run_duration = Duration::from_secs(cli.wait);
-        // thread::sleep(run_duration);
-        // PROMPT let key = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
-        // if let Some('q') = key {
-        //     user_requested_quit = true;
-        //     println!("User requested quit.");
-        //     break;
-        // }
-
-        let _output = {
-            // let mut global = crate::e_runner::GLOBAL_CHILD.lock().unwrap();
-            // // Take ownership of the child.
-            // let mut child = global
-            //     .take()
-            //     .ok_or_else(|| anyhow::anyhow!("No child process found"))?;
-
-            // Set timeout based on the run_all mode.
-            let timeout = match cli.run_all {
-                RunAll::Timeout(secs) => Duration::from_secs(secs),
-                RunAll::Forever => Duration::from_secs(u64::MAX), // effectively no timeout
-                RunAll::NotSpecified => Duration::from_secs(cli.wait),
-            };
-
-            let mut start = None; //Instant::now();
-                                  // let runtime_start = manager
-                                  //     .get(pid)
-                                  //     .unwrap()
-                                  //     .lock()
-                                  //     .unwrap()
-                                  //     .stats
-                                  //     .lock()
-                                  //     .unwrap()
-                                  //     .build_finished_time;
-                                  //println!("Runtime start time: {:?}", runtime_start);
-            loop {
-                //println!("Checking process status for PID: {}", pid);
-                match manager.try_wait(pid) {
-                    Ok(Some(status)) => {
-                        // Process finished naturally.
-                        println!("Process finished naturally.{:?}", status);
-                        // Remove the handle so it drops (and on Windows that will kill if still alive)
-                        manager.remove(pid);
-                        break;
-                    }
-                    _ => {
-                        // Process is still running.
-                        //println!("Process is still running.");
-                    }
+            // Spawn a thread for each target in the chunk
+            let handle = std::thread::spawn(move || {
+                // --- Begin: original per-target logic ---
+                let current_bin = env!("CARGO_PKG_NAME");
+                // Skip running our own binary.
+                if target.kind == TargetKind::Binary && target.name == current_bin {
+                    return Ok(()) as Result<()>;
                 }
-                if manager.has_signalled() > 0 {
-                    println!("Detected Ctrl+C. {}", manager.has_signalled());
-                    manager.remove(pid); // Clean up the process handle
-                    if manager.has_signalled() > 1 {
-                        println!("User requested quit. 2 ctrl-c.");
-                        break;
-                    }
-                    println!("Dectected Ctrl+C, coninuing to next target.");
-                    break;
-                }
-                // Here, use your non-blocking prompt function if available.
-                // For illustration, assume prompt_nonblocking returns Ok(Some(key)) if a key was pressed.
-                // PROMPT if let Ok(Some(key)) = prompt("waiting press q to quit", 0) {
-                //     // Wait on the child process.
-                //     if key == 'q' {
-                //         println!("User requested stop {}. pid {}", target.name, pid);
-                //         manager.kill_by_pid(pid).ok();
-                //         // let mut global = GLOBAL_CHILDREN.lock().unwrap();
-                //         // if let Some(cargo_process_handle) = global.remove(&pid) {
-                //         //     let mut cargo_process_handle = cargo_process_handle.lock().unwrap();
-                //         //     send_ctrl_c(&mut cargo_process_handle.child)?;
-                //         //     let _ = cargo_process_handle.kill(); // Attempt to kill the process
-                //         //     // Ignore errors if the process has already terminated.
-                //         //     // cargo_process_handle.wait_with_output().ok();
-                //         // }
-                //         break;
-                //     }
-                // }
 
-                // Check if the child process has already finished.
-                // if let Some(_status) = child.try_wait()? {
-                //     // Process finished naturally.
-                //     break child.wait_with_output().context(format!(
-                //         "Failed to get process output for target {}",
-                //         target.name
-                //     ))?;
-                // }
-                // let process_handle = manager.get(pid).unwrap();
-                // let handle = process_handle.lock().unwrap();
-                // let stats = handle.stats.lock().unwrap().clone();
-                // // let runtime_start = manager.get(pid).unwrap().lock().unwrap().stats.lock().unwrap().build_finished_time;
-                // let runtime_start = stats.build_finished_time;
-                let (_stats, runtime_start, end_time, status_display) = {
-                    // Acquire the process handle from the manager.
-                    let process_handle = manager.get(pid).unwrap();
-                    // Lock the process handle to gain mutable or safe read access.
-                    let handle = process_handle.lock().unwrap();
+                let manifest_path = PathBuf::from(target.manifest_path.clone());
+                let builder =
+                    CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
+                        .with_target(&target)
+                        .with_cli(&cli)
+                        .with_extra_args(&cli.extra);
 
-                    // Lock the stats and clone them.
-                    let stats = handle.stats.lock().unwrap().clone();
-                    // Extract the build_finished_time from the cloned stats.
-                    let runtime_start = if stats.is_comiler_target {
-                        stats.build_finished_time
-                    } else {
-                        stats.start_time
-                    };
-                    let end_time = handle.result.end_time;
-                    drop(handle);
-                    let status_display = ProcessManager::format_process_status(
-                        pid,
-                        runtime_start,
-                        system.clone(),
-                        &target,
-                        (idx + 1, targets.len()),
-                    );
-                    // Return both the stats and runtime_start.
-                    (stats, runtime_start, end_time, status_display)
-                };
-                // Refresh CPU usage to get actual value.
-                // Refresh CPU usage to get actual value.
+                builder.print_command();
+
+                let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)
+                    .context("Failed to patch manifest for run")?;
+
+                let system = Arc::new(Mutex::new(System::new_all()));
+                std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
                 let mut system_guard = system.lock().unwrap();
                 system_guard.refresh_processes_specifics(
                     ProcessesToUpdate::All,
@@ -308,91 +127,146 @@ pub fn run_all_examples(
                 );
                 drop(system_guard);
 
-                if cli.filter {
-                    ProcessManager::update_status_line(&status_display, true).ok();
-                }
-                // println!("start time: {:?} endtime {:?}", runtime_start, end_time);
-                if runtime_start.is_some() {
-                    if start.is_none() {
-                        start = Some(Instant::now());
-                    }
-                    // Check if the timeout has elapsed.
-                    if start.expect("start should have set").elapsed() >= timeout {
-                        println!(
-                            "\nTimeout reached for target {}. Killing child process {}.",
-                            target.name, pid
+                let pid = Arc::new(builder).run({
+                    let manager_ref = Arc::clone(&manager);
+                    let t = target.clone();
+                    let len = targets_len;
+                    let system_clone = system.clone();
+                    move |pid, handle| {
+                        let stats = handle.stats.lock().unwrap().clone();
+                        let runtime_start = if stats.is_comiler_target {
+                            stats.build_finished_time
+                        } else {
+                            stats.start_time
+                        };
+                        let status_display = ProcessManager::format_process_status(
+                            pid,
+                            runtime_start,
+                            system_clone,
+                            &t,
+                            (idx + 1, len),
                         );
-                        manager.kill_by_pid(pid).ok();
-                        manager.remove(pid);
-                        // let mut global = GLOBAL_CHILDREN.lock().unwrap();
-                        // if let Some(cargo_process_handle) = global.remove(&pid) {
-                        //     let mut cargo_process_handle = cargo_process_handle.lock().unwrap();
-                        //     send_ctrl_c(&mut cargo_process_handle.child)?;
-                        //     let _ = cargo_process_handle.kill(); // Attempt to kill the process
-                        //     // Ignore errors if the process has already terminated.
-                        //     // cargo_process_handle.wait_with_output().ok();
-                        // }
-                        break;
-                        // send_ctrl_c(&mut child)?;
-                        // child.kill().ok();
-                        // break child.wait_with_output().context(format!(
-                        //     "Failed to wait on killed process for target {}",
-                        //     target.name
-                        // ))?;
+                        ProcessManager::update_status_line(&status_display, true).ok();
+                        manager_ref.register(handle);
                     }
+                })?;
 
-                    // Sleep briefly before polling again.
-                    std::thread::sleep(Duration::from_millis(500));
-                } else if end_time.is_some() {
-                    println!("Process finished naturally.");
+                let timeout = match cli.run_all {
+                    RunAll::Timeout(secs) => Duration::from_secs(secs),
+                    RunAll::Forever => Duration::from_secs(u64::MAX),
+                    RunAll::NotSpecified => Duration::from_secs(cli.wait),
+                };
+
+                let mut start = None;
+                loop {
+                    match manager.try_wait(pid) {
+                        Ok(Some(_status)) => {
+                            manager.remove(pid);
+                            break;
+                        }
+                        _ => {
+                                                 // Process is still running.
+                        //println!("Process is still running.");
+                        }
+                    }
+                if manager.has_signalled() > 0 {
+                    println!("Detected Ctrl+C. {}", manager.has_signalled());
+                    manager.remove(pid); // Clean up the process handle
+                
+                    if manager.has_signalled() > 1 {
+                        if let Some(dur) = manager.time_between_signals() {
+                            if dur < Duration::from_millis(350) {
+                                println!("User requested quit two times quickly (<350ms).");
+                                user_requested_quit_thread.store(true, Ordering::SeqCst);
+                                break;
+                            }
+                        }
+                    }
+                    println!("Dectected Ctrl+C, coninuing to next target.");
+                    manager.reset_signalled();
                     break;
-                    // } else {
-                    //     // Process is still running.
-                    //     println!("Process is still running.");
                 }
 
-                std::thread::sleep(Duration::from_millis(100));
+                    let (_stats, runtime_start, end_time, status_display) = {
+                        let process_handle = manager.get(pid).unwrap();
+                        let handle = process_handle.lock().unwrap();
+                        let stats = handle.stats.lock().unwrap().clone();
+                        let runtime_start = if stats.is_comiler_target {
+                            stats.build_finished_time
+                        } else {
+                            stats.start_time
+                        };
+                        let end_time = handle.result.end_time;
+                        drop(handle);
+                        let status_display = ProcessManager::format_process_status(
+                            pid,
+                            runtime_start,
+                            system.clone(),
+                            &target,
+                            (idx + 1, targets_len),
+                        );
+                        (stats, runtime_start, end_time, status_display)
+                    };
+                    let mut system_guard = system.lock().unwrap();
+                    system_guard.refresh_processes_specifics(
+                        ProcessesToUpdate::All,
+                        true,
+                        ProcessRefreshKind::nothing().with_cpu(),
+                    );
+                    drop(system_guard);
+
+                    if cli.filter {
+                        ProcessManager::update_status_line(&status_display, true).ok();
+                    }
+                    if runtime_start.is_some() {
+                        if start.is_none() {
+                            start = Some(Instant::now());
+                        }
+                        if start.expect("start should have set").elapsed() >= timeout {
+                            println!(
+                                "\nTimeout reached for target {}. Killing child process {}.",
+                                target.name, pid
+                            );
+                            manager.kill_by_pid(pid).ok();
+                            manager.remove(pid);
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(500));
+                    } else if end_time.is_some() {
+                    println!("Process finished naturally.");
+                    manager.remove(pid);
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+
+                if let Some(original) = maybe_backup {
+                    fs::write(&target.manifest_path, original)
+                        .context("Failed to restore patched manifest")?;
+                }
+                manager.generate_report(cli.gist);
+                
+                Ok(())
+                // --- End: original per-target logic ---
+            });
+            if user_requested_quit.load(Ordering::SeqCst) {
+                break;
             }
-        };
-
-        // let output = {
-        //     let mut global = GLOBAL_CHILD.lock().unwrap();
-        //     if let Some(mut child) = global.take() {
-        //         child.wait_with_output().with_context(|| {
-        //             format!("Failed to wait on cargo run for target {}", target.name)
-        //         })?
-        //     } else {
-        //         return Err(anyhow::anyhow!("Child process missing"));
-        //     }
-        // };
-
-        // println!("{:?}",output);
-        // if !output.stderr.is_empty() {
-        //     eprintln!(
-        //         "Target '{}' produced errors:\n{}",
-        //         target.name,
-        //         String::from_utf8_lossy(&output.stderr)
-        //     );
-        // }
-
-        // Restore the manifest if it was patched.
-        if let Some(original) = maybe_backup {
-            fs::write(&target.manifest_path, original)
-                .context("Failed to restore patched manifest")?;
+            handles.push(handle);
         }
-        manager.generate_report(cli.gist);
-        // Check if the user requested to quit.
-        if user_requested_quit {
-            break;
+     // Check if the user requested to quit.
+           if user_requested_quit.load(Ordering::SeqCst) {
+                break;
+            }
+        // Wait for all threads in this chunk to finish
+        for handle in handles {
+            let _ = handle.join();
         }
 
-        // If using a timeout/run_all mechanism, sleep or prompt as needed.
-        // For simplicity, we wait for a fixed duration here.
-        //let run_duration = Duration::from_secs(cli.wait);
-        // PROMPT let _ = crate::e_prompts::prompt("waiting", run_duration.as_secs())?;
+        idx += chunk_size;
     }
 
-    Ok(user_requested_quit)
+    Ok(Arc::clone(&user_requested_quit).load(Ordering::SeqCst))
 }
 
 // pub fn run_all_examples(cli: &Cli, filtered_targets: &[CargoTarget]) -> Result<()> {

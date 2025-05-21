@@ -3,3 +3,8 @@
 .bacon-locations
 /doc
 *~
+run_report.md
+run_history.txt
+output_cc_prompts.txt
+output_cc_suggestions.txt
+1install_*.txt

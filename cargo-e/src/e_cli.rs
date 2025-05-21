@@ -145,6 +145,15 @@ pub struct Cli {
     #[arg(help = "Specify an explicit target to run.")]
     pub explicit_example: Option<String>,
 
+    #[arg(
+        long = "run-at-a-time",
+        short = 'J',
+        default_value_t = 1,
+        value_parser = clap::value_parser!(usize),
+        help = "Number of targets to run at a time in --run-all mode (--run-at-a-time)"
+    )]
+    pub run_at_a_time: usize,
+
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,
 }
@@ -258,4 +267,26 @@ impl std::fmt::Display for RunAll {
             RunAll::Timeout(secs) => write!(f, "{}", secs),
         }
     }
+}
+
+pub fn custom_cli(args: &mut Vec<String>) -> (Option<usize>, Vec<&String>) {
+    // If the first argument after the binary name is "e", remove it.
+    if args.len() > 1 && args[1].as_str() == "e" {
+        args.remove(1);
+    }
+    let mut run_at_a_time: Option<usize> = None;
+    // default
+    let mut filtered_args = vec![];
+    for arg in &*args {
+        if let Some(num) = arg.strip_prefix("--run-").and_then(|s| s.strip_suffix("-at-a-time")) {
+            if let Ok(n) = num.parse() {
+                println!("run-at-a-time: {}", n);
+                run_at_a_time = Some(n);
+            }
+            // Don't push this arg to filtered_args
+            continue;
+        }
+        filtered_args.push(arg);
+    }
+    (run_at_a_time, filtered_args)
 }
