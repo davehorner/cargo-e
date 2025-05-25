@@ -246,9 +246,12 @@ impl CargoCommandBuilder {
 
         // Callback for Rust panic messages (e.g., "thread 'main' panicked at ...")
         stderr_dispatcher.add_callback(
-            r"^thread '([^']+)' panicked at (.+):([^\s:]+):(\d+):(\d+)",
-            Box::new(|line, captures, _state, _stats| {
+            r"^thread '([^']+)' panicked at (.+):(\d+):(\d+):$",
+            Box::new(|line, captures, multiline_flag, _stats| {
+                multiline_flag.store(false, Ordering::Relaxed);
+
                 if let Some(caps) = captures {
+                    multiline_flag.store(true, Ordering::Relaxed); // the next line is the panic message
                     let thread = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
                     let message = caps.get(2).map(|m| m.as_str()).unwrap_or("unknown panic");
                     let file = caps.get(3).map(|m| m.as_str()).unwrap_or("unknown file");
@@ -266,6 +269,25 @@ impl CargoCommandBuilder {
                         .unwrap_or(0);
                     println!("\n\n\n");
                     println!("{}", line);
+                    // Use a global TTS instance via OnceCell for program lifetime
+
+                    #[cfg(feature = "uses_tts")]
+                    {
+                        let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                            std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
+                        });
+                        let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                        // Extract the filename without extension
+                        let filename = Path::new(message)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown file");
+                        let speech =
+                            format!("thread {} panic, {} line {}", thread, filename, line_num);
+                        println!("TTS: {}", speech);
+                        let _ = tts.speak(&speech, false);
+                    }
+
                     println!(
                         "Panic detected: thread='{}', message='{}', file='{}:{}:{}'",
                         thread, message, file, line_num, col_num
@@ -284,6 +306,21 @@ impl CargoCommandBuilder {
                         terminal_status: None,
                     })
                 } else {
+                    #[cfg(feature = "uses_tts")]
+                    {
+                        let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                            std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
+                        });
+                        let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                        // Extract the filename without extension
+                        let filename = Path::new(line)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown file");
+                        let speech = format!("panic says {}", line);
+                        println!("TTS: {}", speech);
+                        let _ = tts.speak(&speech, false);
+                    }
                     None
                 }
             }),

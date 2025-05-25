@@ -89,8 +89,11 @@ $lastReleaseContent = "$date|$sha|$version`n$changelogBody"
 [System.IO.File]::WriteAllText("LAST_RELEASE", $lastReleaseContent, [System.Text.UTF8Encoding]::new($true))
 
 Write-Host "Wrote LAST_RELEASE"
-
+e_update_readme -p
 # Step 5: Amend commit
+git add ..\Cargo.lock
+git add .\CHANGELOG.md
+git add .\Cargo.toml
 git add .\README.md
 git add ..\README.md
 git add LAST_RELEASE

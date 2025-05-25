@@ -1,6 +1,7 @@
-﻿25/05/21|ecd9914|0.2.29
-## [0.2.29](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.28...cargo-e-v0.2.29) - 2025-05-21
+﻿25/05/25|49c28cd|0.2.30
+## [0.2.30](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.29...cargo-e-v0.2.30) - 2025-05-25
 
 ### Added
 
-- *(run-all)* support parallel execution with --run-at-a-time and custom CLI parsing
+- Add Text-to-Speech (TTS) for panic messages
+- when single target; if there are extra arguments provided, run the target directly.
