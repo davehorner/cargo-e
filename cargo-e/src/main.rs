@@ -553,7 +553,6 @@ pub fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-
 #[allow(dead_code)]
 fn do_tui_and_exit(manager: Arc<ProcessManager>, cli: &Cli, unique_examples: &[CargoTarget]) -> ! {
     #[cfg(feature = "tui")]
@@ -1113,6 +1112,10 @@ fn handle_single_target(
     if subcommand_provided_explicitly {
         // Skip prompting if the subcommand is explicit
         println!("Subcommand provided explicitly. Running {}...", target.name);
+        cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
+        return Ok(());
+    } else if !cli.extra.is_empty() {
+        // If there are extra arguments provided, run the target directly
         cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
         return Ok(());
     }

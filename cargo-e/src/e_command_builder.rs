@@ -1445,7 +1445,7 @@ impl CargoCommandBuilder {
                         PathBuf::new()
                     });
                 if pnpm == PathBuf::new() {
-                    crate::e_installer::check_npm_and_install(manifest_dir).unwrap_or_else(|_| { 
+                    crate::e_installer::check_npm_and_install(manifest_dir).unwrap_or_else(|_| {
                         eprintln!("Error: Unable to check npm dependencies.");
                     });
                 }
