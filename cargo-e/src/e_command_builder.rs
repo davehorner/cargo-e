@@ -160,7 +160,37 @@ impl CargoCommandBuilder {
                 None
             }),
         );
-
+        // Terminate the running command if "Closing window 0v0" or "No windows are open, exiting" is found (Closing window 0v0|
+        stdout_dispatcher.add_callback(
+            r"No windows are open, exiting",
+            Box::new(|line, _captures, _state, _stats| {
+            println!("(STDOUT) Termination trigger matched: {}", line);
+            // Attempt to terminate the process gracefully
+            // This assumes GLOBAL_CHILDREN is accessible and the process is registered
+            let global = crate::e_runner::GLOBAL_CHILDREN.lock().unwrap();
+            for (_pid, handle) in global.iter() {
+                let mut handle = handle.lock().unwrap();
+                #[cfg(unix)]
+                {
+                    let child_id = handle.child.id() as i32;
+                    let _ = kill(Pid::from_raw(child_id), Signal::SIGTERM);
+                }
+                #[cfg(windows)]
+                {
+                    let _ = handle.child.kill();
+                }
+            }
+            Some(CallbackResponse {
+                callback_type: CallbackType::Note,
+                message: Some(format!("Terminating process due to: {}", line)),
+                file: None,
+                line: None,
+                column: None,
+                suggestion: None,
+                terminal_status: None,
+            })
+            }),
+        );
         stdout_dispatcher.add_callback(
             r"BuildFinished",
             Box::new(|line, _captures, _state, stats| {
@@ -1843,6 +1873,8 @@ pub(crate) fn resolve_file_path(manifest_path: &PathBuf, file_str: &str) -> Path
 #[cfg(test)]
 mod tests {
     use crate::e_target::TargetOrigin;
+// use nix::sys::signal::{kill, Signal};
+// use nix::unistd::Pid;
 
     use super::*;
 

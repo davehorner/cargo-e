@@ -52,9 +52,45 @@ use std::path::PathBuf;
 
 static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+use tracing_subscriber::{fmt, layer::SubscriberExt, Registry};
+use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::layer::{Context, Layer};
 
+struct ExitOnNoWindowsLayer;
+
+impl<S: Subscriber> Layer<S> for ExitOnNoWindowsLayer {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        println!("(TRACE) Received event: {:?}", event);
+        let mut found = false;
+        event.record(&mut |field: &tracing::field::Field, value: &dyn std::fmt::Debug| {
+            if field.name() == "message" {
+                let msg = format!("{:?}", value);
+                if msg.contains("No windows are open, exiting") {
+                    found = true;
+                }
+            }
+        });
+        if found {
+            // Your exit logic here
+            println!("(TRACE) Detected 'No windows are open, exiting' in trace logs!");
+            // e.g., terminate children, cleanup, etc.
+        }
+    }
+}
 pub fn main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
+    // let subscriber = tracing_subscriber::fmt()
+    //     .with_max_level(tracing::Level::TRACE)
+    //     .with(fmt::Layer::default())
+    //     .with(ExitOnNoWindowsLayer)
+    //     .finish();
+        // Forward log events to tracing
+    tracing_log::LogTracer::init().expect("Failed to set LogTracer");
+        let subscriber = Registry::default()
+        .with(fmt::Layer::default())
+        .with(ExitOnNoWindowsLayer);
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set global default subscriber");
+
+  //  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     log::trace!(
         "cargo-e starting with args: {:?}",
         std::env::args().collect::<Vec<_>>()

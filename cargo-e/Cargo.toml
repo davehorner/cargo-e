@@ -116,6 +116,8 @@ wasmparser = { version = "0.230.0", optional = true }
 glob = "0.3.2"
 git2 = "0.20.1"
 comfy-table = "7.1.4"
+tracing-subscriber = "0.3.19"
+tracing-log = "0.2.0"
 
 # scotch-host = { git = "https://github.com/davehorner/scotch.git", branch = "feature/long-live-scotch", package = "scotch-host", version = "0.1.0",optional = true }
 # scotch-guest-macros = { git = "https://github.com/davehorner/scotch.git", branch = "feature/long-live-scotch", package = "scotch-guest-macros", version = "0.1.0",optional = true }
