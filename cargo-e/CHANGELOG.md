@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.30](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.29...cargo-e-v0.2.30) - 2025-05-25
+
+### Added
+
+- Add Text-to-Speech (TTS) for panic messages
+- when single target; if there are extra arguments provided, run the target directly.
+
 ## [0.2.29](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.28...cargo-e-v0.2.29) - 2025-05-21
 
 ### Added
