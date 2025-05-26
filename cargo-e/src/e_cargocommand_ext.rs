@@ -28,6 +28,7 @@ use std::{fmt, thread};
 /// CargoStats tracks counts for different cargo events and also stores the first occurrence times.
 #[derive(Debug, Default, Clone)]
 pub struct CargoStats {
+    pub target_name: String,
     pub is_comiler_target: bool,
     pub is_could_not_compile: bool,
     pub start_time: Option<SystemTime>,
@@ -734,6 +735,7 @@ impl CargoCommandExt for Command {
             is_comiler_target: builder.is_compiler_target(), // Ensure this field is now valid
             start_time: Some(start_time),
             build_finished_time: Some(start_time),
+            target_name: builder.target_name.clone(),
             ..Default::default()
         };
         let stats = Arc::new(Mutex::new(s.clone()));
@@ -806,6 +808,7 @@ impl CargoCommandExt for Command {
         let start_time = SystemTime::now();
         let diagnostics = Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new()));
         let s = CargoStats {
+            target_name: builder.target_name.clone(),
             is_comiler_target: builder.is_compiler_target(),
             is_could_not_compile: false,
             start_time: Some(start_time),
