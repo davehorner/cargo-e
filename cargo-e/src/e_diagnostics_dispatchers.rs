@@ -1,8 +1,8 @@
 //! Diagnostic dispatcher setup for cargo-e
 // Provides functions to create configured stdout and stderr EventDispatchers for diagnostics
-
+use which::which;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -24,7 +24,7 @@ pub fn create_stdout_dispatcher() -> EventDispatcher {
 
     dispatcher.add_callback(
         r"listening on",
-        Box::new(|line, _captures, _state, stats| {
+        Box::new(|line, _captures, _state, stats, _prior_response| {
             println!("(STDOUT) Dispatcher caught: {}", line);
             if let Ok(url_regex) = Regex::new(r"(http://[^\s]+)") {
                 if let Some(url_caps) = url_regex.captures(line) {
@@ -50,7 +50,7 @@ pub fn create_stdout_dispatcher() -> EventDispatcher {
     );
     dispatcher.add_callback(
         r"BuildFinished",
-        Box::new(|line, _captures, _state, stats| {
+        Box::new(|line, _captures, _state, stats, _prior_response| {
             println!("******* {}", line);
             let mut stats = stats.lock().unwrap();
             if stats.build_finished_time.is_none() {
@@ -62,7 +62,7 @@ pub fn create_stdout_dispatcher() -> EventDispatcher {
     );
     dispatcher.add_callback(
         r"server listening at:",
-        Box::new(|line, _captures, state, stats| {
+        Box::new(|line, _captures, state, stats, _prior_response| {
             if !state.load(Ordering::Relaxed) {
                 println!("Matched 'server listening at:' in: {}", line);
                 state.store(true, Ordering::Relaxed);
@@ -136,10 +136,14 @@ pub fn create_stderr_dispatcher(
 
     let diagnostics_arc: Arc<Mutex<Vec<CargoDiagnostic>>> = Arc::clone(&diagnostics);
 
+    // Callback for Rust panic messages (e.g., "thread 'main' panicked at ...")
     dispatcher.add_callback(
-        r"^thread '([^']+)' panicked at (.+):([^\s:]+):(\d+):(\d+)",
-        Box::new(|line, captures, _state, _stats| {
+        r"^thread '([^']+)' panicked at (.+):(\d+):(\d+):$",
+        Box::new(|line, captures, multiline_flag, stats, prior_response| {
+            multiline_flag.store(false, Ordering::Relaxed);
+
             if let Some(caps) = captures {
+                multiline_flag.store(true, Ordering::Relaxed); // the next line is the panic message
                 let thread = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
                 let message = caps.get(2).map(|m| m.as_str()).unwrap_or("unknown panic");
                 let file = caps.get(3).map(|m| m.as_str()).unwrap_or("unknown file");
@@ -157,6 +161,24 @@ pub fn create_stderr_dispatcher(
                     .unwrap_or(0);
                 println!("\n\n\n");
                 println!("{}", line);
+                // Use a global TTS instance via OnceCell for program lifetime
+
+                #[cfg(feature = "uses_tts")]
+                {
+                    let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                        std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
+                    });
+                    let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                    // Extract the filename without extension
+                    let filename = Path::new(message)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown file");
+                    let speech = format!("thread {} panic, {} line {}", thread, filename, line_num);
+                    println!("TTS: {}", speech);
+                    let _ = tts.speak(&speech, false);
+                }
+
                 println!(
                     "Panic detected: thread='{}', message='{}', file='{}:{}:{}'",
                     thread, message, file, line_num, col_num
@@ -175,6 +197,52 @@ pub fn create_stderr_dispatcher(
                     terminal_status: None,
                 })
             } else {
+                #[cfg(feature = "uses_tts")]
+                {
+                    let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                        std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
+                    });
+                    let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                    // Extract the filename without extension
+                    let filename = Path::new(line)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown file");
+                    let speech = format!("panic says {}", line);
+                    println!("TTS: {}", speech);
+                    let _ = tts.speak(&speech, true);
+
+                    if let Ok(e_window_path) = which("e_window") {
+                        // Compose a nice message for e_window's stdin
+                        let mut stats = stats.lock().unwrap();
+                        // Compose a table with cargo-e and its version, plus panic info
+                        let cargo_e_version = env!("CARGO_PKG_VERSION");
+                        let mut card = format!(
+                            "--title \"panic: {target}\" --width 400 --height 300\n\
+                        target | {target} | string\n\
+                        cargo-e | {version} | string\n\
+                        \n\
+                        Panic detected in {target}\n{line}",
+                            target = stats.target_name,
+                            version = cargo_e_version,
+                            line = line
+                        );
+                        if let Some(prior) = prior_response {
+                            if let Some(msg) = &prior.message {
+                                card = format!("{}\n{}", card, msg);
+                            }
+                        }
+                        let mut child = std::process::Command::new(e_window_path)
+                            .stdin(std::process::Stdio::piped())
+                            .spawn();
+                        if let Ok(mut child) = child {
+                            if let Some(stdin) = child.stdin.as_mut() {
+                                use std::io::Write;
+                                let _ = stdin.write_all(card.as_bytes());
+                            }
+                        }
+                    }
+                }
                 None
             }
         }),
@@ -182,7 +250,7 @@ pub fn create_stderr_dispatcher(
 
     dispatcher.add_callback(
         r"error: could not compile `(?P<crate_name>.+)` \((?P<due_to>.+)\) due to (?P<error_count>\d+) previous errors; (?P<warning_count>\d+) warnings emitted",
-        Box::new(|line, captures, _state, stats| {
+        Box::new(|line, captures, _state, stats, _prior_response| {
             println!("{}", line);
             if let Some(caps) = captures {
                 let crate_name = caps.name("crate_name").map(|m| m.as_str()).unwrap_or("unknown");
@@ -211,68 +279,70 @@ pub fn create_stderr_dispatcher(
     let diagnostics_arc_for_diag: Arc<Mutex<Vec<CargoDiagnostic>>> = Arc::clone(&diagnostics_arc);
     dispatcher.add_callback(
         r"^(?P<level>\w+)(\[(?P<error_code>E\d+)\])?:\s+(?P<msg>.+)$",
-        Box::new(move |_line, caps, _multiline_flag, _stats| {
-            if let Some(caps) = caps {
-                let mut counts = counts.lock().unwrap();
-                let mut pending_diag = pending_d.lock().unwrap();
-                let mut last_lineref = String::new();
-                if let Some(existing_diag) = pending_diag.take() {
-                    let mut diags = diagnostics_arc_for_diag.lock().unwrap();
-                    last_lineref = existing_diag.lineref.clone();
-                    diags.push(existing_diag.clone());
-                }
-                log::trace!("Diagnostic line: {}", _line);
-                let level = caps["level"].to_string();
-                let message = caps["msg"].to_string();
-                let re_generated = regex::Regex::new(r"generated\s+\d+").unwrap();
-                if re_generated.is_match(&message) {
-                    log::trace!("Skipping generated diagnostic: {}", _line);
-                    return None;
-                }
-
-                let error_code = caps.name("error_code").map(|m| m.as_str().to_string());
-                let diag_level = match level.as_str() {
-                    "error" => CargoDiagnosticLevel::Error,
-                    "warning" => CargoDiagnosticLevel::Warning,
-                    "help" => CargoDiagnosticLevel::Help,
-                    "note" => CargoDiagnosticLevel::Note,
-                    _ => {
-                        println!("Unknown diagnostic level: {}", level);
+        Box::new(
+            move |_line, caps, _multiline_flag, _stats, _prior_response| {
+                if let Some(caps) = caps {
+                    let mut counts = counts.lock().unwrap();
+                    let mut pending_diag = pending_d.lock().unwrap();
+                    let mut last_lineref = String::new();
+                    if let Some(existing_diag) = pending_diag.take() {
+                        let mut diags = diagnostics_arc_for_diag.lock().unwrap();
+                        last_lineref = existing_diag.lineref.clone();
+                        diags.push(existing_diag.clone());
+                    }
+                    log::trace!("Diagnostic line: {}", _line);
+                    let level = caps["level"].to_string();
+                    let message = caps["msg"].to_string();
+                    let re_generated = regex::Regex::new(r"generated\s+\d+").unwrap();
+                    if re_generated.is_match(&message) {
+                        log::trace!("Skipping generated diagnostic: {}", _line);
                         return None;
                     }
-                };
-                *counts.entry(diag_level).or_insert(0) += 1;
 
-                let current_count = counts.get(&diag_level).unwrap_or(&0);
-                let diag = CargoDiagnostic {
-                    error_code: error_code.clone(),
-                    lineref: last_lineref.clone(),
-                    level: level.clone(),
-                    message,
-                    suggestion: None,
-                    help: None,
-                    note: None,
-                    uses_color: true,
-                    diag_num_padding: Some(2),
-                    diag_number: Some(*current_count),
-                };
+                    let error_code = caps.name("error_code").map(|m| m.as_str().to_string());
+                    let diag_level = match level.as_str() {
+                        "error" => CargoDiagnosticLevel::Error,
+                        "warning" => CargoDiagnosticLevel::Warning,
+                        "help" => CargoDiagnosticLevel::Help,
+                        "note" => CargoDiagnosticLevel::Note,
+                        _ => {
+                            println!("Unknown diagnostic level: {}", level);
+                            return None;
+                        }
+                    };
+                    *counts.entry(diag_level).or_insert(0) += 1;
 
-                *pending_diag = Some(diag);
+                    let current_count = counts.get(&diag_level).unwrap_or(&0);
+                    let diag = CargoDiagnostic {
+                        error_code: error_code.clone(),
+                        lineref: last_lineref.clone(),
+                        level: level.clone(),
+                        message,
+                        suggestion: None,
+                        help: None,
+                        note: None,
+                        uses_color: true,
+                        diag_num_padding: Some(2),
+                        diag_number: Some(*current_count),
+                    };
 
-                return Some(CallbackResponse {
-                    callback_type: CallbackType::LevelMessage,
-                    message: None,
-                    file: None,
-                    line: None,
-                    column: None,
-                    suggestion: None,
-                    terminal_status: None,
-                });
-            } else {
-                println!("No captures found in line: {}", _line);
-                None
-            }
-        }),
+                    *pending_diag = Some(diag);
+
+                    return Some(CallbackResponse {
+                        callback_type: CallbackType::LevelMessage,
+                        message: None,
+                        file: None,
+                        line: None,
+                        column: None,
+                        suggestion: None,
+                        terminal_status: None,
+                    });
+                } else {
+                    println!("No captures found in line: {}", _line);
+                    None
+                }
+            },
+        ),
     );
 
     let look_behind = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -280,7 +350,7 @@ pub fn create_stderr_dispatcher(
         let look_behind = Arc::clone(&look_behind);
         dispatcher.add_callback(
             r"^(?P<msg>.*)$",
-            Box::new(move |line, _captures, _state, _stats| {
+            Box::new(move |line, _captures, _state, _stats, _prior_response| {
                 let mut buf = look_behind.lock().unwrap();
                 if line.trim().is_empty() {
                     return None;
@@ -309,7 +379,7 @@ pub fn create_stderr_dispatcher(
             let look_behind = Arc::clone(&look_behind);
             dispatcher.add_callback(
                 r"stack backtrace:",
-                Box::new(move |_line, _captures, _state, _stats| {
+                Box::new(move |_line, _captures, _state, _stats, _prior_response| {
                     backtrace_mode.store(true, Ordering::Relaxed);
                     backtrace_lines.lock().unwrap().clear();
                     {
@@ -334,83 +404,85 @@ pub fn create_stderr_dispatcher(
 
             dispatcher.add_callback(
                 r"^(?P<msg>.*)$",
-                Box::new(move |mut line, _captures, _state, _stats| {
-                    if backtrace_mode.load(Ordering::Relaxed) {
-                        line = line.trim();
-                        if line.trim().is_empty()
-                            || line.starts_with("note:")
-                            || line.starts_with("error:")
-                        {
-                            let mut bt_lines = Vec::new();
-                            let mut skip_next = false;
-                            let mut last_number_type: Option<(String, String)> = None;
-                            for l in backtrace_lines.lock().unwrap().iter() {
-                                if let Some(caps) = re_number_type.captures(l) {
-                                    last_number_type =
-                                        Some((caps[1].to_string(), caps[2].to_string()));
-                                    skip_next = true;
-                                } else if skip_next && re_at_path.is_match(l) {
-                                    let path_caps = re_at_path.captures(l).unwrap();
-                                    let path = path_caps.get(1).unwrap().as_str();
-                                    let line_num = path_caps.get(2).unwrap().as_str();
-                                    if path.starts_with("/rustc")
-                                        || path.contains(".cargo")
-                                        || path.contains(".rustup")
-                                    {
-                                        // skip
-                                    } else {
-                                        if let Some((num, typ)) = last_number_type.take() {
-                                            let path = match std::fs::canonicalize(path) {
-                                                Ok(canon) => canon.display().to_string(),
-                                                Err(_) => path.to_string(),
-                                            };
-                                            bt_lines.push(format!(
-                                                "{}: {} @ {}:{}",
-                                                num, typ, path, line_num
-                                            ));
+                Box::new(
+                    move |mut line, _captures, _state, _stats, _prior_response| {
+                        if backtrace_mode.load(Ordering::Relaxed) {
+                            line = line.trim();
+                            if line.trim().is_empty()
+                                || line.starts_with("note:")
+                                || line.starts_with("error:")
+                            {
+                                let mut bt_lines = Vec::new();
+                                let mut skip_next = false;
+                                let mut last_number_type: Option<(String, String)> = None;
+                                for l in backtrace_lines.lock().unwrap().iter() {
+                                    if let Some(caps) = re_number_type.captures(l) {
+                                        last_number_type =
+                                            Some((caps[1].to_string(), caps[2].to_string()));
+                                        skip_next = true;
+                                    } else if skip_next && re_at_path.is_match(l) {
+                                        let path_caps = re_at_path.captures(l).unwrap();
+                                        let path = path_caps.get(1).unwrap().as_str();
+                                        let line_num = path_caps.get(2).unwrap().as_str();
+                                        if path.starts_with("/rustc")
+                                            || path.contains(".cargo")
+                                            || path.contains(".rustup")
+                                        {
+                                            // skip
+                                        } else {
+                                            if let Some((num, typ)) = last_number_type.take() {
+                                                let path = match std::fs::canonicalize(path) {
+                                                    Ok(canon) => canon.display().to_string(),
+                                                    Err(_) => path.to_string(),
+                                                };
+                                                bt_lines.push(format!(
+                                                    "{}: {} @ {}:{}",
+                                                    num, typ, path, line_num
+                                                ));
+                                            }
                                         }
-                                    }
-                                    skip_next = false;
-                                } else if let Some((num, typ)) = last_number_type.take() {
-                                    bt_lines.push(format!("{}: {}", num, typ));
-                                    if !l.trim().is_empty() {
+                                        skip_next = false;
+                                    } else if let Some((num, typ)) = last_number_type.take() {
+                                        bt_lines.push(format!("{}: {}", num, typ));
+                                        if !l.trim().is_empty() {
+                                            bt_lines.push(l.clone());
+                                        }
+                                        skip_next = false;
+                                    } else if !l.trim().is_empty() {
                                         bt_lines.push(l.clone());
+                                        skip_next = false;
                                     }
-                                    skip_next = false;
-                                } else if !l.trim().is_empty() {
-                                    bt_lines.push(l.clone());
-                                    skip_next = false;
                                 }
-                            }
-                            if !bt_lines.is_empty() {
-                                let mut pending_diag = pending_diag.lock().unwrap();
-                                if let Some(ref mut diag) = *pending_diag {
-                                    let stored_lines = {
-                                        let buf = look_behind.lock().unwrap();
-                                        buf.clone()
-                                    };
-                                    let note = diag.note.get_or_insert_with(String::new);
-                                    if !stored_lines.is_empty() {
-                                        note.push_str(&stored_lines.join("\n"));
-                                        note.push('\n');
+                                if !bt_lines.is_empty() {
+                                    let mut pending_diag = pending_diag.lock().unwrap();
+                                    if let Some(ref mut diag) = *pending_diag {
+                                        let stored_lines = {
+                                            let buf = look_behind.lock().unwrap();
+                                            buf.clone()
+                                        };
+                                        let note = diag.note.get_or_insert_with(String::new);
+                                        if !stored_lines.is_empty() {
+                                            note.push_str(&stored_lines.join("\n"));
+                                            note.push('\n');
+                                        }
+                                        note.push_str(&bt_lines.join("\n"));
+                                        let mut diags = diagnostics_arc.lock().unwrap();
+                                        diags.push(diag.clone());
                                     }
-                                    note.push_str(&bt_lines.join("\n"));
-                                    let mut diags = diagnostics_arc.lock().unwrap();
-                                    diags.push(diag.clone());
                                 }
+                                backtrace_mode.store(false, Ordering::Relaxed);
+                                backtrace_lines.lock().unwrap().clear();
+                                return None;
                             }
-                            backtrace_mode.store(false, Ordering::Relaxed);
-                            backtrace_lines.lock().unwrap().clear();
+
+                            if re_number_type.is_match(line) || re_at_path.is_match(line) {
+                                backtrace_lines.lock().unwrap().push(line.to_string());
+                            }
                             return None;
                         }
-
-                        if re_number_type.is_match(line) || re_at_path.is_match(line) {
-                            backtrace_lines.lock().unwrap().push(line.to_string());
-                        }
-                        return None;
-                    }
-                    None
-                }),
+                        None
+                    },
+                ),
             );
         }
     }
@@ -421,23 +493,25 @@ pub fn create_stderr_dispatcher(
 
         dispatcher.add_callback(
             r"^(?P<msg>.*)$",
-            Box::new(move |line, _captures, _multiline_flag, _stats| {
-                if suggestion_m.load(Ordering::Relaxed) {
-                    if let Some(caps) = suggestion_regex.captures(line.trim()) {
-                        let code = caps[2].to_string();
+            Box::new(
+                move |line, _captures, _multiline_flag, _stats, _prior_response| {
+                    if suggestion_m.load(Ordering::Relaxed) {
+                        if let Some(caps) = suggestion_regex.captures(line.trim()) {
+                            let code = caps[2].to_string();
 
-                        if let Ok(mut lock) = location_lock_clone.lock() {
-                            if let Some(mut loc) = lock.take() {
-                                let mut msg = loc.message.unwrap_or_default();
-                                msg.push_str(&format!("\n{}", code));
-                                loc.message = Some(msg.clone());
-                                lock.replace(loc);
+                            if let Ok(mut lock) = location_lock_clone.lock() {
+                                if let Some(mut loc) = lock.take() {
+                                    let mut msg = loc.message.unwrap_or_default();
+                                    msg.push_str(&format!("\n{}", code));
+                                    loc.message = Some(msg.clone());
+                                    lock.replace(loc);
+                                }
                             }
                         }
                     }
-                }
-                None
-            }),
+                    None
+                },
+            ),
         );
     }
     {
@@ -446,14 +520,16 @@ pub fn create_stderr_dispatcher(
         let diagnostics_arc: Arc<Mutex<Vec<CargoDiagnostic>>> = Arc::clone(&diagnostics_arc);
         dispatcher.add_callback(
             r"^\s*$",
-            Box::new(move |_line, _captures, _multiline_flag, _stats| {
-                suggestion_m.store(false, Ordering::Relaxed);
-                if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
-                    let mut diags = diagnostics_arc.lock().unwrap();
-                    diags.push(pending_diag.clone());
-                }
-                None
-            }),
+            Box::new(
+                move |_line, _captures, _multiline_flag, _stats, _prior_response| {
+                    suggestion_m.store(false, Ordering::Relaxed);
+                    if let Some(pending_diag) = pending_diag_clone.lock().unwrap().take() {
+                        let mut diags = diagnostics_arc.lock().unwrap();
+                        diags.push(pending_diag.clone());
+                    }
+                    None
+                },
+            ),
         );
     }
 
@@ -463,52 +539,58 @@ pub fn create_stderr_dispatcher(
         let suggestion_mode = Arc::clone(&suggestion_mode);
         dispatcher.add_callback(
             r"^(?P<msg>.*)$",
-            Box::new(move |line, _captures, _multiline_flag, _stats| {
-                if let Ok(location_guard) = location_lock.lock() {
-                    if let Some(loc) = location_guard.as_ref() {
-                        let file = loc.file.clone().unwrap_or_default();
-                        let line_num = loc.line.unwrap_or(0);
-                        let col = loc.column.unwrap_or(0);
+            Box::new(
+                move |line, _captures, _multiline_flag, _stats, _prior_response| {
+                    if let Ok(location_guard) = location_lock.lock() {
+                        if let Some(loc) = location_guard.as_ref() {
+                            let file = loc.file.clone().unwrap_or_default();
+                            let line_num = loc.line.unwrap_or(0);
+                            let col = loc.column.unwrap_or(0);
 
-                        if line.trim().starts_with('|') || line.trim().starts_with(char::is_numeric)
-                        {
-                            let suggestion = line.trim();
+                            if line.trim().starts_with('|')
+                                || line.trim().starts_with(char::is_numeric)
+                            {
+                                let suggestion = line.trim();
 
-                            let mut pending_diag = match pending_diag.lock() {
-                                Ok(lock) => lock,
-                                Err(e) => {
-                                    eprintln!("Failed to acquire lock: {}", e);
+                                let mut pending_diag = match pending_diag.lock() {
+                                    Ok(lock) => lock,
+                                    Err(e) => {
+                                        eprintln!("Failed to acquire lock: {}", e);
+                                        return None;
+                                    }
+                                };
+                                if let Some(diag) = pending_diag.take() {
+                                    let mut diag = diag;
+                                    if let Some(ref mut existing) = diag.suggestion {
+                                        diag.suggestion =
+                                            Some(format!("{}\n{}", existing, suggestion));
+                                    } else {
+                                        diag.suggestion = Some(suggestion.to_string());
+                                    }
+                                    *pending_diag = Some(diag.clone());
+                                    return Some(CallbackResponse {
+                                        callback_type: CallbackType::Suggestion,
+                                        message: Some(
+                                            diag.clone().suggestion.clone().unwrap().clone(),
+                                        ),
+                                        file: Some(file),
+                                        line: Some(line_num),
+                                        column: Some(col),
+                                        suggestion: diag.clone().suggestion.clone(),
+                                        terminal_status: None,
+                                    });
+                                }
+                            } else {
+                                if line.trim().is_empty() {
+                                    suggestion_mode.store(false, Ordering::Relaxed);
                                     return None;
                                 }
-                            };
-                            if let Some(diag) = pending_diag.take() {
-                                let mut diag = diag;
-                                if let Some(ref mut existing) = diag.suggestion {
-                                    diag.suggestion = Some(format!("{}\n{}", existing, suggestion));
-                                } else {
-                                    diag.suggestion = Some(suggestion.to_string());
-                                }
-                                *pending_diag = Some(diag.clone());
-                                return Some(CallbackResponse {
-                                    callback_type: CallbackType::Suggestion,
-                                    message: Some(diag.clone().suggestion.clone().unwrap().clone()),
-                                    file: Some(file),
-                                    line: Some(line_num),
-                                    column: Some(col),
-                                    suggestion: diag.clone().suggestion.clone(),
-                                    terminal_status: None,
-                                });
-                            }
-                        } else {
-                            if line.trim().is_empty() {
-                                suggestion_mode.store(false, Ordering::Relaxed);
-                                return None;
                             }
                         }
                     }
-                }
-                None
-            }),
+                    None
+                },
+            ),
         );
     }
 
@@ -520,39 +602,41 @@ pub fn create_stderr_dispatcher(
         let manifest_path = manifest_path.clone();
         dispatcher.add_callback(
             r"^\s*-->\s+(?P<file>.+?)(?::(?P<line>\d+))?(?::(?P<col>\d+))?\s*$",
-            Box::new(move |_line, caps, _multiline_flag, _stats| {
-                log::trace!("Location line: {}", _line);
-                if let Some(caps) = caps {
-                    let file = caps["file"].to_string();
-                    let manifest_path_buf = PathBuf::from(&manifest_path);
-                    let resolved_path = resolve_file_path(&manifest_path_buf, &file);
-                    let file = resolved_path.to_str().unwrap_or_default().to_string();
-                    let line = caps["line"].parse::<usize>().unwrap_or(0);
-                    let column = caps["col"].parse::<usize>().unwrap_or(0);
-                    let resp = CallbackResponse {
-                        callback_type: CallbackType::Location,
-                        message: format!("{}:{}:{}", file, line, column).into(),
-                        file: Some(file.clone()),
-                        line: Some(line),
-                        column: Some(column),
-                        suggestion: None,
-                        terminal_status: None,
-                    };
-                    let mut pending_diag = pending_diag.lock().unwrap();
-                    if let Some(diag) = pending_diag.take() {
-                        let mut diag = diag;
-                        diag.lineref = format!("{}:{}:{}", file, line, column);
-                        *pending_diag = Some(diag);
+            Box::new(
+                move |_line, caps, _multiline_flag, _stats, _prior_response| {
+                    log::trace!("Location line: {}", _line);
+                    if let Some(caps) = caps {
+                        let file = caps["file"].to_string();
+                        let manifest_path_buf = PathBuf::from(&manifest_path);
+                        let resolved_path = resolve_file_path(&manifest_path_buf, &file);
+                        let file = resolved_path.to_str().unwrap_or_default().to_string();
+                        let line = caps["line"].parse::<usize>().unwrap_or(0);
+                        let column = caps["col"].parse::<usize>().unwrap_or(0);
+                        let resp = CallbackResponse {
+                            callback_type: CallbackType::Location,
+                            message: format!("{}:{}:{}", file, line, column).into(),
+                            file: Some(file.clone()),
+                            line: Some(line),
+                            column: Some(column),
+                            suggestion: None,
+                            terminal_status: None,
+                        };
+                        let mut pending_diag = pending_diag.lock().unwrap();
+                        if let Some(diag) = pending_diag.take() {
+                            let mut diag = diag;
+                            diag.lineref = format!("{}:{}:{}", file, line, column);
+                            *pending_diag = Some(diag);
+                        }
+                        *warning_location.lock().unwrap() = Some(resp.clone());
+                        *location_lock.lock().unwrap() = Some(resp.clone());
+                        suggestion_mode.store(true, Ordering::Relaxed);
+                        return Some(resp.clone());
+                    } else {
+                        println!("No captures found in line: {}", _line);
                     }
-                    *warning_location.lock().unwrap() = Some(resp.clone());
-                    *location_lock.lock().unwrap() = Some(resp.clone());
-                    suggestion_mode.store(true, Ordering::Relaxed);
-                    return Some(resp.clone());
-                } else {
-                    println!("No captures found in line: {}", _line);
-                }
-                None
-            }),
+                    None
+                },
+            ),
         );
     }
 
@@ -560,7 +644,7 @@ pub fn create_stderr_dispatcher(
         let pending_diag: Arc<Mutex<Option<CargoDiagnostic>>> = Arc::clone(&pending_diag);
         dispatcher.add_callback(
             r"^\s*=\s*note:\s*(?P<msg>.+)$",
-            Box::new(move |_line, caps, _state, _stats| {
+            Box::new(move |_line, caps, _state, _stats, _prior_response| {
                 if let Some(caps) = caps {
                     let mut pending_diag = pending_diag.lock().unwrap();
                     if let Some(ref mut resp) = *pending_diag {
@@ -581,7 +665,7 @@ pub fn create_stderr_dispatcher(
         let pending_diag: Arc<Mutex<Option<CargoDiagnostic>>> = Arc::clone(&pending_diag);
         dispatcher.add_callback(
             r"^\s*(?:\=|\|)\s*help:\s*(?P<msg>.+)$",
-            Box::new(move |_line, caps, _state, _stats| {
+            Box::new(move |_line, caps, _state, _stats, _prior_response| {
                 if let Some(caps) = caps {
                     let mut pending_diag = pending_diag.lock().unwrap();
                     if let Some(ref mut resp) = *pending_diag {
@@ -601,7 +685,7 @@ pub fn create_stderr_dispatcher(
 
     dispatcher.add_callback(
         r"(?:\x1b\[[0-9;]*[A-Za-z])*\s*Serving(?:\x1b\[[0-9;]*[A-Za-z])*\s+at\s+(http://[^\s]+)",
-        Box::new(|line, captures, _state, stats| {
+        Box::new(|line, captures, _state, stats, _prior_response| {
             if let Some(caps) = captures {
                 let url = caps.get(1).unwrap().as_str();
                 let url = url.replace("0.0.0.0", "127.0.0.1");
@@ -636,7 +720,7 @@ pub fn create_stderr_dispatcher(
         let finished_flag = Arc::clone(&finished_flag);
         dispatcher.add_callback(
             r"^Finished\s+`(?P<profile>[^`]+)`\s+profile\s+\[(?P<opts>[^\]]+)\]\s+target\(s\)\s+in\s+(?P<dur>[0-9.]+s)$",
-            Box::new(move |_line, caps, _multiline_flag, stats | {
+            Box::new(move |_line, caps, _multiline_flag, stats , _prior_response| {
                 if let Some(caps) = caps {
                     finished_flag.store(true, Ordering::Relaxed);
                     let profile = &caps["profile"];
@@ -664,7 +748,7 @@ pub fn create_stderr_dispatcher(
         let summary_flag = Arc::clone(&summary_flag);
         dispatcher.add_callback(
             r"^(?P<level>warning|error):\s+`(?P<name>[^`]+)`\s+\((?P<otype>lib|bin)\)\s+generated\s+(?P<count>\d+)\s+(?P<kind>warnings|errors).*run\s+`(?P<cmd>[^`]+)`\s+to apply\s+(?P<fixes>\d+)\s+suggestions",
-            Box::new(move |_line, caps, multiline_flag, _stats | {
+            Box::new(move |_line, caps, multiline_flag, _stats , _prior_response| {
                 let summary_flag = Arc::clone(&summary_flag);
                 if let Some(caps) = caps {
                     summary_flag.store(true, Ordering::Relaxed);
@@ -702,7 +786,7 @@ pub fn create_stderr_dispatcher(
 
     dispatcher.add_callback(
         r"IO\(Custom \{ kind: NotConnected",
-        Box::new(move |line, _captures, _state, _stats| {
+        Box::new(move |line, _captures, _state, _stats, _prior_response| {
             println!("(STDERR) Terminal error detected: {:?}", &line);
             let result = if line.contains("NotConnected") {
                 TerminalError::NoTerminal
@@ -724,7 +808,7 @@ pub fn create_stderr_dispatcher(
     );
     dispatcher.add_callback(
         r".*",
-        Box::new(|line, _captures, _state, _stats| {
+        Box::new(|line, _captures, _state, _stats, _prior_response| {
             log::trace!("stdraw[{:?}]", line);
             println!("{}", line);
             None

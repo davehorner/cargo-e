@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::cell::RefCell;
 use std::fmt;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -85,6 +86,7 @@ pub struct PatternCallback {
                 Option<regex::Captures>,
                 Arc<AtomicBool>,
                 Arc<Mutex<CargoStats>>,
+                Option<CallbackResponse>,
             ) -> Option<CallbackResponse>
             + Send
             + Sync,
@@ -110,6 +112,7 @@ impl PatternCallback {
                     Option<regex::Captures>,
                     Arc<AtomicBool>,
                     Arc<Mutex<CargoStats>>,
+                    Option<CallbackResponse>,
                 ) -> Option<CallbackResponse>
                 + Send
                 + Sync,
@@ -146,6 +149,7 @@ impl EventDispatcher {
                     Option<regex::Captures>,
                     Arc<AtomicBool>,
                     Arc<Mutex<CargoStats>>,
+                    Option<CallbackResponse>,
                 ) -> Option<CallbackResponse>
                 + Send
                 + Sync,
@@ -165,23 +169,46 @@ impl EventDispatcher {
         stats: Arc<Mutex<CargoStats>>,
     ) -> Vec<Option<CallbackResponse>> {
         let mut responses = Vec::new();
+        // Use thread-local for prior response so each dispatch is independent
+        thread_local! {
+            static PRIOR_RESPONSE: RefCell<Option<CallbackResponse>> = RefCell::new(None);
+        }
         if let Ok(callbacks) = self.callbacks.lock() {
             for cb in callbacks.iter() {
                 let is_reading_multiline = Arc::clone(&cb.is_reading_multiline);
-                if is_reading_multiline.load(Ordering::Relaxed) {
-                    // The callback is in multiline mode. Call it with no captures.
-                    let response = (cb.callback)(line, None, is_reading_multiline, stats.clone());
-                    responses.push(response);
+                let prior = PRIOR_RESPONSE.with(|p| p.borrow().clone());
+                let response = if is_reading_multiline.load(Ordering::Relaxed) {
+                    // Multiline mode: always call with prior_response
+                    (cb.callback)(
+                        line,
+                        None,
+                        Arc::clone(&is_reading_multiline),
+                        stats.clone(),
+                        prior,
+                    )
                 } else if let Some(captures) = cb.pattern.captures(line) {
-                    // The line matches the callback's pattern.
-                    let response =
-                        (cb.callback)(line, Some(captures), is_reading_multiline, stats.clone());
-                    responses.push(response);
+                    (cb.callback)(
+                        line,
+                        Some(captures),
+                        Arc::clone(&is_reading_multiline),
+                        stats.clone(),
+                        None,
+                    )
                 } else if cb.pattern.is_match(line) {
-                    // If there are no captures but there's a match, pass None to the callback
-                    let response = (cb.callback)(line, None, is_reading_multiline, stats.clone());
-                    responses.push(response);
+                    (cb.callback)(
+                        line,
+                        None,
+                        Arc::clone(&is_reading_multiline),
+                        stats.clone(),
+                        None,
+                    )
+                } else {
+                    None
+                };
+                if is_reading_multiline.load(Ordering::Relaxed) {
+                    PRIOR_RESPONSE.with(|p| *p.borrow_mut() = response.clone());
                 }
+                responses.push(response);
             }
         } else {
             eprintln!("Failed to acquire lock on callbacks in dispatch");

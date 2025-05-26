@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.31](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.30...cargo-e-v0.2.31) - 2025-05-26
+
+### Added
+
+- *(window_panics)* Integrate `e_window` for graphical panics
+
 ## [0.2.30](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.29...cargo-e-v0.2.30) - 2025-05-25
 
 ### Added
