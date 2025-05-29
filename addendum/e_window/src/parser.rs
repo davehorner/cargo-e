@@ -1,6 +1,5 @@
 // src/parser.rs
 
-use std::collections::HashMap;
 
 pub struct ParsedText {
     pub triples: Vec<(String, String, String)>,
@@ -22,7 +21,11 @@ pub fn parse_text(input: &str) -> ParsedText {
         }
         let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
         if parts.len() == 3 {
-            triples.push((parts[0].to_string(), parts[1].to_string(), parts[2].to_string()));
+            triples.push((
+                parts[0].to_string(),
+                parts[1].to_string(),
+                parts[2].to_string(),
+            ));
         }
         lines.next();
     }

@@ -2,7 +2,7 @@
 name = "e_window"
 description = "A window tool. Think WinAPI ShowMessageBox; but more than that."
 license = "MIT"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["David Horner"]
 edition = "2021"
 publish = true
@@ -15,5 +15,6 @@ egui = { version= "0.31.1",features=["persistence","serde","log"]}
 getargs = "0.5.0"
 serde = { version = "1.0.219", features = ["derive"] }
 shell-words = "1.1.0"
+sysinfo = "0.35.1"
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser"] }

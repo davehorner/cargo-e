@@ -76,12 +76,6 @@ If you want the `e_window` command available globally, install it from the works
 cargo install --path addendum/e_window
 ```
 
-Or, if your Cargo version supports it and you want all workspace binaries:
-
-```sh
-cargo install --workspace --bins
-```
-
 ---
 
 ## Usage
@@ -113,6 +107,33 @@ Or with piped input:
 echo "--title Demo Window --width 900" | e_window
 ```
 
+
+---
+
+## Pool Manager Mode
+
+`e_window` includes a **pool manager mode** that allows you to automatically keep a specified number of windows open at all times. This is useful for testing, demonstrations, or any scenario where you want to ensure a persistent set of windows.
+
+### How It Works
+
+- When you launch `e_window` with the `--w-pool-cnt <N>` option, a special **pool manager GUI** window is started.
+- The pool manager is always on top and displays the current status of the window pool.
+- The manager automatically spawns and tracks child windows, each with a unique index.
+- If any child window is closed, the manager will re-spawn it to maintain the desired count.
+- Closing the pool manager window will automatically close all managed child windows.
+
+### Pool Manager Options
+
+- `--w-pool-cnt <N>`: Keep at least N windows open at all times.
+- `--w-pool-rate <MS>`: Minimum milliseconds between opening new windows (default: 1000).
+- `--w-pool-ndx <N>`: (internal) Index of this window instance (used by the manager for child windows).
+- `--manager-hwnd <HWND>`: (internal) HWND of the pool manager window.
+
+### Example Usage
+
+```sh
+e_window --w-pool-cnt 4
+```
 
 ---
 
