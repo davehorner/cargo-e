@@ -2,23 +2,26 @@
 // It manages the state of the application, including the text input and display logic.
 // It has methods for handling user input and rendering the parsed text.
 
-use crate::parser::{ParsedText, parse_text};
+use crate::parser::{parse_text, ParsedText};
 use eframe::egui;
 use eframe::Frame;
 use eframe::Storage;
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::MessageBoxW;
+use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
 use std::ffi::OsString;
 use std::io::Write;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
-use serde::{Deserialize, Serialize};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
+use std::time::Instant;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::GetForegroundWindow;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use std::thread;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::MessageBoxW;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{IsWindow, MessageBeep};
 
@@ -108,7 +111,9 @@ impl App {
                     first_frame: true,
                     initial_window: Some((width, height, x, y, title)),
                     start_time: Some(Instant::now()),
-                    start_datetime: chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+                    start_datetime: chrono::Local::now()
+                        .format("%Y-%m-%d %H:%M:%S%.3f")
+                        .to_string(),
                     follow_hwnd: follow_hwnd,
                     ..restored
                 };
@@ -122,14 +127,14 @@ impl App {
     pub fn with_input_data(mut self, input: String) -> Self {
         if input.trim().is_empty() {
             let hwnd = {
-            #[cfg(target_os = "windows")]
-            {
-                unsafe { GetForegroundWindow() as usize }
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                0
-            }
+                #[cfg(target_os = "windows")]
+                {
+                    unsafe { GetForegroundWindow() as usize }
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    0
+                }
             };
             self.input_text = default_card_with_hwnd(hwnd);
         } else {
@@ -154,29 +159,35 @@ impl App {
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
         thread::spawn(move || {
-   
             while running_clone.load(Ordering::Relaxed) {
                 unsafe {
-                    if hwnd == 0 || IsWindow(hwnd as _) == 0 || !winapi::um::winuser::IsWindowVisible(hwnd as _) != 0 {
+                    if hwnd == 0
+                        || IsWindow(hwnd as _) == 0
+                        || !winapi::um::winuser::IsWindowVisible(hwnd as _) != 0
+                    {
                         eprintln!("Window 0x{:X} is gone or invalid! Beeping...", hwnd);
                         MessageBeep(0xFFFFFFFF);
                         break;
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(500));
-                         unsafe {
-
-                let msg = format!("Following HWND: 0x{:X}", hwnd);
-                let wide: Vec<u16> = OsString::from(msg)
-                    .encode_wide()
-                    .chain(std::iter::once(0))
-                    .collect();
-                let caption: Vec<u16> = OsString::from("e_window Follow")
-                    .encode_wide()
-                    .chain(std::iter::once(0))
-                    .collect();
-                MessageBoxW(std::ptr::null_mut(), wide.as_ptr(), caption.as_ptr(), winapi::um::winuser::MB_OK);
-            }
+                unsafe {
+                    let msg = format!("Following HWND: 0x{:X}", hwnd);
+                    let wide: Vec<u16> = OsString::from(msg)
+                        .encode_wide()
+                        .chain(std::iter::once(0))
+                        .collect();
+                    let caption: Vec<u16> = OsString::from("e_window Follow")
+                        .encode_wide()
+                        .chain(std::iter::once(0))
+                        .collect();
+                    MessageBoxW(
+                        std::ptr::null_mut(),
+                        wide.as_ptr(),
+                        caption.as_ptr(),
+                        winapi::um::winuser::MB_OK,
+                    );
+                }
             }
         });
         // Store running in self if you want to stop it later
@@ -193,10 +204,16 @@ impl eframe::App for App {
             if let Some((w, h, x, y, ref title)) = self.initial_window {
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
                 ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
-                eprintln!("Setting window position to: ({}, {}) and size to: ({}, {})", x, y, w, h);
+                eprintln!(
+                    "Setting window position to: ({}, {}) and size to: ({}, {})",
+                    x, y, w, h
+                );
                 ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
                 eprintln!("Initial window title: {}", title);
-                eprintln!("Initial window dimensions: width={}, height={}, x={}, y={}", w, h, x, y);
+                eprintln!(
+                    "Initial window dimensions: width={}, height={}, x={}, y={}",
+                    w, h, x, y
+                );
 
                 // Get HWND and update title
                 #[cfg(target_os = "windows")]
@@ -215,16 +232,18 @@ impl eframe::App for App {
                     }
                 }
             }
-                 if let Some(hwnd) = self.follow_hwnd {
-            if !self.follow_triggered {
-                #[cfg(target_os = "windows")]
-                unsafe { winapi::um::winuser::MessageBeep(0xFFFFFFFF); }
-                eprintln!("Starting to follow HWND: 0x{:X}", hwnd);
+            if let Some(hwnd) = self.follow_hwnd {
+                if !self.follow_triggered {
+                    #[cfg(target_os = "windows")]
+                    unsafe {
+                        winapi::um::winuser::MessageBeep(0xFFFFFFFF);
+                    }
+                    eprintln!("Starting to follow HWND: 0x{:X}", hwnd);
 
-                self.start_following_hwnd(hwnd);
-                self.follow_triggered = true;
+                    self.start_following_hwnd(hwnd);
+                    self.follow_triggered = true;
+                }
             }
-        }
             self.first_frame = false;
         }
 
@@ -237,7 +256,10 @@ impl eframe::App for App {
             egui::Frame::group(ui.style())
                 .fill(ui.visuals().panel_fill)
                 // .rounding(egui::Rounding::same(12))
-                .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    ui.visuals().widgets.noninteractive.bg_stroke.color,
+                ))
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         // Title
@@ -247,10 +269,9 @@ impl eframe::App for App {
                         // Header
                         if let Some(header) = &parsed.header {
                             ui.label(
-                                    egui::RichText::new(header)
-            .strong()
-            .size(ui.style().text_styles[&egui::TextStyle::Heading].size * 0.8)    
-                                // egui::RichText::new(header).strong()
+                                egui::RichText::new(header).strong().size(
+                                    ui.style().text_styles[&egui::TextStyle::Heading].size * 0.8,
+                                ), // egui::RichText::new(header).strong()
                             );
                         }
                         // Caption
@@ -265,7 +286,7 @@ impl eframe::App for App {
                             egui::Grid::new("triples_grid")
                                 .striped(true)
                                 .show(ui, |ui| {
-                                      ui.label(egui::RichText::new("Key").strong());
+                                    ui.label(egui::RichText::new("Key").strong());
                                     ui.label(egui::RichText::new("Value").strong());
                                     ui.label(egui::RichText::new("Type").strong());
                                     ui.end_row();
@@ -276,8 +297,13 @@ impl eframe::App for App {
                                     ui.end_row();
 
                                     // Compute elapsed_str here for use in editor_mode
-                                    let elapsed = self.start_time.as_ref().map(|t| t.elapsed()).unwrap_or_default();
-                                    let elapsed_str = format!("{:02}:{:02}:{:02}.{:03}",
+                                    let elapsed = self
+                                        .start_time
+                                        .as_ref()
+                                        .map(|t| t.elapsed())
+                                        .unwrap_or_default();
+                                    let elapsed_str = format!(
+                                        "{:02}:{:02}:{:02}.{:03}",
                                         elapsed.as_secs() / 3600,
                                         (elapsed.as_secs() / 60) % 60,
                                         elapsed.as_secs() % 60,
@@ -315,12 +341,12 @@ impl eframe::App for App {
                 if ui.button("Run in new window").clicked() {
                     #[cfg(target_os = "windows")]
                     {
-                        use std::os::windows::process::CommandExt;
-use winapi::um::winuser::{MessageBoxW, MB_OK};
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
-use std::ffi::OsString;
-use std::os::windows::ffi::OsStringExt;
+                        use std::ffi::OsStr;
+                        
+                        use std::os::windows::ffi::OsStrExt;
+                        
+                        
+                        use winapi::um::winuser::{MessageBoxW, MB_OK};
                         let _ = std::process::Command::new("e_window")
                             //.creation_flags(0x00000008) // CREATE_NO_WINDOW
                             .stdin(std::process::Stdio::piped())
@@ -328,13 +354,21 @@ use std::os::windows::ffi::OsStringExt;
                             .and_then(|mut child| {
                                 if let Some(stdin) = child.stdin.as_mut() {
                                     fn to_wide(s: &str) -> Vec<u16> {
-                                        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+                                        OsStr::new(s)
+                                            .encode_wide()
+                                            .chain(std::iter::once(0))
+                                            .collect()
                                     }
 
                                     let wide_text = to_wide(&self.input_text);
                                     let wide_caption = to_wide("e_window Input");
                                     unsafe {
-                                        MessageBoxW(std::ptr::null_mut(), wide_text.as_ptr(), wide_caption.as_ptr(), MB_OK);
+                                        MessageBoxW(
+                                            std::ptr::null_mut(),
+                                            wide_text.as_ptr(),
+                                            wide_caption.as_ptr(),
+                                            MB_OK,
+                                        );
                                     }
                                     stdin.write_all(self.input_text.as_bytes())?;
                                 }
@@ -365,27 +399,39 @@ use std::os::windows::ffi::OsStringExt;
                         // Show the first line (CLI args) as a code block
                         if let Some(first_line) = self.input_text.lines().next() {
                             ui.add_space(8.0);
-                            ui.label(egui::RichText::new("Parsed CLI Arguments:").underline().small());
+                            ui.label(
+                                egui::RichText::new("Parsed CLI Arguments:")
+                                    .underline()
+                                    .small(),
+                            );
                             ui.code(first_line);
                         }
                         ui.heading("Edit or Paste Input Below:");
-                        if ui.add(
-                            egui::TextEdit::multiline(&mut self.input_text)
-                                .desired_rows(6)
-                                .desired_width(f32::INFINITY)
-                        ).changed() {
+                        if ui
+                            .add(
+                                egui::TextEdit::multiline(&mut self.input_text)
+                                    .desired_rows(6)
+                                    .desired_width(f32::INFINITY),
+                            )
+                            .changed()
+                        {
                             self.parsed_data = parsed_to_vec(&parse_text(&self.input_text));
-                            if let Some(new_title) = extract_title_from_first_line(&self.input_text) {
+                            if let Some(new_title) = extract_title_from_first_line(&self.input_text)
+                            {
                                 #[cfg(target_os = "windows")]
                                 unsafe {
                                     let hwnd = GetForegroundWindow();
                                     if !hwnd.is_null() {
                                         let hwnd_val = hwnd as usize;
-                                        let mut new_title = format!("{new_title} | SELF: 0x{:X}", hwnd_val);
+                                        let mut new_title =
+                                            format!("{new_title} | SELF: 0x{:X}", hwnd_val);
                                         if let Some(hwnd) = self.follow_hwnd {
-                                            new_title = format!("{new_title} | FOLLOW 0x{:X}", hwnd);
+                                            new_title =
+                                                format!("{new_title} | FOLLOW 0x{:X}", hwnd);
                                         }
-                                        ctx.send_viewport_cmd(egui::ViewportCommand::Title(new_title));
+                                        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+                                            new_title,
+                                        ));
                                     }
                                 }
                                 #[cfg(not(target_os = "windows"))]
@@ -399,8 +445,13 @@ use std::os::windows::ffi::OsStringExt;
                     });
             } else {
                 // Show timer and start info
-                let elapsed = self.start_time.as_ref().map(|t| t.elapsed()).unwrap_or_default();
-                let elapsed_str = format!("{:02}:{:02}:{:02}.{:03}",
+                let elapsed = self
+                    .start_time
+                    .as_ref()
+                    .map(|t| t.elapsed())
+                    .unwrap_or_default();
+                let elapsed_str = format!(
+                    "{:02}:{:02}:{:02}.{:03}",
                     elapsed.as_secs() / 3600,
                     (elapsed.as_secs() / 60) % 60,
                     elapsed.as_secs() % 60,
@@ -412,14 +463,11 @@ use std::os::windows::ffi::OsStringExt;
                 ui.add_space(8.0);
                 ui.vertical_centered(|ui| {
                     if ui.button("OK").clicked() {
-                       ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
-
             }
         });
-
-   
     }
 }
 

@@ -1,6 +1,6 @@
-﻿25/05/26|3ec25cb|0.2.31
-## [0.2.31](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.30...cargo-e-v0.2.31) - 2025-05-26
+﻿25/05/29|22a7ee8|0.2.32
+## [0.2.32](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.31...cargo-e-v0.2.32) - 2025-05-29
 
-### Added
+### Other
 
-- *(window_panics)* Integrate `e_window` for graphical panics
+- update Cargo.lock dependencies
