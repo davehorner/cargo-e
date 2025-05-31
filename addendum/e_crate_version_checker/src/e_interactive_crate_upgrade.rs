@@ -8,8 +8,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 // Use parse-changelog to extract changelog sections when feature enabled
-#[cfg(feature = "changelog")]
-use parse_changelog::parse;
 /// Embed consumer's changelog when "changelog" feature is enabled; path via E_CRATE_CHANGELOG_PATH env var
 #[cfg(feature = "changelog")]
 pub const FULL_CHANGELOG: &str = include_str!(env!("E_CRATE_CHANGELOG_PATH"));

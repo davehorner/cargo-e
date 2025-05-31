@@ -1,6 +1,5 @@
 //! Diagnostic dispatcher setup for cargo-e
 // Provides functions to create configured stdout and stderr EventDispatchers for diagnostics
-use which::which;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -8,6 +7,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::SystemTime;
+use which::which;
 
 use crate::e_cargocommand_ext::CargoDiagnostic;
 use crate::e_command_builder::{resolve_file_path, TerminalError};
@@ -214,7 +214,7 @@ pub fn create_stderr_dispatcher(
 
                     if let Ok(e_window_path) = which("e_window") {
                         // Compose a nice message for e_window's stdin
-                        let mut stats = stats.lock().unwrap();
+                        let stats = stats.lock().unwrap();
                         // Compose a table with cargo-e and its version, plus panic info
                         let cargo_e_version = env!("CARGO_PKG_VERSION");
                         let mut card = format!(
@@ -232,7 +232,7 @@ pub fn create_stderr_dispatcher(
                                 card = format!("{}\n{}", card, msg);
                             }
                         }
-                        let mut child = std::process::Command::new(e_window_path)
+                        let child = std::process::Command::new(e_window_path)
                             .stdin(std::process::Stdio::piped())
                             .spawn();
                         if let Ok(mut child) = child {

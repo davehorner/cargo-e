@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.33](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.32...cargo-e-v0.2.33) - 2025-05-31
+
+### Added
+
+- *(e-window,failed_build_window)* Implement anchor links in e_window for launching code on error lines.  Failed builds now include a graphical window which includes just the errors.
+
 ## [0.2.32](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.31...cargo-e-v0.2.32) - 2025-05-29
 
 ### Other
