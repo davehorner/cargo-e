@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.26](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.25...e_crate_version_checker-v0.1.26) - 2025-05-31
+
+### Added
+
+- *(e-window,failed_build_window)* Implement anchor links in e_window for launching code on error lines.  Failed builds now include a graphical window which includes just the errors.
+
 ## [0.1.25](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.24...e_crate_version_checker-v0.1.25) - 2025-05-29
 
 ### Other
