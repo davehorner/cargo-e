@@ -298,9 +298,9 @@ impl CargoCommandBuilder {
                             "thread '{}' panicked at {} ({}:{}:{})",
                             thread, message, file, line_num, col_num
                         )),
-                        file: Some(file.to_string()),
-                        line: Some(line_num),
-                        column: Some(col_num),
+                        file: Some(message.to_string()),
+                        line: Some(file.parse::<usize>().unwrap_or(0)),
+                        column: Some(line_num),
                         suggestion: None,
                         terminal_status: None,
                     })
@@ -316,21 +316,80 @@ impl CargoCommandBuilder {
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or("unknown file");
+
                         let speech = format!("panic says {}", line);
                         println!("TTS: {}", speech);
                         let _ = tts.speak(&speech, true);
 
                         if let Ok(e_window_path) = which("e_window") {
                             // Compose a nice message for e_window's stdin
-                            let mut stats = stats.lock().unwrap();
+                            let stats = stats.lock().unwrap();
                             // Compose a table with cargo-e and its version, plus panic info
                             let cargo_e_version = env!("CARGO_PKG_VERSION");
+
+                            let anchor: String = {
+                                // Try to parse the line as "file:line:col"
+                                let mut parts = line.split(':');
+                                let file = parts.next().unwrap_or("");
+                                let line_num = parts.next().unwrap_or("");
+                                let col_num = parts.next().unwrap_or("");
+
+                                let full_path = std::fs::canonicalize(file).unwrap_or_else(|_| {
+                                    file.into()
+
+                                    //  let manifest_dir = self.manifest_path.parent().unwrap_or_else(|| {
+                                    //      eprintln!("Failed to determine parent directory for manifest: {:?}", self.manifest_path);
+                                    //      Path::new(".")
+                                    //  });
+                                    //     let fallback_path = manifest_dir.join(file);
+                                    //     std::fs::canonicalize(&fallback_path).unwrap_or_else(|_| {
+                                    //         let parent_fallback_path = manifest_dir.join("../").join(file);
+                                    //         std::fs::canonicalize(&parent_fallback_path).unwrap_or_else(|_| {
+                                    //             eprintln!("Failed to resolve full path for: {} using ../", file);
+                                    //             file.into()
+                                    //         })
+                                    //     })
+                                });
+                                let stripped_file =
+                                    full_path.to_string_lossy().replace("\\?\\", "");
+                                // Only add anchor if we have a line and column
+                                if !stripped_file.is_empty()
+                                    && !line_num.is_empty()
+                                    && !col_num.is_empty()
+                                {
+                                    format!(
+                                        "\nanchor:code {}|\"{}\" --goto \"{}:{}:{}\"\n",
+                                        line, stripped_file, stripped_file, line_num, col_num
+                                    )
+                                } else {
+                                    let code_path =
+                                        which("code").unwrap_or_else(|_| "code".to_string().into());
+                                    if let Some(ref prior) = prior_response {
+                                        String::from(format!(
+                                            "\nanchor: code {} {} {}|\"{}\" --goto \"{}:{}:{}\"\n",
+                                            prior.file.as_deref().unwrap_or(""),
+                                            prior.line.unwrap_or(0),
+                                            prior.column.unwrap_or(0),
+                                            code_path.display(),
+                                            prior.file.as_deref().unwrap_or(""),
+                                            prior.line.unwrap_or(0),
+                                            prior.column.unwrap_or(0)
+                                        ))
+                                    } else {
+                                        String::from(format!(
+                                            "\nanchor: code X{} {} {}|\n",
+                                            file, line_num, col_num
+                                        ))
+                                    }
+                                }
+                            };
+
                             let mut card = format!(
                                 "--title \"panic: {target}\" --width 400 --height 300\n\
                         target | {target} | string\n\
                         cargo-e | {version} | string\n\
                         \n\
-                        Panic detected in {target}\n{line}",
+                        panic: {target}\n{line}",
                                 target = stats.target_name,
                                 version = cargo_e_version,
                                 line = line
@@ -340,7 +399,10 @@ impl CargoCommandBuilder {
                                     card = format!("{}\n{}", card, msg);
                                 }
                             }
-                            let mut child = std::process::Command::new(e_window_path)
+                            if !anchor.is_empty() {
+                                card = format!("{}{}", card, anchor);
+                            }
+                            let child = std::process::Command::new(e_window_path)
                                 .stdin(std::process::Stdio::piped())
                                 .spawn();
                             if let Ok(mut child) = child {

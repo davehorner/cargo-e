@@ -25,31 +25,10 @@ use winapi::um::winuser::MessageBoxW;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{IsWindow, MessageBeep};
 
-// Helper function to convert ParsedText to Vec<String>
-fn parsed_to_vec(parsed: &ParsedText) -> Vec<String> {
-    let mut lines = Vec::new();
-    if let Some(title) = &parsed.title {
-        lines.push(format!("Title: {}", title));
-    }
-    if let Some(header) = &parsed.header {
-        lines.push(format!("Header: {}", header));
-    }
-    if let Some(caption) = &parsed.caption {
-        lines.push(format!("Caption: {}", caption));
-    }
-    for (k, v, t) in &parsed.triples {
-        lines.push(format!("{}: {} ({})", k, v, t));
-    }
-    if let Some(body) = &parsed.body {
-        lines.push(format!("Body: {}", body));
-    }
-    lines
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct App {
     input_text: String,
-    parsed_data: Vec<String>,
+    parsed_data: ParsedText,
     #[serde(skip)]
     first_frame: bool,
     #[serde(skip)]
@@ -64,6 +43,8 @@ pub struct App {
     pub follow_hwnd: Option<usize>,
     #[serde(skip)]
     pub follow_triggered: bool,
+    #[serde(skip)]
+    pub decode_debug: bool,
 }
 
 impl Default for App {
@@ -79,7 +60,7 @@ impl Default for App {
             }
         };
         let input_text = default_card_with_hwnd(hwnd);
-        let parsed_data = parsed_to_vec(&parse_text(&input_text));
+        let parsed_data = parse_text(&input_text, true); // Changed to ParsedText
         let now = chrono::Local::now();
         Self {
             input_text,
@@ -91,6 +72,7 @@ impl Default for App {
             start_datetime: now.format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
             follow_triggered: false,
             follow_hwnd: None,
+            decode_debug: false,
         }
     }
 }
@@ -104,6 +86,7 @@ impl App {
         title: String,
         storage: Option<&dyn Storage>,
         follow_hwnd: Option<usize>,
+        decode_debug: bool,
     ) -> Self {
         if let Some(storage) = storage {
             if let Some(restored) = eframe::get_value::<App>(storage, "app") {
@@ -115,6 +98,7 @@ impl App {
                         .format("%Y-%m-%d %H:%M:%S%.3f")
                         .to_string(),
                     follow_hwnd: follow_hwnd,
+                    decode_debug: decode_debug,
                     ..restored
                 };
             }
@@ -140,14 +124,15 @@ impl App {
         } else {
             self.input_text = input.clone();
         }
-        self.parsed_data = parsed_to_vec(&parse_text(&self.input_text));
+        self.parsed_data = parse_text(&self.input_text, self.decode_debug); // Changed to ParsedText
         self
     }
 
     pub fn with_input_data_and_mode(mut self, input: String, editor_mode: bool) -> Self {
         self.input_text = input.clone();
-        self.parsed_data = parsed_to_vec(&parse_text(&self.input_text));
+        self.parsed_data = parse_text(&self.input_text, self.decode_debug); // Changed to ParsedText
         self.editor_mode = editor_mode;
+        println!("Editor mode set to: {}", self.editor_mode);
         self
     }
     #[cfg(not(target_os = "windows"))]
@@ -247,56 +232,100 @@ impl eframe::App for App {
             self.first_frame = false;
         }
 
-        // Parse the input text into a ParsedText struct
-        let parsed = parse_text(&self.input_text);
-
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(8.0);
-            // Card-like background
+            // Make the frame fill all available space
             egui::Frame::group(ui.style())
                 .fill(ui.visuals().panel_fill)
-                // .rounding(egui::Rounding::same(12))
                 .stroke(egui::Stroke::new(
                     1.0,
                     ui.visuals().widgets.noninteractive.bg_stroke.color,
                 ))
                 .show(ui, |ui| {
+                    // If in editor_mode, make the frame fill half the panel; otherwise, fill the whole panel
+                    if !self.editor_mode {
+                        ui.set_min_size(ui.available_size());
+                    }
                     ui.vertical(|ui| {
                         // Title
-                        if let Some(title) = &parsed.title {
-                            ui.heading(title);
+                        if let Some(title) = &self.parsed_data.title {
+                            if !title.is_empty() {
+                                ui.heading(title);
+                            }
                         }
                         // Header
-                        if let Some(header) = &parsed.header {
-                            ui.label(
-                                egui::RichText::new(header).strong().size(
-                                    ui.style().text_styles[&egui::TextStyle::Heading].size * 0.8,
-                                ), // egui::RichText::new(header).strong()
-                            );
+                        if let Some(header) = &self.parsed_data.header {
+                            if !header.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(header).strong().size(
+                                        ui.style().text_styles[&egui::TextStyle::Heading].size
+                                            * 0.8,
+                                    ), // egui::RichText::new(header).strong()
+                                );
+                            }
                         }
                         // Caption
-                        if let Some(caption) = &parsed.caption {
-                            ui.label(egui::RichText::new(caption).italics());
+                        if let Some(caption) = &self.parsed_data.caption {
+                            if !caption.is_empty() {
+                                ui.label(egui::RichText::new(caption).italics());
+                            }
                         }
+                        // Display anchors with clickable labels
+                        if !self.parsed_data.anchors.is_empty() {
+                            for anchor in &self.parsed_data.anchors {
+                                if ui.button(&anchor.text).clicked() {
+                                    if anchor.href.starts_with("http://")
+                                        || anchor.href.starts_with("https://")
+                                    {
+                                        if let Err(err) = open::that(&anchor.href) {
+                                            eprintln!(
+                                                "Failed to open URL {}: {}",
+                                                anchor.href, err
+                                            );
+                                        }
+                                    } else {
+                                        let mut parts = shell_words::split(&anchor.href)
+                                            .unwrap_or_else(|_| vec![]);
+                                        if !parts.is_empty() {
+                                            let program = parts.remove(0);
+                                            let args: Vec<&str> =
+                                                parts.iter().map(String::as_str).collect();
+
+                                            if let Err(err) = std::process::Command::new(&program)
+                                                .args(args)
+                                                .spawn()
+                                            {
+                                                eprintln!(
+                                                    "Failed to run command {}: {}",
+                                                    anchor.href, err
+                                                );
+                                            }
+                                        } else {
+                                            eprintln!("Invalid command: {}", anchor.href);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         ui.add_space(8.0);
 
                         // Triples Table
-                        if !parsed.triples.is_empty() {
-                            ui.label(egui::RichText::new("Fields:").underline());
+                        if !self.parsed_data.triples.is_empty() {
+                            //ui.label(egui::RichText::new("Fields:").underline());
                             egui::Grid::new("triples_grid")
                                 .striped(true)
                                 .show(ui, |ui| {
-                                    ui.label(egui::RichText::new("Key").strong());
-                                    ui.label(egui::RichText::new("Value").strong());
-                                    ui.label(egui::RichText::new("Type").strong());
-                                    ui.end_row();
+                                    // ui.label(egui::RichText::new("Key").strong());
+                                    // ui.label(egui::RichText::new("Value").strong());
+                                    // ui.label(egui::RichText::new("Type").strong());
+                                    // ui.end_row();
+
                                     // Start time and timer as first fields
                                     ui.label("Started");
                                     ui.label(&self.start_datetime);
                                     ui.label("datetime");
                                     ui.end_row();
 
-                                    // Compute elapsed_str here for use in editor_mode
                                     let elapsed = self
                                         .start_time
                                         .as_ref()
@@ -315,37 +344,44 @@ impl eframe::App for App {
                                     ui.label("duration");
                                     ui.end_row();
 
-                                    // Then the rest of the triples
-                                    for (k, v, t) in &parsed.triples {
-                                        ui.label(k);
-                                        ui.label(v);
-                                        ui.label(egui::RichText::new(t).monospace());
-                                        ui.end_row();
+                                    for (k, v, t) in &self.parsed_data.triples {
+                                        if !k.is_empty() && !v.is_empty() && !t.is_empty() {
+                                            ui.label(k);
+                                            ui.label(v);
+                                            ui.label(egui::RichText::new(t).monospace());
+                                            ui.end_row();
+                                        }
                                     }
                                 });
                         }
 
                         // Body
-                        if let Some(body) = &parsed.body {
+                        if let Some(body) = &self.parsed_data.body {
                             ui.separator();
                             ui.label(body);
                         }
+
+                        ui.add_space(8.0);
+                        ui.vertical_centered(|ui| {
+                            if ui.button("OK").clicked() {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        });
                     });
                 });
 
             // Editing and parsing area
             if self.editor_mode {
                 if ui.button("Parse").clicked() {
-                    self.parsed_data = parsed_to_vec(&parse_text(&self.input_text));
+                    self.parsed_data = parse_text(&self.input_text, self.decode_debug);
                 }
                 if ui.button("Run in new window").clicked() {
                     #[cfg(target_os = "windows")]
                     {
                         use std::ffi::OsStr;
-                        
+
                         use std::os::windows::ffi::OsStrExt;
-                        
-                        
+
                         use winapi::um::winuser::{MessageBoxW, MB_OK};
                         let _ = std::process::Command::new("e_window")
                             //.creation_flags(0x00000008) // CREATE_NO_WINDOW
@@ -415,7 +451,7 @@ impl eframe::App for App {
                             )
                             .changed()
                         {
-                            self.parsed_data = parsed_to_vec(&parse_text(&self.input_text));
+                            self.parsed_data = parse_text(&self.input_text, self.decode_debug);
                             if let Some(new_title) = extract_title_from_first_line(&self.input_text)
                             {
                                 #[cfg(target_os = "windows")]
@@ -438,34 +474,7 @@ impl eframe::App for App {
                                 ctx.send_viewport_cmd(egui::ViewportCommand::Title(new_title));
                             }
                         }
-                        ui.label("Parsed Output:");
-                        for line in &self.parsed_data {
-                            ui.label(line);
-                        }
                     });
-            } else {
-                // Show timer and start info
-                let elapsed = self
-                    .start_time
-                    .as_ref()
-                    .map(|t| t.elapsed())
-                    .unwrap_or_default();
-                let elapsed_str = format!(
-                    "{:02}:{:02}:{:02}.{:03}",
-                    elapsed.as_secs() / 3600,
-                    (elapsed.as_secs() / 60) % 60,
-                    elapsed.as_secs() % 60,
-                    elapsed.subsec_millis()
-                );
-
-                ui.label(format!("Started: {}", self.start_datetime));
-                ui.label(format!("Timer:   {}", elapsed_str));
-                ui.add_space(8.0);
-                ui.vertical_centered(|ui| {
-                    if ui.button("OK").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
             }
         });
     }
@@ -504,6 +513,7 @@ How to use:
     - The rest is the **Body** (supports multiple lines)
 
 Try editing the text below, or click "Run in new window" to open another instance with your changes!
+anchor: Click me! | e_window --title "you clicked!" --width 800 --height 600 --x 100 --y 100
 "#;
 
 pub fn default_card_with_hwnd(hwnd: usize) -> String {

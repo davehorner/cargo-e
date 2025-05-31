@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.32</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.33</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -69,7 +69,8 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 - **autosense/tool installer:** `cargo-e` will parse the output of a failed cargo builds and prompt to suggest the user to install the required library or tool runner.
 - **run_report.md:** on exit, a run_report.md is generated which includes details of the commands run and diagnostic information if the `-f` filtering is enabled.
 - **tts panics:** When a panic is detected, cargo-e will speak the panic message aloud using text-to-speech (TTS) for immediate feedback. `-f` required.
-- **graphical panics:** Panics are also displayed in a graphical window using e_window, providing a clear and interactive error report. `-f` required.
+- **graphical panics:** Panics are also displayed in a graphical window using [e_window](https://crates.io/crates/e_window), providing a clear and interactive error report. `-f` required.
+- **graphical failed build:** A failed build displays a graphical window using [e_window](https://crates.io/crates/e_window); Errors are anchors and clicking them opens code directly to the error line. `-f` required.
 
 ## Introduction
 
@@ -298,7 +299,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.32</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.33</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 
