@@ -645,6 +645,112 @@ pub fn run_example(
     result.print_compact();
     result.print_short();
     manager.print_prefixed_summary();
+    let errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.level.eq("error"))
+        .collect();
+    let error_width = errors.len().to_string().len().max(1);
+    let line: Vec<String> = errors
+        .iter()
+        .enumerate()
+        .map(|(i, diag)| {
+            let index = format!("{:0width$}", i + 1, width = error_width);
+            let lineref = if diag.lineref.is_empty() {
+                ""
+            } else {
+                &diag.lineref
+            };
+            // Resolve filename to full path
+            let (filename, goto) = if let Some((file, line, col)) = diag
+                .lineref
+                .split_once(':')
+                .and_then(|(f, rest)| rest.split_once(':').and_then(|(l, c)| Some((f, l, c))))
+            {
+                let full_path = std::fs::canonicalize(file).unwrap_or_else(|_| {
+                    let manifest_dir = std::path::Path::new(&manifest_path)
+                        .parent()
+                        .unwrap_or_else(|| {
+                            eprintln!(
+                                "Failed to determine parent directory for manifest: {:?}",
+                                manifest_path
+                            );
+                            std::path::Path::new(".")
+                        });
+                    let fallback_path = manifest_dir.join(file);
+                    std::fs::canonicalize(&fallback_path).unwrap_or_else(|_| {
+                        let parent_fallback_path = manifest_dir.join("../").join(file);
+                        std::fs::canonicalize(&parent_fallback_path).unwrap_or_else(|_| {
+                            eprintln!("Failed to resolve full path for: {} using ../", file);
+                            file.into()
+                        })
+                    })
+                });
+                let stripped_file = full_path.to_string_lossy().replace("\\\\?\\", "");
+
+                (stripped_file.to_string(), format!("{}:{}", line, col))
+            } else {
+                ("".to_string(), "".to_string())
+            };
+            let code_path = which("code").unwrap_or_else(|_| "code".to_string().into());
+            format!(
+                "{}: {}\nanchor:{}: {}\\n {}|\"{}\" --goto \"{}:{}\"\n",
+                index,
+                diag.message.trim(),
+                index,
+                diag.message.trim(),
+                lineref,
+                code_path.display(),
+                filename,
+                goto,
+            )
+        })
+        .collect();
+    if !errors.is_empty() {
+        if let Ok(e_window_path) = which("e_window") {
+            // Compose a nice message for e_window's stdin
+            let stats = result.stats;
+            // Compose a table with cargo-e and its version, plus panic info
+            let cargo_e_version = env!("CARGO_PKG_VERSION");
+            let card = format!(
+                "--title \"failed build: {target}\" --width 400 --height 300 --decode-debug\n\
+                target | {target} | string\n\
+                cargo-e | {version} | string\n\
+                \n\
+                failed build: {target}\n{errors} errors.\n\n{additional_errors}",
+                target = stats.target_name,
+                version = cargo_e_version,
+                errors = errors.len(),
+                additional_errors = line
+                    .iter()
+                    .map(|l| l.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+            // Set the working directory to the manifest's parent directory
+            let manifest_dir = std::path::Path::new(&manifest_path)
+                .parent()
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "Failed to determine parent directory for manifest: {:?}",
+                        target.manifest_path
+                    );
+                    std::path::Path::new(".")
+                });
+
+            let child = std::process::Command::new(e_window_path)
+                .current_dir(manifest_dir) // Set working directory
+                .stdin(std::process::Stdio::piped())
+                .spawn();
+            if let Ok(mut child) = child {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(card.as_bytes());
+                }
+            }
+        }
+    }
+
     // }
 
     // let handle=    Arc::new(builder).run_wait()?;
@@ -666,6 +772,19 @@ pub fn run_example(
     // Restore the manifest if we patched it.
     if let Some(original) = maybe_backup {
         fs::write(&target.manifest_path, original)?;
+    }
+
+    #[cfg(feature = "uses_tts")]
+    {
+        let tts_mutex = crate::GLOBAL_TTS.get();
+        if tts_mutex.is_none() {
+            eprintln!("TTS is not initialized, skipping wait.");
+            return Ok(result.exit_status);
+        }
+        let tts = tts_mutex.unwrap().lock().expect("Failed to lock TTS mutex");
+        while tts.is_speaking().unwrap_or(false) {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
 
     Ok(result.exit_status)
@@ -1029,7 +1148,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned: Vec<String> = extra_str_slice.clone();
-                let mut child = run_scriptisto(
+                let child = run_scriptisto(
                     &relative,
                     &extra_str_slice_cloned
                         .iter()
@@ -1051,7 +1170,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
                 // let status = {
                 //     let mut global = GLOBAL_CHILD.lock().unwrap();
                 //     if let Some(mut child) = global.take() {
-                child.wait()
+                //         child.wait()
                 //     } else {
                 //         // Handle missing child process
                 //         eprintln!("Child process missing");

@@ -40,41 +40,54 @@ where
     let mut w_pool_ndx: Option<usize> = None;
     let mut w_pool_rate: Option<u64> = None;
 
+    // Parent PID for child windows
+    let mut parent_pid: Option<u32> = None;
+
+    // Decode debug flag
+    let mut decode_debug = false;
+    let mut has_been_specified = false;
     while let Some(arg) = opts.next_arg().expect("argument parsing error") {
         match arg {
             Arg::Long("title") => {
                 if let Ok(val) = opts.value() {
                     title = val.to_string();
+                    has_been_specified = true;
                 }
             }
             Arg::Long("width") => {
                 if let Ok(val) = opts.value() {
                     width = val.parse().unwrap_or(width);
+                    has_been_specified = true;
                 }
             }
             Arg::Long("height") => {
                 if let Ok(val) = opts.value() {
                     height = val.parse().unwrap_or(height);
+                    has_been_specified = true;
                 }
             }
             Arg::Long("x") => {
                 if let Ok(val) = opts.value() {
                     x = val.parse().unwrap_or(x);
+                    has_been_specified = true;
                 }
             }
             Arg::Long("y") => {
                 if let Ok(val) = opts.value() {
                     y = val.parse().unwrap_or(y);
+                    has_been_specified = true;
                 }
             }
             Arg::Long("appname") => {
                 if let Ok(val) = opts.value() {
                     appname = val.to_string();
+                    has_been_specified = true;
                 }
             }
             Arg::Short('i') | Arg::Long("input-file") => {
                 if let Ok(val) = opts.value() {
                     input_file = Some(val.to_string());
+                    has_been_specified = true;
                 }
             }
             Arg::Long("follow-hwnd") => {
@@ -85,22 +98,36 @@ where
                     } else {
                         val.parse().ok()
                     };
+                    has_been_specified = true;
                 }
             }
             Arg::Long("w-pool-cnt") => {
                 if let Ok(val) = opts.value() {
                     w_pool_cnt = val.parse().ok();
+                    has_been_specified = true;
                 }
             }
             Arg::Long("w-pool-ndx") => {
                 if let Ok(val) = opts.value() {
                     w_pool_ndx = val.parse().ok();
+                    has_been_specified = true;
                 }
             }
             Arg::Long("w-pool-rate") => {
                 if let Ok(val) = opts.value() {
                     w_pool_rate = val.parse().ok();
+                    has_been_specified = true;
                 }
+            }
+            Arg::Long("parent-pid") => {
+                if let Ok(val) = opts.value() {
+                    parent_pid = val.parse().ok();
+                    has_been_specified = true;
+                }
+            }
+            Arg::Long("decode-debug") => {
+                decode_debug = true;
+                has_been_specified = true;
             }
             Arg::Short('h') | Arg::Long("help") => {
                 eprintln!(
@@ -116,6 +143,7 @@ where
     --w-pool-cnt <N>     Keep at least N windows open at all times
     --w-pool-ndx <N>     (internal) Index of this window instance
     --w-pool-rate <MS>   Minimum milliseconds between opening new windows (default: 1000)
+    --decode-debug       Enable debug decoding mode
     -h, --help           Show this help and exit
 Any other positional arguments are collected as files or piped input."#
                 );
@@ -206,7 +234,17 @@ Any other positional arguments are collected as files or piped input."#
                             appname = val.to_string();
                         }
                     }
-                    _ => {}
+                    Arg::Long("decode-debug") => {
+                        println!(
+                            "Warning: --decode-debug is deprecated, use --decode-debug instead."
+                        );
+                        decode_debug = true;
+                        has_been_specified = true;
+                    }
+                    _ => {
+                        // Ignore other flags for now
+                        println!("Warning: Unknown argument: {:?}", arg);
+                    }
                 }
             }
         }
@@ -233,6 +271,21 @@ Any other positional arguments are collected as files or piped input."#
 
     // --- Window pool logic ---
     if let Some(pool_size) = w_pool_cnt {
+        // Monitor parent PID if this is a pool child
+        if let (Some(pid), Some(_ndx)) = (parent_pid, w_pool_ndx) {
+            std::thread::spawn(move || {
+                use sysinfo::System;
+                let mut sys = System::new_all();
+                loop {
+                    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                    if sys.process(sysinfo::Pid::from_u32(pid)).is_none() {
+                        std::process::exit(0);
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+            });
+        }
+
         // Only spawn the pool manager if this is NOT a child window and NOT already the pool manager
         if w_pool_ndx.is_none() && !args.iter().any(|a| a == "--w-pool-manager") {
             // Remove --w-pool-cnt and its value from args for child windows
@@ -252,18 +305,23 @@ Any other positional arguments are collected as files or piped input."#
             let rate_ms = w_pool_rate.unwrap_or(1000);
 
             // Spawn the pool manager as a detached process and exit this process
-            let _ = std::process::Command::new(&exe)
-                .arg("--w-pool-manager".to_string())
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.arg("--w-pool-manager".to_string())
                 .arg("--parent-pid")
                 .arg(std::process::id().to_string())
                 .arg(format!("--w-pool-cnt={}", pool_size))
                 .arg(format!("--w-pool-rate={}", rate_ms))
-                .args(&child_args)
-                .spawn();
-            println!(
-                "e_window: Pool manager started (keeping at least {} windows open). You may close any window; the pool manager will keep the count up.",
-                pool_size
-            );
+                .args(&child_args);
+
+            let mut manager_process = cmd.spawn().expect("Failed to spawn pool manager");
+            println!("e_window: Pool manager started...");
+
+            // Wait for the pool manager to exit
+            let status = manager_process
+                .wait()
+                .expect("Failed to wait on pool manager");
+            println!("e_window: Pool manager exited with status: {}", status);
+
             return Ok(()); // Exit the original process
         }
     }
@@ -379,8 +437,9 @@ Any other positional arguments are collected as files or piped input."#
                     title.clone(),
                     cc.storage,
                     follow_hwnd,
+                    decode_debug,
                 )
-                .with_input_data_and_mode(actual_input, editor_mode),
+                .with_input_data_and_mode(actual_input, editor_mode && !has_been_specified),
             ))
         }),
     )
@@ -390,7 +449,7 @@ Any other positional arguments are collected as files or piped input."#
 #[cfg(target_os = "windows")]
 fn count_running_windows(_exe: &std::path::Path) -> usize {
     use std::ffi::OsString;
-    
+
     use std::os::windows::ffi::OsStringExt;
     use sysinfo::System;
     use winapi::um::winuser::{
@@ -456,5 +515,18 @@ fn count_running_windows(_exe: &std::path::Path) -> usize {
 
 #[cfg(not(target_os = "windows"))]
 fn count_running_windows(_exe: &std::path::Path) -> usize {
-    1 // fallback: always 1
+    use sysinfo::{ProcessExt, System, SystemExt};
+    let mut sys = System::new_all();
+    sys.refresh_processes();
+    // Collect all process IDs for our exe that are pool children
+    for (pid, process) in sys.processes() {
+        // Match exe name (case-insensitive) and check for --w-pool-ndx in cmdline
+        let is_pool_child = process.cmd().iter().any(|arg| arg == "--w-pool-ndx");
+        let exe_name = process.name().to_ascii_lowercase();
+        if is_pool_child && (exe_name == "e_window.exe" || exe_name == "e_window") {
+            our_pids.push(pid.as_u32());
+        }
+    }
+
+    our_pids.len()
 }
