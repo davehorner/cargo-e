@@ -515,9 +515,16 @@ fn count_running_windows(_exe: &std::path::Path) -> usize {
 
 #[cfg(not(target_os = "windows"))]
 fn count_running_windows(_exe: &std::path::Path) -> usize {
+    #[cfg(target_os = "windows")]
     use sysinfo::{ProcessExt, System, SystemExt};
+    #[cfg(not(target_os = "windows"))]
+    use sysinfo::System;
     let mut sys = System::new_all();
+    #[cfg(target_os = "windows")]
     sys.refresh_processes();
+    #[cfg(not(target_os = "windows"))]
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let mut our_pids = Vec::new();
     // Collect all process IDs for our exe that are pool children
     for (pid, process) in sys.processes() {
         // Match exe name (case-insensitive) and check for --w-pool-ndx in cmdline

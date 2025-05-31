@@ -1,7 +1,9 @@
 use eframe::{egui, Frame};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+#[cfg(target_os = "windows")]
 use winapi::um::winuser::GetForegroundWindow;
+#[cfg(target_os = "windows")]
 fn setup_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
@@ -45,6 +47,7 @@ pub struct PoolManagerApp {
 
 impl PoolManagerApp {
     pub fn new(pool_size: usize, rate_ms: u64) -> Self {
+        #[cfg(target_os = "windows")]
         setup_panic_hook();
         Self {
             pool_size,
@@ -79,13 +82,16 @@ impl eframe::App for PoolManagerApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         unsafe {
             use std::ffi::OsStr;
+            #[cfg(target_os = "windows")]
             use std::os::windows::ffi::OsStrExt;
 
             let message = "Pool Manager is exiting.";
+            #[cfg(target_os = "windows")]
             let wide_message: Vec<u16> = OsStr::new(message)
                 .encode_wide()
                 .chain(std::iter::once(0))
                 .collect();
+            #[cfg(target_os = "windows")]
             winapi::um::winuser::MessageBoxW(
                 std::ptr::null_mut(),
                 wide_message.as_ptr(),
@@ -104,6 +110,7 @@ impl eframe::App for PoolManagerApp {
         #[cfg(target_os = "windows")]
         use winapi::um::winuser::{PostMessageW, WM_QUIT};
 
+        #[cfg(target_os = "windows")]
         fn send_quit_to_hwnds_concurrently(hwnds: Vec<usize>) {
             use std::thread;
             hwnds.into_iter().for_each(|hwnd| {
