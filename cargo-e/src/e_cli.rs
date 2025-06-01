@@ -154,6 +154,23 @@ pub struct Cli {
     )]
     pub run_at_a_time: usize,
 
+    #[arg(
+        long = "nS",
+        default_value_t = false,
+        help = "Disable status lines during runtime loop output."
+    )]
+    pub no_status_lines: bool,
+
+    #[arg(
+        long = "nT",
+        default_value_t = false,
+        help = "Disable text-to-speech output."
+    )]
+    pub no_tts: bool,
+
+    #[arg(long = "nW", default_value_t = false, help = "Disable window popups.")]
+    pub no_window: bool,
+
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,
 }

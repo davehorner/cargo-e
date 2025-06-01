@@ -144,14 +144,16 @@ pub fn run_all_examples(
                         } else {
                             stats.start_time
                         };
-                        let status_display = ProcessManager::format_process_status(
-                            pid,
-                            runtime_start,
-                            system_clone,
-                            &t,
-                            (idx + 1, len),
-                        );
-                        ProcessManager::update_status_line(&status_display, true).ok();
+                        if !cli.no_status_lines {
+                            let status_display = ProcessManager::format_process_status(
+                                pid,
+                                runtime_start,
+                                system_clone,
+                                &t,
+                                (idx + 1, len),
+                            );
+                            ProcessManager::update_status_line(&status_display, true).ok();
+                        }
                         manager_ref.register(handle);
                     }
                 })?;
@@ -203,24 +205,28 @@ pub fn run_all_examples(
                         };
                         let end_time = handle.result.end_time;
                         drop(handle);
-                        let status_display = ProcessManager::format_process_status(
-                            pid,
-                            runtime_start,
-                            system.clone(),
-                            &target,
-                            (idx + 1, targets_len),
-                        );
+                        let status_display = if !cli.no_status_lines {
+                            ProcessManager::format_process_status(
+                                pid,
+                                runtime_start,
+                                system.clone(),
+                                &target,
+                                (idx + 1, targets_len),
+                            )
+                        } else {
+                            String::new()
+                        };
                         (stats, runtime_start, end_time, status_display)
                     };
-                    let mut system_guard = system.lock().unwrap();
-                    system_guard.refresh_processes_specifics(
-                        ProcessesToUpdate::All,
-                        true,
-                        ProcessRefreshKind::nothing().with_cpu(),
-                    );
-                    drop(system_guard);
 
-                    if cli.filter {
+                    if cli.filter && !cli.no_status_lines {
+                        let mut system_guard = system.lock().unwrap();
+                        system_guard.refresh_processes_specifics(
+                            ProcessesToUpdate::All,
+                            true,
+                            ProcessRefreshKind::nothing().with_cpu(),
+                        );
+                        drop(system_guard);
                         ProcessManager::update_status_line(&status_display, true).ok();
                     }
                     if runtime_start.is_some() {

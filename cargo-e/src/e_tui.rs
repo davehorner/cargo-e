@@ -669,7 +669,7 @@ pub mod tui_interactive {
             }
 
             // Only update the status display every SAMPLE_INTERVAL iterations.
-            if sample_count % SAMPLE_INTERVAL == 0 {
+            if sample_count % SAMPLE_INTERVAL == 0 && !cli.no_status_lines {
                 // system.refresh_all();
                 let mut system_guard = system.lock().unwrap();
                 system_guard.refresh_processes_specifics(

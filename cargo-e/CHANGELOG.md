@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.34](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.33...cargo-e-v0.2.34) - 2025-06-01
+
+### Added
+
+- add thread-local context and CLI flags for status, TTS, and window control
+
 ## [0.2.33](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.32...cargo-e-v0.2.33) - 2025-05-31
 
 ### Added
