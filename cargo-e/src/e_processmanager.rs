@@ -29,7 +29,6 @@ use {
     std::os::unix::process::ExitStatusExt,
 };
 
-
 impl ProcessObserver for ProcessManager {
     fn on_spawn(&self, pid: u32, handle: CargoProcessHandle) {
         self.processes
@@ -214,13 +213,13 @@ impl ProcessManager {
                     cursor::MoveToColumn(0),
                     Clear(ClearType::CurrentLine)
                 )?;
-                print!("{}", output);
+                print!("\r{}\r", output);
             }
             #[cfg(not(feature = "tui"))]
-            print!("\r{}", output);
+            print!("\r{}\r", output);
         } else {
             // In non-raw mode, the \r trick can work.
-            print!("\r{}", output);
+            print!("\r{}\r", output);
         }
         stdout.flush()
     }
@@ -926,7 +925,7 @@ impl ProcessManager {
                     if let Some(process) = sys.process((pid as usize).into()) {
                         let status = handle.format_status(Some(process));
                         if !status.is_empty() {
-                            print!("\r{}", status);
+                            print!("\r{}\r", status);
                         }
                     }
                 }
@@ -991,7 +990,7 @@ impl ProcessManager {
     pub fn format_process_status(
         pid: u32,
         start_time: Option<SystemTime>,
-        system: Arc<Mutex<System>>,
+        // system: Arc<Mutex<System>>,
         target: &CargoTarget,
         target_dimensions: (usize, usize),
     ) -> String {
@@ -1009,82 +1008,73 @@ impl ProcessManager {
         if start_time.is_none() {
             return String::new();
         }
-        // Refresh the system stats and look up the process.
-        if let Some(process) = system.lock().unwrap().process((pid as usize).into()) {
-            let cpu_usage = process.cpu_usage();
-            let mem_kb = process.memory();
-            let mem_human = if mem_kb >= 1024 {
-                format!("{:.2} MB", mem_kb as f64 / 1024.0)
-            } else {
-                format!("{} KB", mem_kb)
-            };
-
-            // Calculate runtime.
-            let now = SystemTime::now();
-            let runtime_duration = match start_time {
-                Some(start) => now
-                    .duration_since(start)
-                    .unwrap_or_else(|_| Duration::from_secs(0)),
-                None => Duration::from_secs(0),
-            };
-            let runtime_str = crate::e_fmt::format_duration(runtime_duration);
-            // compute the max number of digits in either dimension:
-            let max_digits = target_dimensions
-                .0
-                .max(target_dimensions.1)
-                .to_string()
-                .len();
-            let left_display = format!(
-                "{:0width$}of{:0width$} | {} | {} | PID: {} | CPU: {:.2}% | Mem: {}",
-                target_dimensions.0,
-                target_dimensions.1,
-                nu_ansi_term::Color::Green
-                    .paint(target.display_name.clone())
-                    .to_string(),
-                colored_start,
-                pid,
-                cpu_usage,
-                mem_human,
-                width = max_digits,
-            );
-            let left_plain = format!(
-                "{:0width$}of{:0width$} | {} | {} | PID: {} | CPU: {:.2}% | Mem: {}",
-                target_dimensions.0,
-                target_dimensions.1,
-                target.display_name,
-                plain_start,
-                pid,
-                cpu_usage,
-                mem_human,
-                width = max_digits,
-            );
-
-            // Get terminal width.
-            #[cfg(feature = "tui")]
-            let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
-            #[cfg(not(feature = "tui"))]
-            let (cols, _) = (80, 20);
-            let total_width = cols as usize;
-
-            // Format the runtime with underlining.
-            let right_display = nu_ansi_term::Style::new()
-                .reset_before_style()
-                .underline()
-                .paint(&runtime_str)
-                .to_string();
-            let left_len = left_plain.len();
-            let right_len = runtime_str.len();
-            let padding = if total_width > left_len + right_len {
-                total_width - left_len - right_len
-            } else {
-                1
-            };
-
-            format!("{}{}{}", left_display, " ".repeat(padding), right_display)
-        } else {
-            // String::from("xxx")
-            format!("\rProcess with PID {} not found in sysinfo", pid)
+        // Calculate runtime.
+        let now = SystemTime::now();
+        let runtime_duration = match start_time {
+            Some(start) => now
+                .duration_since(start)
+                .unwrap_or_else(|_| Duration::from_secs(0)),
+            None => Duration::from_secs(0),
+        };
+        if runtime_duration.as_secs() == 0 {
+            return String::new();
         }
+        let runtime_str = crate::e_fmt::format_duration(runtime_duration);
+        // compute the max number of digits in either dimension:
+        let max_digits = target_dimensions
+            .0
+            .max(target_dimensions.1)
+            .to_string()
+            .len();
+        let left_display = format!(
+            "{:0width$}of{:0width$} | {} | {} | PID: {}",
+            target_dimensions.0,
+            target_dimensions.1,
+            nu_ansi_term::Color::Green
+                .paint(target.display_name.clone())
+                .to_string(),
+            colored_start,
+            pid,
+            width = max_digits,
+        );
+        let left_plain = format!(
+            "{:0width$}of{:0width$} | {} | {} | PID: {}",
+            target_dimensions.0,
+            target_dimensions.1,
+            target.display_name,
+            plain_start,
+            pid,
+            width = max_digits,
+        );
+
+        // Get terminal width.
+        #[cfg(feature = "tui")]
+        let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
+        #[cfg(not(feature = "tui"))]
+        let (cols, _) = (80, 20);
+        let mut total_width = cols as usize;
+        total_width = total_width - 1;
+        // Format the runtime with underlining.
+        let right_display = nu_ansi_term::Style::new()
+            .reset_before_style()
+            .underline()
+            .paint(&runtime_str)
+            .to_string();
+        let left_len = left_plain.len();
+        let right_len = runtime_str.len();
+        let visible_right_len = runtime_str.len();
+        let padding = if total_width > left_len + visible_right_len {
+            total_width.saturating_sub(left_len + visible_right_len)
+        } else {
+            0
+        };
+
+        let ret = format!("{}{}{}", left_display, " ".repeat(padding), right_display);
+        if left_len + visible_right_len > total_width {
+            let truncated_left = &left_display[..total_width.saturating_sub(visible_right_len)];
+            return format!("{}{}", truncated_left.trim_end(), right_display);
+        }
+        ret
     }
 
     /// Print the exact diagnostic output as captured.

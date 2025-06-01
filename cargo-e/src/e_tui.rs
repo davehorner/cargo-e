@@ -682,7 +682,6 @@ pub mod tui_interactive {
                 let status_display = ProcessManager::format_process_status(
                     pid,
                     Some(start_time),
-                    system.clone(),
                     &target,
                     (index + 1, examples.len()),
                 );

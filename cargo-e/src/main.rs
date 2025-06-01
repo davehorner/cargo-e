@@ -53,7 +53,29 @@ use std::path::PathBuf;
 static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
+fn enable_ansi_support() {
+    #[cfg(windows)]
+    {
+        use std::io::stdout;
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::Console::{
+            GetConsoleMode, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+        };
+
+        unsafe {
+            let handle = HANDLE(stdout().as_raw_handle() as *mut _);
+            use windows::Win32::System::Console::CONSOLE_MODE;
+            let mut mode: CONSOLE_MODE = unsafe { std::mem::zeroed() };
+            if GetConsoleMode(handle, &mut mode as *mut CONSOLE_MODE).is_ok() {
+                let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
+    }
+}
+
 pub fn main() -> anyhow::Result<()> {
+    enable_ansi_support();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     log::trace!(
         "cargo-e starting with args: {:?}",

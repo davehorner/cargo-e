@@ -1,6 +1,6 @@
-﻿25/06/01|be18478|0.2.34
-## [0.2.34](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.33...cargo-e-v0.2.34) - 2025-06-01
+﻿25/06/01|c5aa283|0.2.35
+## [0.2.35](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.34...cargo-e-v0.2.35) - 2025-06-01
 
-### Added
+### Fixed
 
-- add thread-local context and CLI flags for status, TTS, and window control
+- remove system information from status lines.  double up \r to ensure status line is properly displayed.

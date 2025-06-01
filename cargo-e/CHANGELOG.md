@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.35](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.34...cargo-e-v0.2.35) - 2025-06-01
+
+### Fixed
+
+- remove system information from status lines.  double up \r to ensure status line is properly displayed.
+
 ## [0.2.34](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.33...cargo-e-v0.2.34) - 2025-06-01
 
 ### Added
