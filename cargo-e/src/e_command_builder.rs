@@ -12,7 +12,7 @@ use which::which;
 use crate::e_cargocommand_ext::CargoProcessResult;
 use crate::e_cargocommand_ext::{CargoCommandExt, CargoDiagnostic, CargoProcessHandle};
 use crate::e_eventdispatcher::{
-    CallbackResponse, CallbackType, CargoDiagnosticLevel, EventDispatcher,
+    CallbackResponse, CallbackType, CargoDiagnosticLevel, EventDispatcher, ThreadLocalContext,
 };
 use crate::e_runner::GLOBAL_CHILDREN;
 use crate::e_target::{CargoTarget, TargetKind, TargetOrigin};
@@ -82,6 +82,7 @@ impl Default for CargoCommandBuilder {
 impl CargoCommandBuilder {
     /// Creates a new, empty builder.
     pub fn new(target_name: &str, manifest: &PathBuf, subcommand: &str, is_filter: bool) -> Self {
+        ThreadLocalContext::set_context(target_name, manifest.to_str().unwrap_or_default());
         let (sender, _receiver) = channel::<TerminalError>();
         let sender = Arc::new(Mutex::new(sender));
         let mut builder = CargoCommandBuilder {
@@ -103,7 +104,6 @@ impl CargoCommandBuilder {
             is_filter,
         };
         builder.set_default_dispatchers();
-
         builder
     }
 
@@ -272,19 +272,31 @@ impl CargoCommandBuilder {
 
                     #[cfg(feature = "uses_tts")]
                     {
-                        let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
-                            std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
-                        });
-                        let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
-                        // Extract the filename without extension
-                        let filename = Path::new(message)
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("unknown file");
-                        let speech =
-                            format!("thread {} panic, {} line {}", thread, filename, line_num);
-                        println!("TTS: {}", speech);
-                        let _ = tts.speak(&speech, false);
+                        let mut say_something = true;
+                        if let Some(cli) = crate::GLOBAL_CLI.get() {
+                            if cli.no_tts {
+                                say_something = false;
+                            }
+                        }
+                        if say_something {
+                            let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                                std::sync::Mutex::new(
+                                    tts::Tts::default().expect("TTS engine failure"),
+                                )
+                            });
+                            // Extract the filename without extension
+                            let filename = Path::new(message)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("unknown file");
+                            let speech =
+                                format!("thread {} panic, {} line {}", thread, filename, line_num);
+                            println!("TTS: {}", speech);
+                            crate::e_runner::wait_for_tts_to_finish(15000);
+                            let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                            let _ = tts.speak(&speech, false);
+                            drop(tts);
+                        }
                     }
 
                     println!(
@@ -305,114 +317,41 @@ impl CargoCommandBuilder {
                         terminal_status: None,
                     })
                 } else {
-                    #[cfg(feature = "uses_tts")]
-                    {
-                        let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
-                            std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
-                        });
-                        let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
-                        // Extract the filename without extension
-                        let filename = Path::new(line)
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("unknown file");
-
-                        let speech = format!("panic says {}", line);
-                        println!("TTS: {}", speech);
-                        let _ = tts.speak(&speech, true);
-
-                        if let Ok(e_window_path) = which("e_window") {
-                            // Compose a nice message for e_window's stdin
-                            let stats = stats.lock().unwrap();
-                            // Compose a table with cargo-e and its version, plus panic info
-                            let cargo_e_version = env!("CARGO_PKG_VERSION");
-
-                            let anchor: String = {
-                                // Try to parse the line as "file:line:col"
-                                let mut parts = line.split(':');
-                                let file = parts.next().unwrap_or("");
-                                let line_num = parts.next().unwrap_or("");
-                                let col_num = parts.next().unwrap_or("");
-
-                                let full_path = std::fs::canonicalize(file).unwrap_or_else(|_| {
-                                    file.into()
-
-                                    //  let manifest_dir = self.manifest_path.parent().unwrap_or_else(|| {
-                                    //      eprintln!("Failed to determine parent directory for manifest: {:?}", self.manifest_path);
-                                    //      Path::new(".")
-                                    //  });
-                                    //     let fallback_path = manifest_dir.join(file);
-                                    //     std::fs::canonicalize(&fallback_path).unwrap_or_else(|_| {
-                                    //         let parent_fallback_path = manifest_dir.join("../").join(file);
-                                    //         std::fs::canonicalize(&parent_fallback_path).unwrap_or_else(|_| {
-                                    //             eprintln!("Failed to resolve full path for: {} using ../", file);
-                                    //             file.into()
-                                    //         })
-                                    //     })
-                                });
-                                let stripped_file =
-                                    full_path.to_string_lossy().replace("\\?\\", "");
-                                // Only add anchor if we have a line and column
-                                if !stripped_file.is_empty()
-                                    && !line_num.is_empty()
-                                    && !col_num.is_empty()
-                                {
-                                    format!(
-                                        "\nanchor:code {}|\"{}\" --goto \"{}:{}:{}\"\n",
-                                        line, stripped_file, stripped_file, line_num, col_num
-                                    )
-                                } else {
-                                    let code_path =
-                                        which("code").unwrap_or_else(|_| "code".to_string().into());
-                                    if let Some(ref prior) = prior_response {
-                                        String::from(format!(
-                                            "\nanchor: code {} {} {}|\"{}\" --goto \"{}:{}:{}\"\n",
-                                            prior.file.as_deref().unwrap_or(""),
-                                            prior.line.unwrap_or(0),
-                                            prior.column.unwrap_or(0),
-                                            code_path.display(),
-                                            prior.file.as_deref().unwrap_or(""),
-                                            prior.line.unwrap_or(0),
-                                            prior.column.unwrap_or(0)
-                                        ))
-                                    } else {
-                                        String::from(format!(
-                                            "\nanchor: code X{} {} {}|\n",
-                                            file, line_num, col_num
-                                        ))
-                                    }
-                                }
-                            };
-
-                            let mut card = format!(
-                                "--title \"panic: {target}\" --width 400 --height 300\n\
-                        target | {target} | string\n\
-                        cargo-e | {version} | string\n\
-                        \n\
-                        panic: {target}\n{line}",
-                                target = stats.target_name,
-                                version = cargo_e_version,
-                                line = line
-                            );
-                            if let Some(prior) = prior_response {
-                                if let Some(msg) = &prior.message {
-                                    card = format!("{}\n{}", card, msg);
-                                }
-                            }
-                            if !anchor.is_empty() {
-                                card = format!("{}{}", card, anchor);
-                            }
-                            let child = std::process::Command::new(e_window_path)
-                                .stdin(std::process::Stdio::piped())
-                                .spawn();
-                            if let Ok(mut child) = child {
-                                if let Some(stdin) = child.stdin.as_mut() {
-                                    use std::io::Write;
-                                    let _ = stdin.write_all(card.as_bytes());
-                                }
-                            }
+                    let context = ThreadLocalContext::get_context();
+                    let mut show_window = true;
+                    let mut say_something = true;
+                    if let Some(cli) = crate::GLOBAL_CLI.get() {
+                        if cli.no_window {
+                            show_window = false;
+                        }
+                        if cli.no_tts {
+                            say_something = false;
                         }
                     }
+                    if show_window {
+                        show_graphical_panic(
+                            line,
+                            prior_response,
+                            &PathBuf::from(&context.manifest_path),
+                        );
+                    }
+                    #[cfg(feature = "uses_tts")]
+                    {
+                        if say_something {
+                            let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                                std::sync::Mutex::new(
+                                    tts::Tts::default().expect("TTS engine failure"),
+                                )
+                            });
+
+                            let speech = format!("panic says {}", line);
+                            println!("TTS: {}", speech);
+                            crate::e_runner::wait_for_tts_to_finish(15000);
+                            let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                            let _ = tts.speak(&speech, true);
+                        }
+                    }
+
                     None
                 }
             }),
@@ -1951,6 +1890,97 @@ impl CargoCommandBuilder {
 
         // Return the combined string, even if exit was !success
         Ok(all)
+    }
+}
+
+fn show_graphical_panic(
+    line: &str,
+    prior_response: Option<CallbackResponse>,
+    manifest_path: &PathBuf,
+) {
+    if let Ok(e_window_path) = which("e_window") {
+        // Compose a nice message for e_window's stdin
+        // let stats = stats.lock().unwrap();
+        // Compose a table with cargo-e and its version, plus panic info
+        let cargo_e_version = env!("CARGO_PKG_VERSION");
+
+        let anchor: String = {
+            // If there's no prior response, return an empty string.
+            if prior_response.is_none() {
+                String::new()
+            } else {
+                // Try to parse the line as "file:line:col"
+                let prior = prior_response.as_ref().unwrap();
+                let file = prior.file.as_deref().unwrap_or("");
+                let line_num = prior.line.map(|n| n.to_string()).unwrap_or_default();
+                let col_num = prior.column.map(|n| n.to_string()).unwrap_or_default();
+
+                let full_path = std::fs::canonicalize(file).unwrap_or_else(|_| {
+                    // Remove the top folder from the file path if possible
+                    let stripped_file = Path::new(file).components().skip(1).collect::<PathBuf>();
+                    let fallback_path = stripped_file.clone();
+                    std::fs::canonicalize(&fallback_path).unwrap_or_else(|_| {
+                        let manifest_dir = manifest_path.parent().unwrap_or_else(|| {
+                            eprintln!(
+                                "Failed to determine parent directory for manifest: {:?}",
+                                manifest_path
+                            );
+                            Path::new(".")
+                        });
+                        let parent_fallback_path = manifest_dir.join(file);
+                        std::fs::canonicalize(&parent_fallback_path).unwrap_or_else(|_| {
+                            eprintln!("Failed to resolve full path for: {} using ../", file);
+                            let parent_fallback_path = manifest_dir.join(&stripped_file);
+                            if parent_fallback_path.exists() {
+                                parent_fallback_path
+                            } else {
+                                PathBuf::from(file)
+                            }
+                        })
+                    })
+                });
+                let stripped_file = full_path.to_string_lossy().replace("\\\\?\\", "");
+                let code_path = which("code").unwrap_or_else(|_| "code".to_string().into());
+                String::from(format!(
+                    "\nanchor: code {} {} {}|\"{}\" --goto \"{}:{}:{}\"\n",
+                    stripped_file,
+                    prior.line.unwrap_or(0),
+                    prior.column.unwrap_or(0),
+                    code_path.display(),
+                    stripped_file,
+                    prior.line.unwrap_or(0),
+                    prior.column.unwrap_or(0)
+                ))
+            }
+        };
+        let context = ThreadLocalContext::get_context();
+        let mut card = format!(
+            "--title \"panic: {target}\" --width 400 --height 300\n\
+                        target | {target} | string\n\
+                        cargo-e | {version} | string\n\
+                        \n\
+                        panic: {target}\n{line}",
+            target = context.target_name,
+            version = cargo_e_version,
+            line = line
+        );
+        if let Some(prior) = prior_response {
+            if let Some(msg) = &prior.message {
+                card = format!("{}\n{}", card, msg);
+            }
+        }
+        if !anchor.is_empty() {
+            card = format!("{}{}", card, anchor);
+        }
+        let child = std::process::Command::new(e_window_path)
+            .stdin(std::process::Stdio::piped())
+            .spawn();
+        if let Ok(mut child) = child {
+            if let Some(stdin) = child.stdin.as_mut() {
+                use std::io::Write;
+                let _ = stdin.write_all(card.as_bytes());
+            }
+        }
     }
 }
 /// Resolves a file path by:

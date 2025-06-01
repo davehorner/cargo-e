@@ -72,6 +72,9 @@ pub fn main() -> anyhow::Result<()> {
         cargo_e::e_cli::print_version_and_features();
         exit(0);
     }
+    cargo_e::GLOBAL_CLI
+        .set(cli.clone())
+        .expect("Failed to set global CLI");
     let subcommand_provided_explicitly =
         args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
 
