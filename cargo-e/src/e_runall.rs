@@ -5,10 +5,9 @@ use crate::e_target::{CargoTarget, TargetKind};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
@@ -122,21 +121,21 @@ pub fn run_all_examples(
                     crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)
                         .context("Failed to patch manifest for run")?;
 
-                let system = Arc::new(Mutex::new(System::new_all()));
-                std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-                let mut system_guard = system.lock().unwrap();
-                system_guard.refresh_processes_specifics(
-                    ProcessesToUpdate::All,
-                    true,
-                    ProcessRefreshKind::nothing().with_cpu(),
-                );
-                drop(system_guard);
+                // let system = Arc::new(Mutex::new(System::new_all()));
+                // std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+                // let mut system_guard = system.lock().unwrap();
+                // system_guard.refresh_processes_specifics(
+                //     ProcessesToUpdate::All,
+                //     true,
+                //     ProcessRefreshKind::nothing().with_cpu(),
+                // );
+                // drop(system_guard);
 
                 let pid = Arc::new(builder).run({
                     let manager_ref = Arc::clone(&manager);
                     let t = target.clone();
                     let len = targets_len;
-                    let system_clone = system.clone();
+                    // let system_clone = system.clone();
                     move |pid, handle| {
                         let stats = handle.stats.lock().unwrap().clone();
                         let runtime_start = if stats.is_comiler_target {
@@ -148,7 +147,6 @@ pub fn run_all_examples(
                             let status_display = ProcessManager::format_process_status(
                                 pid,
                                 runtime_start,
-                                system_clone,
                                 &t,
                                 (idx + 1, len),
                             );
@@ -209,7 +207,6 @@ pub fn run_all_examples(
                             ProcessManager::format_process_status(
                                 pid,
                                 runtime_start,
-                                system.clone(),
                                 &target,
                                 (idx + 1, targets_len),
                             )
@@ -220,13 +217,13 @@ pub fn run_all_examples(
                     };
 
                     if cli.filter && !cli.no_status_lines {
-                        let mut system_guard = system.lock().unwrap();
-                        system_guard.refresh_processes_specifics(
-                            ProcessesToUpdate::All,
-                            true,
-                            ProcessRefreshKind::nothing().with_cpu(),
-                        );
-                        drop(system_guard);
+                        // let mut system_guard = system.lock().unwrap();
+                        // system_guard.refresh_processes_specifics(
+                        //     ProcessesToUpdate::All,
+                        //     true,
+                        //     ProcessRefreshKind::nothing().with_cpu(),
+                        // );
+                        // drop(system_guard);
                         ProcessManager::update_status_line(&status_display, true).ok();
                     }
                     if runtime_start.is_some() {
