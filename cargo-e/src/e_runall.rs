@@ -110,6 +110,7 @@ pub fn run_all_examples(
                     &manifest_path,
                     &cli.subcommand,
                     cli.filter,
+                    cli.cached
                 )
                 .with_target(&target)
                 .with_cli(&cli)

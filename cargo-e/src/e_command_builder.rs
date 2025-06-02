@@ -50,13 +50,14 @@ pub struct CargoCommandBuilder {
     pub sender: Option<Arc<Mutex<Sender<TerminalError>>>>,
     pub diagnostics: Arc<Mutex<Vec<CargoDiagnostic>>>,
     pub is_filter: bool,
+    pub use_cache: bool,
 }
 
 impl std::fmt::Display for CargoCommandBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "CargoCommandBuilder {{\n  target_name: {:?},\n  manifest_path: {:?},\n  args: {:?},\n  subcommand: {:?},\n  pid: {:?},\n  alternate_cmd: {:?},\n  execution_dir: {:?},\n  suppressed_flags: {:?},\n  is_filter: {:?}\n}}",
+            "CargoCommandBuilder {{\n  target_name: {:?},\n  manifest_path: {:?},\n  args: {:?},\n  subcommand: {:?},\n  pid: {:?},\n  alternate_cmd: {:?},\n  execution_dir: {:?},\n  suppressed_flags: {:?},\n  is_filter: {:?}\n,\n  use_cache: {:?}\n}}",
             self.target_name,
             self.manifest_path,
             self.args,
@@ -65,7 +66,8 @@ impl std::fmt::Display for CargoCommandBuilder {
             self.alternate_cmd,
             self.execution_dir,
             self.suppressed_flags,
-            self.is_filter
+            self.is_filter,
+            self.use_cache,
         )
     }
 }
@@ -76,12 +78,13 @@ impl Default for CargoCommandBuilder {
             &PathBuf::from("Cargo.toml"),
             "run".into(),
             false,
+            false,
         )
     }
 }
 impl CargoCommandBuilder {
     /// Creates a new, empty builder.
-    pub fn new(target_name: &str, manifest: &PathBuf, subcommand: &str, is_filter: bool) -> Self {
+    pub fn new(target_name: &str, manifest: &PathBuf, subcommand: &str, is_filter: bool, use_cache: bool) -> Self {
         ThreadLocalContext::set_context(target_name, manifest.to_str().unwrap_or_default());
         let (sender, _receiver) = channel::<TerminalError>();
         let sender = Arc::new(Mutex::new(sender));
@@ -102,6 +105,7 @@ impl CargoCommandBuilder {
             sender: Some(sender),
             diagnostics: Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new())),
             is_filter,
+            use_cache,
         };
         builder.set_default_dispatchers();
         builder
@@ -1852,7 +1856,39 @@ impl CargoCommandBuilder {
             }
         }
 
-        let program = self.alternate_cmd.as_deref().unwrap_or("cargo").to_string();
+        let mut program = self.alternate_cmd.as_deref().unwrap_or("cargo").to_string();
+
+        if self.use_cache {
+            #[cfg(target_os = "windows")]
+            {
+                // On Windows, we use the `cargo-e` executable.
+                program = format!("{}.exe",self.target_name.clone());
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                program = self.target_name.clone();
+            }
+            let debug_path = Path::new("target").join("debug").join(program.clone());
+            let release_path = Path::new("target").join("release").join(program.clone());
+            let release_examples_path = Path::new("target").join("release").join("examples").join(program.clone());
+            let debug_examples_path = Path::new("target").join("debug").join("examples").join(program.clone());
+            if release_path.exists() {
+                program = release_path.to_string_lossy().to_string();
+            } else if release_examples_path.exists() {
+                program = release_examples_path.to_string_lossy().to_string();
+            } else if debug_path.exists() {
+                program = debug_path.to_string_lossy().to_string();
+            } else if debug_examples_path.exists() {
+                program = debug_examples_path.to_string_lossy().to_string();
+            } else if Path::new(&program).exists() {
+                // If the program exists in the current directory, use it.
+                program = Path::new(&program).to_string_lossy().to_string();
+            } else {
+                program = self.alternate_cmd.as_deref().unwrap_or("cargo").to_string();
+            }            
+            new_args= vec![]
+        }
+        
         (program, new_args)
     }
 
@@ -2035,7 +2071,7 @@ mod tests {
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
 
         let manifest_path = PathBuf::from("Cargo.toml");
-        let args = CargoCommandBuilder::new(&target_name, &manifest_path, "run", false)
+        let args = CargoCommandBuilder::new(&target_name, &manifest_path, "run", false, false)
             .with_target(&target)
             .with_extra_args(&extra_args)
             .build();

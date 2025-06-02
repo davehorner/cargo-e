@@ -1,6 +1,6 @@
-﻿25/06/01|c5aa283|0.2.35
-## [0.2.35](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.34...cargo-e-v0.2.35) - 2025-06-01
+﻿25/06/02|5091ecc|0.2.36
+## [0.2.36](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.35...cargo-e-v0.2.36) - 2025-06-02
 
-### Fixed
+### Added
 
-- remove system information from status lines.  double up \r to ensure status line is properly displayed.
+- add cached option to CLI and update command builder logic to use cache functionality.  Runs the executable directly if it exists.
