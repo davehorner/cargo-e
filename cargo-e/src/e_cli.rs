@@ -56,6 +56,13 @@ pub struct Cli {
     )]
     pub pre_build: bool,
 
+    #[clap(
+        long,
+        default_value_t = false,
+        help = "If enabled, execute the existing target directly."
+    )]
+    pub cached: bool,
+
     /// Enable passthrough mode (no cargo output filtering, stdout is captured).
     #[arg(
         long = "filter",

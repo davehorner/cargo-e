@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.36](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.35...cargo-e-v0.2.36) - 2025-06-02
+
+### Added
+
+- add cached option to CLI and update command builder logic to use cache functionality.  Runs the executable directly if it exists.
+
 ## [0.2.35](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.34...cargo-e-v0.2.35) - 2025-06-01
 
 ### Fixed

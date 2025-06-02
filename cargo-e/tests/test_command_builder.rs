@@ -23,6 +23,7 @@ fn integration_test_builder() {
         &target.manifest_path,
         &"run".to_string(),
         false,
+        false,
     )
     .with_target(&target)
     .with_extra_args(&["--flag".to_string(), "value".to_string()])

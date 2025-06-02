@@ -529,7 +529,7 @@ pub mod tui_interactive {
 
         let manifest_path = PathBuf::from(target.manifest_path.clone());
         let builder =
-            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
+            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter, cli.cached)
                 .with_target(target)
                 .with_cli(cli);
         let cmd = builder.build_command();
