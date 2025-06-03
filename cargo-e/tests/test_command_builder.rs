@@ -24,6 +24,7 @@ fn integration_test_builder() {
         &"run".to_string(),
         false,
         false,
+        false,
     )
     .with_target(&target)
     .with_extra_args(&["--flag".to_string(), "value".to_string()])

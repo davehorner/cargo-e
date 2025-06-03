@@ -110,7 +110,8 @@ pub fn run_all_examples(
                     &manifest_path,
                     &cli.subcommand,
                     cli.filter,
-                    cli.cached
+                    cli.cached,
+                    cli.default_binary_is_runner,
                 )
                 .with_target(&target)
                 .with_cli(&cli)
@@ -194,16 +195,26 @@ pub fn run_all_examples(
                     }
 
                     let (_stats, runtime_start, end_time, status_display) = {
-                        let process_handle = manager.get(pid).unwrap();
-                        let handle = process_handle.lock().unwrap();
-                        let stats = handle.stats.lock().unwrap().clone();
-                        let runtime_start = if stats.is_comiler_target {
-                            stats.build_finished_time
-                        } else {
-                            stats.start_time
-                        };
-                        let end_time = handle.result.end_time;
-                        drop(handle);
+                        let (stats, runtime_start, end_time) =
+                            if let Some(process_handle) = manager.get(pid) {
+                                if let Ok(handle) = process_handle.lock() {
+                                    let stats =
+                                        handle.stats.lock().map(|s| s.clone()).unwrap_or_default();
+                                    let runtime_start = if stats.is_comiler_target {
+                                        stats.build_finished_time
+                                    } else {
+                                        stats.start_time
+                                    };
+                                    let end_time = handle.result.end_time;
+                                    (stats, runtime_start, end_time)
+                                } else {
+                                    // If we can't lock, fallback to defaults
+                                    (Default::default(), None, None)
+                                }
+                            } else {
+                                // If process handle not found, fallback to defaults
+                                (Default::default(), None, None)
+                            };
                         let status_display = if !cli.no_status_lines {
                             ProcessManager::format_process_status(
                                 pid,

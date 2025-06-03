@@ -528,10 +528,16 @@ pub mod tui_interactive {
         terminal.show_cursor()?;
 
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder =
-            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter, cli.cached)
-                .with_target(target)
-                .with_cli(cli);
+        let builder = CargoCommandBuilder::new(
+            &target.name,
+            &manifest_path,
+            &cli.subcommand,
+            cli.filter,
+            cli.cached,
+            cli.default_binary_is_runner,
+        )
+        .with_target(target)
+        .with_cli(cli);
         let cmd = builder.build_command();
 
         // Set current directory appropriately.

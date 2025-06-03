@@ -38,6 +38,7 @@ use once_cell::sync::Lazy;
 use cargo_e::e_target::TargetOrigin;
 #[cfg(feature = "uses_plugins")]
 use cargo_e::plugins::plugin_api::{load_plugins, Target as PluginTarget};
+use std::io::Read;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::process;
 #[cfg(target_os = "windows")]
@@ -343,6 +344,23 @@ pub fn main() -> anyhow::Result<()> {
     #[allow(unused_mut)]
     let mut examples =
         cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads).unwrap_or_default();
+    if cli.parse_available {
+        use cargo_e::e_collect::collect_stdin_available;
+        let manifest_path = PathBuf::from(
+            cargo_e::e_manifest::locate_manifest(cli.workspace)
+                .expect("Failed to locate Cargo.toml"),
+        );
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        let stdin_examples = collect_stdin_available("examples", &manifest_path, &buf, false);
+        let stdin_binaries = collect_stdin_available("binaries", &manifest_path, &buf, false);
+
+        examples.extend(stdin_examples);
+        examples.extend(stdin_binaries);
+
+        println!("Parsed examples and binaries from stdin.");
+    }
+
     // Collect plugin-provided targets and merge
     #[cfg(feature = "uses_plugins")]
     {
