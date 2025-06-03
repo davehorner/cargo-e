@@ -175,6 +175,20 @@ pub struct Cli {
     )]
     pub no_tts: bool,
 
+    /// Parse available targets from stdin (one per line).
+    #[arg(
+        long = "parse-available",
+        help = "Parse available targets from stdin (one per line)."
+    )]
+    pub parse_available: bool,
+
+    #[arg(
+        long = "default-binary-is-runner",
+        default_value_t = false,
+        help = "If enabled, treat the default binary as the runner for targets."
+    )]
+    pub default_binary_is_runner: bool,
+
     #[arg(long = "nW", default_value_t = false, help = "Disable window popups.")]
     pub no_window: bool,
 

@@ -44,7 +44,81 @@ fn run_cargo_with_opt_out(args: &[&str], manifest_path: &Path) -> Result<Output,
 
     Ok(output)
 }
+/// Parses available binaries and examples from a given input string (e.g., from stdin),
+/// and returns a vector of CargoTarget instances for each found binary and example.
+pub fn collect_stdin_available(
+    prefix: &str,
+    manifest_path: &Path,
+    input: &str,
+    extended: bool,
+) -> Vec<CargoTarget> {
+    let bin_names = crate::parse_available(input, "binaries");
+    let example_names = crate::parse_available(input, "examples");
 
+    let mut targets = Vec::new();
+
+    targets.extend(bin_names.into_iter().map(|name| {
+        let target_kind = if let Some(parent) = manifest_path.parent() {
+            if parent.file_name().and_then(|s| s.to_str()) == Some("src-tauri") {
+                TargetKind::ManifestTauri
+            } else if extended {
+                TargetKind::ExtendedBinary
+            } else {
+                TargetKind::Binary
+            }
+        } else if extended {
+            TargetKind::ExtendedBinary
+        } else {
+            TargetKind::Binary
+        };
+        let display_name = if prefix.starts_with('$') {
+            format!("{} > binary > {}", prefix, name)
+        } else if extended {
+            format!("{} {}", prefix, name)
+        } else if prefix.starts_with("builtin") {
+            format!("builtin binary: {}", name)
+        } else {
+            format!("{} {}", prefix, name)
+        };
+        CargoTarget {
+            name: name.clone(),
+            display_name,
+            manifest_path: manifest_path.into(),
+            kind: target_kind,
+            extended,
+            toml_specified: true,
+            origin: Some(TargetOrigin::TomlSpecified(manifest_path.to_path_buf())),
+        }
+    }));
+
+    targets.extend(example_names.into_iter().map(|name| {
+        let target_kind = if let Some(parent) = manifest_path.parent() {
+            if parent.file_name().and_then(|s| s.to_str()) == Some("src-tauri") {
+                TargetKind::ManifestTauri
+            } else if extended {
+                TargetKind::ExtendedExample
+            } else {
+                TargetKind::Example
+            }
+        } else if extended {
+            TargetKind::ExtendedExample
+        } else {
+            TargetKind::Example
+        };
+        let display_name = name.clone();
+        CargoTarget {
+            name: name.clone(),
+            display_name,
+            manifest_path: manifest_path.into(),
+            kind: target_kind,
+            extended,
+            toml_specified: true,
+            origin: Some(TargetOrigin::TomlSpecified(manifest_path.to_path_buf())),
+        }
+    }));
+
+    targets
+}
 /// Runs `cargo run --bin` (without specifying a binary name) so that Cargo prints an error with
 /// a list of available binary targets. Then parses that list to return a vector of Example instances,
 /// using the provided prefix.
