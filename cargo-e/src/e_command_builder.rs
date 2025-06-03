@@ -51,6 +51,7 @@ pub struct CargoCommandBuilder {
     pub diagnostics: Arc<Mutex<Vec<CargoDiagnostic>>>,
     pub is_filter: bool,
     pub use_cache: bool,
+    pub default_binary_is_runner: bool,
 }
 
 impl std::fmt::Display for CargoCommandBuilder {
@@ -79,12 +80,20 @@ impl Default for CargoCommandBuilder {
             "run".into(),
             false,
             false,
+            false,
         )
     }
 }
 impl CargoCommandBuilder {
     /// Creates a new, empty builder.
-    pub fn new(target_name: &str, manifest: &PathBuf, subcommand: &str, is_filter: bool, use_cache: bool) -> Self {
+    pub fn new(
+        target_name: &str,
+        manifest: &PathBuf,
+        subcommand: &str,
+        is_filter: bool,
+        use_cache: bool,
+        default_binary_is_runner: bool,
+    ) -> Self {
         ThreadLocalContext::set_context(target_name, manifest.to_str().unwrap_or_default());
         let (sender, _receiver) = channel::<TerminalError>();
         let sender = Arc::new(Mutex::new(sender));
@@ -106,6 +115,7 @@ impl CargoCommandBuilder {
             diagnostics: Arc::new(Mutex::new(Vec::<CargoDiagnostic>::new())),
             is_filter,
             use_cache,
+            default_binary_is_runner,
         };
         builder.set_default_dispatchers();
         builder
@@ -1862,7 +1872,7 @@ impl CargoCommandBuilder {
             #[cfg(target_os = "windows")]
             {
                 // On Windows, we use the `cargo-e` executable.
-                program = format!("{}.exe",self.target_name.clone());
+                program = format!("{}.exe", self.target_name.clone());
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -1870,8 +1880,14 @@ impl CargoCommandBuilder {
             }
             let debug_path = Path::new("target").join("debug").join(program.clone());
             let release_path = Path::new("target").join("release").join(program.clone());
-            let release_examples_path = Path::new("target").join("release").join("examples").join(program.clone());
-            let debug_examples_path = Path::new("target").join("debug").join("examples").join(program.clone());
+            let release_examples_path = Path::new("target")
+                .join("release")
+                .join("examples")
+                .join(program.clone());
+            let debug_examples_path = Path::new("target")
+                .join("debug")
+                .join("examples")
+                .join(program.clone());
             if release_path.exists() {
                 program = release_path.to_string_lossy().to_string();
             } else if release_examples_path.exists() {
@@ -1885,10 +1901,19 @@ impl CargoCommandBuilder {
                 program = Path::new(&program).to_string_lossy().to_string();
             } else {
                 program = self.alternate_cmd.as_deref().unwrap_or("cargo").to_string();
-            }            
-            new_args= vec![]
+            }
+            new_args = vec![]
         }
-        
+
+        if self.default_binary_is_runner {
+            program = "cargo".to_string();
+            new_args = vec![
+                "run".to_string(),
+                "--".to_string(),
+                self.target_name.clone(),
+            ];
+        }
+
         (program, new_args)
     }
 
@@ -2071,10 +2096,11 @@ mod tests {
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
 
         let manifest_path = PathBuf::from("Cargo.toml");
-        let args = CargoCommandBuilder::new(&target_name, &manifest_path, "run", false, false)
-            .with_target(&target)
-            .with_extra_args(&extra_args)
-            .build();
+        let args =
+            CargoCommandBuilder::new(&target_name, &manifest_path, "run", false, false, false)
+                .with_target(&target)
+                .with_extra_args(&extra_args)
+                .build();
 
         // For an example target, we expect something like:
         // cargo run --example my_example --manifest-path Cargo.toml -- --flag value

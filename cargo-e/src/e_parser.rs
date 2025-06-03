@@ -21,7 +21,7 @@ pub fn parse_available(stderr: &str, item: &str) -> Vec<String> {
                 available.push(trimmed.to_string());
             }
         }
-        if line.contains(&marker) {
+        if line.to_lowercase().contains(&marker.to_lowercase()) {
             collecting = true;
         }
     }

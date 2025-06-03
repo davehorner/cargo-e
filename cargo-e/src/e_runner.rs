@@ -453,6 +453,7 @@ pub fn run_example(
         &cli.subcommand,
         cli.filter,
         cli.cached,
+        cli.default_binary_is_runner,
     )
     .with_target(target)
     .with_required_features(&target.manifest_path, target)
