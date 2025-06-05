@@ -452,6 +452,8 @@ pub fn run_example(
         &manifest_path,
         &cli.subcommand,
         cli.filter,
+        cli.cached,
+        cli.default_binary_is_runner,
     )
     .with_target(target)
     .with_required_features(&target.manifest_path, target)
@@ -773,22 +775,45 @@ pub fn run_example(
     if let Some(original) = maybe_backup {
         fs::write(&target.manifest_path, original)?;
     }
-
-    #[cfg(feature = "uses_tts")]
-    {
-        let tts_mutex = crate::GLOBAL_TTS.get();
-        if tts_mutex.is_none() {
-            eprintln!("TTS is not initialized, skipping wait.");
-            return Ok(result.exit_status);
-        }
-        let tts = tts_mutex.unwrap().lock().expect("Failed to lock TTS mutex");
-        while tts.is_speaking().unwrap_or(false) {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-    }
+    wait_for_tts_to_finish(15000);
 
     Ok(result.exit_status)
 }
+
+#[cfg(feature = "uses_tts")]
+pub fn wait_for_tts_to_finish(max_wait_ms: u64) {
+    let tts_mutex = crate::GLOBAL_TTS.get();
+    if tts_mutex.is_none() {
+        eprintln!("TTS is not initialized, skipping wait.");
+        return;
+    }
+    let start = std::time::Instant::now();
+    let mut tts_guard = None;
+    for _ in 0..3 {
+        if let Ok(guard) = tts_mutex.unwrap().lock() {
+            tts_guard = Some(guard);
+            break;
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if start.elapsed().as_millis() as u64 >= max_wait_ms {
+            eprintln!("Timeout while trying to lock TTS mutex.");
+            return;
+        }
+    }
+    if let Some(tts) = tts_guard {
+        while tts.is_speaking().unwrap_or(false) {
+            if start.elapsed().as_millis() as u64 >= max_wait_ms {
+                eprintln!("Timeout while waiting for TTS to finish speaking.");
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    } else {
+        eprintln!("Failed to lock TTS mutex after 3 attempts, skipping wait.");
+    }
+}
+
 // /// Runs an example or binary target, applying a temporary manifest patch if a workspace error is detected.
 // /// This function uses the same idea as in the collection helpers: if the workspace error is found,
 // /// we patch the manifest, run the command, and then restore the manifest.

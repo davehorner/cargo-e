@@ -9,6 +9,44 @@ use std::sync::Mutex;
 use crate::e_cargocommand_ext::CargoStats;
 use crate::e_command_builder::TerminalError;
 
+/// Consolidated thread-local storage for context and prior response.
+thread_local! {
+    pub static THREAD_CONTEXT: RefCell<ThreadLocalContext> = RefCell::new(ThreadLocalContext {
+        target_name: String::new(),
+        manifest_path: String::new(),
+    });
+
+    static PRIOR_RESPONSE: RefCell<Option<CallbackResponse>> = RefCell::new(None);
+}
+
+/// Context struct for thread-local storage.
+#[derive(Debug, Clone)]
+pub struct ThreadLocalContext {
+    pub target_name: String,
+    pub manifest_path: String,
+}
+
+impl ThreadLocalContext {
+    /// Set the thread-local context.
+    pub fn set_context(target_name: &str, manifest_path: &str) {
+        log::trace!(
+            "Setting thread-local context: target_name={}, manifest_path={}",
+            target_name,
+            manifest_path
+        );
+        THREAD_CONTEXT.with(|ctx| {
+            let mut context = ctx.borrow_mut();
+            context.target_name = target_name.to_string();
+            context.manifest_path = manifest_path.to_string();
+        });
+    }
+
+    /// Get the thread-local context.
+    pub fn get_context() -> ThreadLocalContext {
+        THREAD_CONTEXT.with(|ctx| ctx.borrow().clone())
+    }
+}
+
 /// Our internal diagnostic level for cargo.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum CargoDiagnosticLevel {
@@ -169,10 +207,6 @@ impl EventDispatcher {
         stats: Arc<Mutex<CargoStats>>,
     ) -> Vec<Option<CallbackResponse>> {
         let mut responses = Vec::new();
-        // Use thread-local for prior response so each dispatch is independent
-        thread_local! {
-            static PRIOR_RESPONSE: RefCell<Option<CallbackResponse>> = RefCell::new(None);
-        }
         if let Ok(callbacks) = self.callbacks.lock() {
             for cb in callbacks.iter() {
                 let is_reading_multiline = Arc::clone(&cb.is_reading_multiline);

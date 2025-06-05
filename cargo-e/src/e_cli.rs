@@ -56,6 +56,13 @@ pub struct Cli {
     )]
     pub pre_build: bool,
 
+    #[clap(
+        long,
+        default_value_t = false,
+        help = "If enabled, execute the existing target directly."
+    )]
+    pub cached: bool,
+
     /// Enable passthrough mode (no cargo output filtering, stdout is captured).
     #[arg(
         long = "filter",
@@ -153,6 +160,37 @@ pub struct Cli {
         help = "Number of targets to run at a time in --run-all mode (--run-at-a-time)"
     )]
     pub run_at_a_time: usize,
+
+    #[arg(
+        long = "nS",
+        default_value_t = false,
+        help = "Disable status lines during runtime loop output."
+    )]
+    pub no_status_lines: bool,
+
+    #[arg(
+        long = "nT",
+        default_value_t = false,
+        help = "Disable text-to-speech output."
+    )]
+    pub no_tts: bool,
+
+    /// Parse available targets from stdin (one per line).
+    #[arg(
+        long = "parse-available",
+        help = "Parse available targets from stdin (one per line)."
+    )]
+    pub parse_available: bool,
+
+    #[arg(
+        long = "default-binary-is-runner",
+        default_value_t = false,
+        help = "If enabled, treat the default binary as the runner for targets."
+    )]
+    pub default_binary_is_runner: bool,
+
+    #[arg(long = "nW", default_value_t = false, help = "Disable window popups.")]
+    pub no_window: bool,
 
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.37](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.36...cargo-e-v0.2.37) - 2025-06-03
+
+### Added
+
+- add support for parsing available targets from stdin and default binary as runner option. wgpu\examples\features has a default binary that operates like cargo --example.
+
+## [0.2.36](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.35...cargo-e-v0.2.36) - 2025-06-02
+
+### Added
+
+- add cached option to CLI and update command builder logic to use cache functionality.  Runs the executable directly if it exists.
+
+## [0.2.35](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.34...cargo-e-v0.2.35) - 2025-06-01
+
+### Fixed
+
+- remove system information from status lines.  double up \r to ensure status line is properly displayed.
+
+## [0.2.34](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.33...cargo-e-v0.2.34) - 2025-06-01
+
+### Added
+
+- add thread-local context and CLI flags for status, TTS, and window control
+
 ## [0.2.33](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.32...cargo-e-v0.2.33) - 2025-05-31
 
 ### Added

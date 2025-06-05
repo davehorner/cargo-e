@@ -1,5 +1,5 @@
 use crate::e_command_builder::{CargoCommandBuilder, TerminalError};
-use crate::e_eventdispatcher::EventDispatcher;
+use crate::e_eventdispatcher::{EventDispatcher, ThreadLocalContext};
 #[allow(unused_imports)]
 use cargo_metadata::Message;
 use nu_ansi_term::{Color, Style};
@@ -802,6 +802,10 @@ impl CargoCommandExt for Command {
         estimate_bytes: Option<usize>,
     ) -> CargoProcessHandle {
         self.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let builder_for_result = builder.clone();
+        let builder_for_closure = builder.clone();
+        let builder_stdout = builder.clone();
+        let builder_stderr = builder.clone();
         // println!("Spawning cargo process with capture {:?}",self);
         let mut child = self.spawn().expect("Failed to spawn cargo process");
         let pid = child.id();
@@ -836,6 +840,11 @@ impl CargoCommandExt for Command {
         let stdout = child.stdout.take().expect("Failed to capture stdout");
         // println!("{}: Capturing stdout", pid);
         let stdout_handle = thread::spawn(move || {
+            ThreadLocalContext::set_context(
+                &builder_stdout.target_name.clone(),
+                builder_stdout.manifest_path.to_str().unwrap_or_default(),
+            );
+
             let stdout_reader = BufReader::new(stdout);
             // This flag marks whether we are still in the build phase.
             #[allow(unused_mut)]
@@ -937,8 +946,29 @@ impl CargoCommandExt for Command {
                                         //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
                                         // }
                                     }
-                                    Message::CompilerArtifact(_) => {
+                                    Message::CompilerArtifact(a) => {
                                         let mut s = stats_stdout_clone.lock().unwrap();
+                                        // if let Some(exe) = a.executable.as_deref() {
+                                        //     if !exe.as_str().is_empty() {
+                                        //         let m = crate::GLOBAL_MANAGER.get();
+                                        //         if let Some(ref m) = m {
+                                        //             // println!(
+                                        //             //     "Persisting executable for target {}: {}",
+                                        //             //     builder.target_name, exe
+                                        //             // );
+                                        //             // if let Err(e) = m.persist_executable_for_target(
+                                        //             //     &builder.target_name,
+                                        //             //     exe.as_str()
+                                        //             // ) {
+                                        //             //     eprintln!(
+                                        //             //         "Error persisting executable for target {}: {}",
+                                        //             //         builder.target_name, e
+                                        //             //     );
+                                        //             // }
+
+                                        //         }
+                                        //     }
+                                        // }
                                         s.compiler_artifact_count += 1;
                                         if s.compiler_artifact_time.is_none() {
                                             s.compiler_artifact_time = Some(now);
@@ -1032,7 +1062,6 @@ impl CargoCommandExt for Command {
                 }
             }
         }); // End of stdout thread
-
         let tflag = TerminalError::NoError;
         // Create a flag to indicate if the process is a terminal process.
         let terminal_flag = Arc::new(Mutex::new(TerminalError::NoError));
@@ -1046,9 +1075,12 @@ impl CargoCommandExt for Command {
         let escape_sequence = "\u{1b}[1m\u{1b}[32m";
         // let diagnostics_clone = Arc::clone(&diagnostics);
         let stderr_compiler_msg_clone = Arc::clone(&stderr_compiler_msg);
-        // println!("{}: Capturing stderr", pid);
         let mut stderr_reader = BufReader::new(stderr);
         let stderr_handle = thread::spawn(move || {
+            ThreadLocalContext::set_context(
+                &builder_stderr.target_name.clone(),
+                builder_stderr.manifest_path.to_str().unwrap_or_default(),
+            );
             //    let mut msg_vec = stderr_compiler_msg_clone.lock().unwrap();
             loop {
                 // println!("looping stderr thread {}", pid);
@@ -1213,10 +1245,10 @@ impl CargoCommandExt for Command {
             diag_lock.clone()
         };
         let pid = child.id();
-        let (cmd, args) = builder.injected_args();
+        let (cmd, args) = builder_for_result.injected_args();
         let stats_snapshot = stats.lock().unwrap().clone();
         let result = CargoProcessResult {
-            target_name: builder.target_name.clone(),
+            target_name: builder_for_closure.target_name.clone(),
             cmd: cmd,
             args: args,
             pid,
@@ -1232,7 +1264,7 @@ impl CargoCommandExt for Command {
             runtime_output_size: 0,
             terminal_error: Some(tflag),
             diagnostics: final_diagnostics,
-            is_filter: builder.is_filter,
+            is_filter: builder_for_closure.is_filter,
             is_could_not_compile: stats_snapshot.is_could_not_compile,
         };
         CargoProcessHandle {
@@ -1253,7 +1285,7 @@ impl CargoCommandExt for Command {
             requested_exit: false,
             terminal_error_flag: terminal_flag,
             diagnostics,
-            is_filter: builder.is_filter,
+            is_filter: builder_for_result.is_filter,
         }
     }
 }

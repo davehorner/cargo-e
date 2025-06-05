@@ -38,6 +38,7 @@ use once_cell::sync::Lazy;
 use cargo_e::e_target::TargetOrigin;
 #[cfg(feature = "uses_plugins")]
 use cargo_e::plugins::plugin_api::{load_plugins, Target as PluginTarget};
+use std::io::Read;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::process;
 #[cfg(target_os = "windows")]
@@ -53,7 +54,29 @@ use std::path::PathBuf;
 static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
+fn enable_ansi_support() {
+    #[cfg(windows)]
+    {
+        use std::io::stdout;
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::Console::{
+            GetConsoleMode, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+        };
+
+        unsafe {
+            let handle = HANDLE(stdout().as_raw_handle() as *mut _);
+            use windows::Win32::System::Console::CONSOLE_MODE;
+            let mut mode: CONSOLE_MODE = unsafe { std::mem::zeroed() };
+            if GetConsoleMode(handle, &mut mode as *mut CONSOLE_MODE).is_ok() {
+                let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
+    }
+}
+
 pub fn main() -> anyhow::Result<()> {
+    enable_ansi_support();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     log::trace!(
         "cargo-e starting with args: {:?}",
@@ -72,6 +95,9 @@ pub fn main() -> anyhow::Result<()> {
         cargo_e::e_cli::print_version_and_features();
         exit(0);
     }
+    cargo_e::GLOBAL_CLI
+        .set(cli.clone())
+        .expect("Failed to set global CLI");
     let subcommand_provided_explicitly =
         args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
 
@@ -318,6 +344,23 @@ pub fn main() -> anyhow::Result<()> {
     #[allow(unused_mut)]
     let mut examples =
         cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads).unwrap_or_default();
+    if cli.parse_available {
+        use cargo_e::e_collect::collect_stdin_available;
+        let manifest_path = PathBuf::from(
+            cargo_e::e_manifest::locate_manifest(cli.workspace)
+                .expect("Failed to locate Cargo.toml"),
+        );
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        let stdin_examples = collect_stdin_available("examples", &manifest_path, &buf, false);
+        let stdin_binaries = collect_stdin_available("binaries", &manifest_path, &buf, false);
+
+        examples.extend(stdin_examples);
+        examples.extend(stdin_binaries);
+
+        println!("Parsed examples and binaries from stdin.");
+    }
+
     // Collect plugin-provided targets and merge
     #[cfg(feature = "uses_plugins")]
     {

@@ -28,6 +28,7 @@ use {
     nix::unistd::Pid,
     std::os::unix::process::ExitStatusExt,
 };
+
 impl ProcessObserver for ProcessManager {
     fn on_spawn(&self, pid: u32, handle: CargoProcessHandle) {
         self.processes
@@ -87,12 +88,33 @@ impl SignalTimeTracker for SignalTimes {
         }
     }
 }
+#[derive()]
 pub struct ProcessManager {
     signalled_count: AtomicUsize,
     signal_tx: Sender<()>,
     processes: Mutex<HashMap<u32, Arc<Mutex<CargoProcessHandle>>>>,
     results: Mutex<Vec<CargoProcessResult>>,
     signal_times: SignalTimes, // <-- Add this line
+}
+
+impl Drop for ProcessManager {
+    fn drop(&mut self) {}
+}
+
+impl std::fmt::Debug for ProcessManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let processes_len = self.processes.lock().map(|p| p.len()).unwrap_or(0);
+        let results_len = self.results.lock().map(|r| r.len()).unwrap_or(0);
+        let signalled_count = self.signalled_count.load(Ordering::SeqCst);
+        let signal_times = self.signal_times.times.lock().map(|v| v.len()).unwrap_or(0);
+        f.debug_struct("ProcessManager")
+            .field("signalled_count", &signalled_count)
+            .field("signal_tx", &"Sender<()>")
+            .field("processes.len", &processes_len)
+            .field("results.len", &results_len)
+            .field("signal_times.count", &signal_times)
+            .finish()
+    }
 }
 
 impl ProcessManager {
@@ -106,6 +128,7 @@ impl ProcessManager {
             signal_times: SignalTimes::new(), // <-- Add this line
         });
         ProcessManager::install_handler(Arc::clone(&manager), rx);
+        crate::GLOBAL_MANAGER.get_or_init(|| Arc::clone(&manager));
         manager
     }
 
@@ -190,13 +213,13 @@ impl ProcessManager {
                     cursor::MoveToColumn(0),
                     Clear(ClearType::CurrentLine)
                 )?;
-                print!("{}", output);
+                print!("\r{}\r", output);
             }
             #[cfg(not(feature = "tui"))]
-            print!("\r{}", output);
+            print!("\r{}\r", output);
         } else {
             // In non-raw mode, the \r trick can work.
-            print!("\r{}", output);
+            print!("\r{}\r", output);
         }
         stdout.flush()
     }
@@ -902,7 +925,7 @@ impl ProcessManager {
                     if let Some(process) = sys.process((pid as usize).into()) {
                         let status = handle.format_status(Some(process));
                         if !status.is_empty() {
-                            print!("\r{}", status);
+                            print!("\r{}\r", status);
                         }
                     }
                 }
@@ -963,237 +986,11 @@ impl ProcessManager {
             });
         }
     }
-    //     pub fn wait(&self, pid: u32, _duration: Option<Duration>) -> anyhow::Result<CargoProcessResult> {
-    //     // Hide the cursor and ensure it is restored on exit.
-    //     {
-    //         let mut stdout = std::io::stdout();
-    //         crossterm::execute!(stdout, crossterm::cursor::Hide)?;
-    //     }
-
-    //     let mut processes = self.processes.lock().unwrap();
-    //     if let Some(handle) = processes.get_mut(&pid) {
-    //         let mut handle = handle.lock().unwrap();
-    //         let mut system = System::new_all();
-
-    //         // Initialize start_time if not already set.
-    //         let start_time = handle.result.start_time.unwrap_or_else(|| {
-    //             let now = SystemTime::now();
-    //             handle.result.start_time = Some(now);
-    //             now
-    //         });
-
-    //         // Main loop.
-    //         const POLL_DURATION: Duration = Duration::from_secs(1);
-    //         loop {
-    //             system.refresh_all();
-    //             let maybe_system: Option<&System> = if true { Some(&system) } else { None };
-    //             // Get formatted status string.
-    //             let output = handle.format_status(maybe_system);
-    //             print!("\r{}", output);
-    //             std::io::stdout().flush().unwrap();
-
-    //             if let Some(status) = handle.child.try_wait()? {
-    //                 handle.result.exit_status = Some(status);
-    //                 handle.result.end_time = Some(SystemTime::now());
-    //                 println!("\nProcess with PID {} finished", pid);
-    //                 return Ok(handle.result.clone());
-    //             }
-    //             std::thread::sleep(POLL_DURATION);
-    //         }
-    //     } else {
-    //         Err(anyhow::anyhow!("Process handle with PID {} not found", pid))
-    //     }
-    // }
-
-    // pub fn wait(&self, pid: u32, _duration: Option<Duration>) -> anyhow::Result<CargoProcessResult> {
-    //     // Turn off (hide) the cursor.
-    //     {
-    //         let mut stdout = std::io::stdout();
-    //         crossterm::execute!(stdout, crossterm::cursor::Hide)?;
-    //     }
-    //     // Ensure the cursor is shown when we exit.
-    //     let _cursor_guard = CursorGuard;
-
-    //     let mut processes = self.processes.lock().unwrap();
-    //     if let Some(handle) = processes.get_mut(&pid) {
-    //         let mut handle = handle.lock().unwrap();
-    //         let mut system = System::new_all();
-
-    //         // Define the poll duration constant (adjust as needed).
-    //         const POLL_DURATION: Duration = Duration::from_secs(1);
-
-    //         // Initialize start_time if not already set.
-    //         let start_time = handle.result.start_time.unwrap_or_else(|| {
-    //             let now = SystemTime::now();
-    //             handle.result.start_time = Some(now);
-    //             now
-    //         });
-    //         // Format the start time with seconds precision.
-    //         let start_dt: chrono::DateTime<Local> = start_time.into();
-    //         let start_str = start_dt.format("%H:%M:%S").to_string();
-    //         // Use ANSI color for the start time.
-    //         let colored_start = nu_ansi_term::Color::Green.paint(&start_str).to_string();
-    //         // Plain version for spacing calculations.
-    //         let plain_start = start_str;
-
-    //         loop {
-    //             system.refresh_all();
-    //             let now = SystemTime::now();
-    //             let runtime_duration = now.duration_since(start_time).unwrap();
-    //             let runtime_str = crate::e_fmt::format_duration(runtime_duration);
-
-    //             // Use usize conversion with into()
-    //             if let Some(process) = system.process((pid as usize).into()) {
-    //                 let cpu_usage = process.cpu_usage();
-    //                 let mem_kb = process.memory();
-    //                 let mem_human = if mem_kb >= 1024 {
-    //                     format!("{:.2} MB", mem_kb as f64 / 1024.0)
-    //                 } else {
-    //                     format!("{} KB", mem_kb)
-    //                 };
-
-    //                 let left_display = format!("{} | CPU: {:.2}% | Mem: {}", colored_start, cpu_usage, mem_human);
-    //                 let left_plain = format!("{} | CPU: {:.2}% | Mem: {}", plain_start, cpu_usage, mem_human);
-
-    //                 // Get terminal width with crossterm.
-    //                 let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
-    //                 let total_width = cols as usize;
-    //                 // Right side: the elapsed duration, underlined.
-    //                 let right_display = nu_ansi_term::Style::new()
-    //                     .reset_before_style()
-    //                     .underline()
-    //                     .paint(&runtime_str)
-    //                     .to_string();
-    //                 let left_len = left_plain.len();
-    //                 let right_len = runtime_str.len();
-    //                 let padding = if total_width > left_len + right_len {
-    //                     total_width - left_len - right_len
-    //                 } else {
-    //                     1
-    //                 };
-
-    //                 let output = format!("\r{}{}{}", left_display, " ".repeat(padding), right_display);
-    //                 print!("{}", output);
-    //                 std::io::stdout().flush().unwrap();
-    //             } else {
-    //                 print!("\rProcess with PID {} not found in sysinfo", pid);
-    //                 std::io::stdout().flush().unwrap();
-    //             }
-
-    //             if let Some(status) = handle.child.try_wait()? {
-    //                 handle.result.exit_status = Some(status);
-    //                 handle.result.end_time = Some(SystemTime::now());
-    //                 println!("\nProcess with PID {} finished", pid);
-    //                 return Ok(handle.result.clone());
-    //             }
-
-    //             std::thread::sleep(POLL_DURATION);
-    //         }
-    //     } else {
-    //         Err(anyhow::anyhow!("Process handle with PID {} not found", pid))
-    //     }
-    // }
-
-    // pub fn wait(&self, pid: u32, max_polls: Option<usize>) -> anyhow::Result<CargoProcessResult> {
-    //     let mut processes = self.processes.lock().unwrap();
-    //     if let Some(handle) = processes.get_mut(&pid) {
-    //         let mut handle = handle.lock().unwrap();
-    //         let mut system = System::new_all();
-
-    //         // Initialize start_time if not already set.
-    //         let start_time = handle.result.start_time.unwrap_or_else(|| {
-    //             let now = SystemTime::now();
-    //             handle.result.start_time = Some(now);
-    //             now
-    //         });
-    //         // Format the start time with more precision.
-    //         let start_dt: chrono::DateTime<Local> = start_time.into();
-    //         let start_str = start_dt.format("%H:%M:%S").to_string();
-
-    //         let mut polls = 0;
-    //         loop {
-    //             system.refresh_all();
-
-    //             if let Some(process) = system.process((pid as usize).into()) {
-    //                 let now = SystemTime::now();
-    //                 let runtime = now.duration_since(start_time).unwrap();
-    //                 let runtime_str = Self::format_duration(runtime);
-
-    //                 // Get memory usage and convert to a human-readable string.
-    //                 let mem_kb = process.memory();
-    //                 let mem_human = if mem_kb >= 1024 {
-    //                     format!("{:.2} MB", mem_kb as f64 / 1024.0)
-    //                 } else {
-    //                     format!("{} KB", mem_kb)
-    //                 };
-
-    //                 // Build the output string.
-    //                 let output = format!(
-    //                     "{} | Runtime: {} | Mem: {} | CPU: {:.2}%%",
-    //                     start_str,
-    //                     runtime_str,
-    //                     mem_human,
-    //                     process.cpu_usage()
-    //                 );
-    //                 // Print on one line and pad to clear leftover characters.
-    //                 print!("\r{:<80}", output);
-    //                 std::io::stdout().flush().unwrap();
-    //             } else {
-    //                 print!("\rProcess with PID {} not found in sysinfo", pid);
-    //                 std::io::stdout().flush().unwrap();
-    //             }
-
-    //             // Check if the process has finished.
-    //             if let Some(status) = handle.child.try_wait()? {
-    //                 handle.result.exit_status = Some(status);
-    //                 handle.result.end_time = Some(SystemTime::now());
-    //                 println!("\nProcess with PID {} finished", pid);
-    //                 return Ok(handle.result.clone());
-    //             }
-
-    //             polls += 1;
-    //             if let Some(max) = max_polls {
-    //                 if polls >= max {
-    //                     println!("\nReached maximum polling iterations ({})", max);
-    //                     break;
-    //                 }
-    //             }
-    //             std::thread::sleep(Duration::from_secs(1));
-    //         }
-    //         Err(anyhow::anyhow!("Process did not finish after maximum polls"))
-    //     } else {
-    //         Err(anyhow::anyhow!("Process handle with PID {} not found", pid))
-    //     }
-    // }
-
-    //     pub fn wait(&self, pid: u32) -> anyhow::Result<CargoProcessResult> {
-    //         let mut processes = self.processes.lock().unwrap();
-    //         if let Some(handle) = processes.get_mut(&pid) {
-    //             let mut handle = handle.lock().unwrap();
-
-    //             loop {
-    //                 println!("Waiting for process with PID: {}", pid);
-
-    //                 let status = handle.child.try_wait()?;
-
-    //                 if let Some(status) = status {
-    //                     handle.result.exit_status = Some(status);
-    //                     handle.result.end_time = Some(SystemTime::now());
-    //                     println!("Process with PID {} finished", pid);
-    //                     return Ok(handle.result.clone());
-    //                 }
-
-    //                 std::thread::sleep(std::time::Duration::from_secs(1));
-    //             }
-    //         } else {
-    //             Err(anyhow::anyhow!("Process handle with PID {} not found", pid))
-    //         }
-    // }
 
     pub fn format_process_status(
         pid: u32,
         start_time: Option<SystemTime>,
-        system: Arc<Mutex<System>>,
+        // system: Arc<Mutex<System>>,
         target: &CargoTarget,
         target_dimensions: (usize, usize),
     ) -> String {
@@ -1211,82 +1008,73 @@ impl ProcessManager {
         if start_time.is_none() {
             return String::new();
         }
-        // Refresh the system stats and look up the process.
-        if let Some(process) = system.lock().unwrap().process((pid as usize).into()) {
-            let cpu_usage = process.cpu_usage();
-            let mem_kb = process.memory();
-            let mem_human = if mem_kb >= 1024 {
-                format!("{:.2} MB", mem_kb as f64 / 1024.0)
-            } else {
-                format!("{} KB", mem_kb)
-            };
-
-            // Calculate runtime.
-            let now = SystemTime::now();
-            let runtime_duration = match start_time {
-                Some(start) => now
-                    .duration_since(start)
-                    .unwrap_or_else(|_| Duration::from_secs(0)),
-                None => Duration::from_secs(0),
-            };
-            let runtime_str = crate::e_fmt::format_duration(runtime_duration);
-            // compute the max number of digits in either dimension:
-            let max_digits = target_dimensions
-                .0
-                .max(target_dimensions.1)
-                .to_string()
-                .len();
-            let left_display = format!(
-                "{:0width$}of{:0width$} | {} | {} | PID: {} | CPU: {:.2}% | Mem: {}",
-                target_dimensions.0,
-                target_dimensions.1,
-                nu_ansi_term::Color::Green
-                    .paint(target.display_name.clone())
-                    .to_string(),
-                colored_start,
-                pid,
-                cpu_usage,
-                mem_human,
-                width = max_digits,
-            );
-            let left_plain = format!(
-                "{:0width$}of{:0width$} | {} | {} | PID: {} | CPU: {:.2}% | Mem: {}",
-                target_dimensions.0,
-                target_dimensions.1,
-                target.display_name,
-                plain_start,
-                pid,
-                cpu_usage,
-                mem_human,
-                width = max_digits,
-            );
-
-            // Get terminal width.
-            #[cfg(feature = "tui")]
-            let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
-            #[cfg(not(feature = "tui"))]
-            let (cols, _) = (80, 20);
-            let total_width = cols as usize;
-
-            // Format the runtime with underlining.
-            let right_display = nu_ansi_term::Style::new()
-                .reset_before_style()
-                .underline()
-                .paint(&runtime_str)
-                .to_string();
-            let left_len = left_plain.len();
-            let right_len = runtime_str.len();
-            let padding = if total_width > left_len + right_len {
-                total_width - left_len - right_len
-            } else {
-                1
-            };
-
-            format!("{}{}{}", left_display, " ".repeat(padding), right_display)
-        } else {
-            // String::from("xxx")
-            format!("\rProcess with PID {} not found in sysinfo", pid)
+        // Calculate runtime.
+        let now = SystemTime::now();
+        let runtime_duration = match start_time {
+            Some(start) => now
+                .duration_since(start)
+                .unwrap_or_else(|_| Duration::from_secs(0)),
+            None => Duration::from_secs(0),
+        };
+        if runtime_duration.as_secs() == 0 {
+            return String::new();
         }
+        let runtime_str = crate::e_fmt::format_duration(runtime_duration);
+        // compute the max number of digits in either dimension:
+        let max_digits = target_dimensions
+            .0
+            .max(target_dimensions.1)
+            .to_string()
+            .len();
+        let left_display = format!(
+            "{:0width$}of{:0width$} | {} | {} | PID: {}",
+            target_dimensions.0,
+            target_dimensions.1,
+            nu_ansi_term::Color::Green
+                .paint(target.display_name.clone())
+                .to_string(),
+            colored_start,
+            pid,
+            width = max_digits,
+        );
+        let left_plain = format!(
+            "{:0width$}of{:0width$} | {} | {} | PID: {}",
+            target_dimensions.0,
+            target_dimensions.1,
+            target.display_name,
+            plain_start,
+            pid,
+            width = max_digits,
+        );
+
+        // Get terminal width.
+        #[cfg(feature = "tui")]
+        let (cols, _) = crossterm::terminal::size().unwrap_or((80, 20));
+        #[cfg(not(feature = "tui"))]
+        let (cols, _) = (80, 20);
+        let mut total_width = cols as usize;
+        total_width = total_width - 1;
+        // Format the runtime with underlining.
+        let right_display = nu_ansi_term::Style::new()
+            .reset_before_style()
+            .underline()
+            .paint(&runtime_str)
+            .to_string();
+        let left_len = left_plain.len();
+        let right_len = runtime_str.len();
+        let visible_right_len = runtime_str.len();
+        let padding = if total_width > left_len + visible_right_len {
+            total_width.saturating_sub(left_len + visible_right_len)
+        } else {
+            0
+        };
+
+        let ret = format!("{}{}{}", left_display, " ".repeat(padding), right_display);
+        if left_len + visible_right_len > total_width {
+            let truncated_left = &left_display[..total_width.saturating_sub(visible_right_len)];
+            return format!("{}{}", truncated_left.trim_end(), right_display);
+        }
+        ret
     }
 
     /// Print the exact diagnostic output as captured.

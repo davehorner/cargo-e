@@ -52,8 +52,10 @@ pub mod e_workspace;
 use once_cell::sync::OnceCell;
 
 #[cfg(feature = "uses_tts")]
-static GLOBAL_TTS: OnceCell<std::sync::Mutex<tts::Tts>> = OnceCell::new();
-
+pub static GLOBAL_TTS: OnceCell<std::sync::Mutex<tts::Tts>> = OnceCell::new();
+pub static GLOBAL_MANAGER: OnceCell<std::sync::Arc<e_processmanager::ProcessManager>> =
+    OnceCell::new();
+pub static GLOBAL_CLI: OnceCell<Cli> = OnceCell::new();
 // Plugin system modules
 /// Extension API: unified CLI+targets for embedding cargo-e
 pub mod ext;

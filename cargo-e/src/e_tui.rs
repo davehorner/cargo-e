@@ -528,10 +528,16 @@ pub mod tui_interactive {
         terminal.show_cursor()?;
 
         let manifest_path = PathBuf::from(target.manifest_path.clone());
-        let builder =
-            CargoCommandBuilder::new(&target.name, &manifest_path, &cli.subcommand, cli.filter)
-                .with_target(target)
-                .with_cli(cli);
+        let builder = CargoCommandBuilder::new(
+            &target.name,
+            &manifest_path,
+            &cli.subcommand,
+            cli.filter,
+            cli.cached,
+            cli.default_binary_is_runner,
+        )
+        .with_target(target)
+        .with_cli(cli);
         let cmd = builder.build_command();
 
         // Set current directory appropriately.
@@ -669,7 +675,7 @@ pub mod tui_interactive {
             }
 
             // Only update the status display every SAMPLE_INTERVAL iterations.
-            if sample_count % SAMPLE_INTERVAL == 0 {
+            if sample_count % SAMPLE_INTERVAL == 0 && !cli.no_status_lines {
                 // system.refresh_all();
                 let mut system_guard = system.lock().unwrap();
                 system_guard.refresh_processes_specifics(
@@ -682,7 +688,6 @@ pub mod tui_interactive {
                 let status_display = ProcessManager::format_process_status(
                     pid,
                     Some(start_time),
-                    system.clone(),
                     &target,
                     (index + 1, examples.len()),
                 );

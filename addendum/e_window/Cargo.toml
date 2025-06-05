@@ -2,7 +2,7 @@
 name = "e_window"
 description = "A window tool. Think WinAPI ShowMessageBox; but more than that."
 license = "MIT"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["David Horner"]
 edition = "2021"
 publish = true
