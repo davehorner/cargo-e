@@ -1,6 +1,6 @@
-﻿25/06/03|51f77b6|0.2.37
-## [0.2.37](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.36...cargo-e-v0.2.37) - 2025-06-03
+25/06/06|9ea4d95|0.2.38
+## [0.2.38](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.37...cargo-e-v0.2.38) - 2025-06-06
 
-### Added
+### Other
 
-- add support for parsing available targets from stdin and default binary as runner option. wgpu\examples\features has a default binary that operates like cargo --example.
+- add e_obs script for OBS control and recording functionality https://www.youtube.com/watch?v=5BXStX87Z0o

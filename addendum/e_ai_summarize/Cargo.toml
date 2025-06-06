@@ -1,6 +1,6 @@
 [package]
 name = "e_ai_summarize"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 rust-version = "1.85.1"
 authors = ["David Horner"]
