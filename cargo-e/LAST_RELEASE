@@ -1,6 +1,6 @@
-25/06/06|9ea4d95|0.2.38
-## [0.2.38](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.37...cargo-e-v0.2.38) - 2025-06-06
+﻿25/06/07|3d72267|0.2.39
+## [0.2.39](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.38...cargo-e-v0.2.39) - 2025-06-07
 
 ### Other
 
-- add e_obs script for OBS control and recording functionality https://www.youtube.com/watch?v=5BXStX87Z0o
+- update Cargo.lock dependencies

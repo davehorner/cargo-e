@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.4...e_window-v0.1.5) - 2025-06-07
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.4](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.3...e_window-v0.1.4) - 2025-06-06
 
 ### Added
