@@ -19,9 +19,7 @@
 //! once_cell = "1.10"
 //! ```
 // use windows::Win32::Security::Authentication::Identity::SAM_CREDENTIAL_UPDATE_REGISTER_ROUTINE;
-use std::process::{Child, Command};
-use std::time::Duration;
-
+use base64::Engine;
 use chrono::Local;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -31,6 +29,8 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::time::Duration;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use uuid::Uuid;
 
@@ -47,10 +47,7 @@ static SCREENSHOT_COUNTER: Lazy<std::sync::atomic::AtomicUsize> =
 static PROJECT_NAME: OnceCell<String> = OnceCell::new();
 static RECORD_DIRECTORY: OnceCell<String> = OnceCell::new();
 // Store the cmd_screenshot_dir in a OnceCell for later access if needed
-static CMD_SCREENSHOT_DIR: OnceCell<PathBuf> = OnceCell::new();
 static CMD_GIF_DIRS: Lazy<std::sync::Mutex<Vec<PathBuf>>> = Lazy::new(Default::default);
-use std::sync::Mutex;
-static LAST_CMD_SCREENSHOT_DIR: OnceCell<Mutex<PathBuf>> = OnceCell::new();
 // Use an atomic counter for the current command index
 static CMD_INDEX: Lazy<std::sync::atomic::AtomicUsize> =
     Lazy::new(|| std::sync::atomic::AtomicUsize::new(0));
@@ -62,14 +59,13 @@ static CMD_INDEX: Lazy<std::sync::atomic::AtomicUsize> =
 /// OBS Control Script
 #[derive(Debug, Clone, Parser)]
 struct Args {
-    /// Monitor index (e.g. 0, 1, 2)
-    #[arg(short, long, default_value = "0")]
-    monitor: u8,
+    // /// Monitor index (e.g. 0, 1, 2)
+    // #[arg(short, long, default_value = "0")]
+    // monitor: u8,
 
-    /// OBS Display Capture source name
-    #[arg(short, long, default_value = "Display Capture")]
-    source: String,
-
+    // /// OBS Display Capture source name
+    // #[arg(short, long, default_value = "Display Capture")]
+    // source: String,
     /// OBS WebSocket password (if any)
     #[arg(short, long)]
     password: Option<String>,
@@ -82,9 +78,9 @@ struct Args {
     #[arg(long = "cmd", value_names = ["CMD"], num_args = 1, action = clap::ArgAction::Append)]
     cmd: Vec<String>,
 
-    /// Number of screenshots to take before running each command
-    #[arg(long, default_value = "3")]
-    num_screenshots: Option<usize>,
+    /// Disable screenshots during recording
+    #[arg(long)]
+    disable_screenshots: bool,
 }
 
 // Global variable for OBS recording directory
@@ -135,7 +131,9 @@ async fn main() {
             "rpcVersion": 1
         }
     });
-    ws.send(Message::Text(identify.to_string())).await.unwrap();
+    ws.send(Message::Text(identify.to_string().into()))
+        .await
+        .unwrap();
 
     // HANDLE HELLO / AUTH
     let hello = ws.next().await.unwrap().unwrap();
@@ -159,7 +157,9 @@ async fn main() {
             }
         });
 
-        ws.send(Message::Text(auth_msg.to_string())).await.unwrap();
+        ws.send(Message::Text(auth_msg.to_string().into()))
+            .await
+            .unwrap();
 
         // Wait for authentication response
         let auth_resp = ws.next().await.unwrap().unwrap();
@@ -204,7 +204,9 @@ async fn main() {
             "requestId": req_id
         }
     });
-    ws.send(Message::Text(get_dir.to_string())).await.unwrap();
+    ws.send(Message::Text(get_dir.to_string().into()))
+        .await
+        .unwrap();
 
     if let Some(resp) = ws.next().await {
         match resp {
@@ -290,7 +292,7 @@ async fn main() {
                         .await
                         .expect("Failed to set OBS recording directory");
 
-                    wallpaper::set_from_path("");
+                    let _ = wallpaper::set_from_path("");
 
                     // sequence_words(
                     //     &mut ws,
@@ -468,7 +470,7 @@ async fn main() {
             "requestId": req_id
         }
     });
-    ws.send(Message::Text(get_status.to_string()))
+    ws.send(Message::Text(get_status.to_string().into()))
         .await
         .unwrap();
 
@@ -491,7 +493,9 @@ async fn main() {
                             "requestId": stop_req_id
                         }
                     });
-                    ws.send(Message::Text(stop.to_string())).await.unwrap();
+                    ws.send(Message::Text(stop.to_string().into()))
+                        .await
+                        .unwrap();
 
                     // Wait for StopRecord response
                     if let Some(stop_resp) = ws.next().await {
@@ -527,7 +531,9 @@ async fn main() {
             "requestId": req_id
         }
     });
-    ws.send(Message::Text(start.to_string())).await.unwrap();
+    ws.send(Message::Text(start.to_string().into()))
+        .await
+        .unwrap();
     println!("Starting OBS recording...");
     // Wait for response to StartRecord
     if let Some(resp) = ws.next().await {
@@ -542,98 +548,93 @@ async fn main() {
                 // .expect("Failed to set cli-args");
 
                 println!("DEBUG: StartRecord response: {:?}", msg);
-                // Schedule multiple screenshots to be taken in the background before spawning cmd
-                let num_screenshots = args.num_screenshots.unwrap_or(1);
-                let screenshot_dir = &*DIR;
-
-                // Spawn a background task to take screenshots in a loop
-                let screenshot_dir = screenshot_dir.clone();
-                let mut ws = ws; // take ownership for the task
-                let num_screenshots = num_screenshots;
-                let curr_index = 0;
-                // Create a channel to signal the screenshot task to stop
                 let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
-                let screenshot_handle = tokio::spawn(async move {
-                    loop {
-                        tokio::select! {
-                                                _ = &mut stop_rx => {
-                                                    println!("Screenshot task received stop signal.");
-                                                                        // Stop recording
-                                        let stop_req_id = Uuid::new_v4().to_string();
-                                        let stop = json!({
-                                            "op": 6,
-                                            "d": {
-                                                "requestType": "StopRecord",
-                                                "requestId": stop_req_id
-                                            }
-                                        });
-                                        ws.send(Message::Text(stop.to_string())).await.unwrap();
-                                                            // Wait for StopRecord response
-                                        if let Some(stop_resp) = ws.next().await {
-                                            if let Ok(stop_msg) = stop_resp {
-                                                let stop_text = stop_msg.to_text().unwrap();
-                                                println!("DEBUG: StopRecord response: {stop_text}");
-                                                let stop_value: serde_json::Value = serde_json::from_str(stop_text).unwrap();
-                                                if let Some(path) = stop_value["d"]["responseData"]["outputPath"].as_str() {
-                                                    println!("Recording stopped. File saved at: {path}");
-                                                } else {
-                                                    println!("Recording stopped, but output path not found.");
+                let mut screenshot_handle = None;
+                if !args.disable_screenshots {
+                    // Spawn a background task to take screenshots in a loop
+                    let mut ws = ws; // take ownership for the task
+                    let curr_index = 0;
+                    // Create a channel to signal the screenshot task to stop
+                    screenshot_handle = Some(tokio::spawn(async move {
+                        loop {
+                            tokio::select! {
+                                                    _ = &mut stop_rx => {
+                                                        println!("Screenshot task received stop signal.");
+                                                                            // Stop recording
+                                            let stop_req_id = Uuid::new_v4().to_string();
+                                            let stop = json!({
+                                                "op": 6,
+                                                "d": {
+                                                    "requestType": "StopRecord",
+                                                    "requestId": stop_req_id
                                                 }
-
-                                                // Use project_dir for all subsequent screenshots and video outputs
-                                                if let Some(dir_str) = RECORD_DIRECTORY.get() {
-                                                    let dir_path = PathBuf::from(dir_str);
-                                                    set_record_directory(&mut ws, &dir_path).await.expect("Failed to set OBS recording directory");
-                                                } else {
-                                                    eprintln!("RECORD_DIRECTORY is not set");
-                                                }
-
-                                            }
-                                        }
-                                                    break;
-                                                }
-                                                _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                                                            let project_dir = &*DIR;
-                        let cmd_idx = CMD_INDEX.load(std::sync::atomic::Ordering::SeqCst);
-                        if cmd_idx>0 && cmd_idx!=curr_index {
-                                let prev_dir = project_dir.join(format!("cmd_{}", cmd_idx-1));
-                                if let Some(last_screenshot) = get_last_screenshot(&prev_dir) {
-                                    let wallpaper_path = project_dir.join(format!("1wallpaper_cmd{}.png", cmd_idx-1));
-                                    if !wallpaper_path.exists() {
-                                        fs::copy(&last_screenshot, &wallpaper_path).expect("Failed to save wallpaper");
-                                        wallpaper::set_from_path(wallpaper_path.to_str().unwrap()).expect("Failed to set wallpaper");
-                                        println!("Wallpaper set from: {}", wallpaper_path.display());
-                                    }
-                                }
-                        }
-                        let cmd_screenshot_dir = project_dir.join(format!("cmd_{}", cmd_idx));
-                        if !cmd_screenshot_dir.exists() {
-                            fs::create_dir_all(&cmd_screenshot_dir).expect("Failed to create command screenshot directory");
-                            SCREENSHOT_COUNTER.store(0, std::sync::atomic::Ordering::SeqCst);
-                            CMD_GIF_DIRS.lock().unwrap().push(cmd_screenshot_dir.clone());
-                        }
-
-
-                        // The snapshot thread should use CMD_INDEX.load(Ordering::SeqCst) to determine the directory:
-                                                    let count = SCREENSHOT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                                                    let filename = format!(
-                                                        "screenshot_{}.png",
-                                                        format!("{:04}", count)
-                                                    );
-                                                    // let screenshot_dir = CMD_SCREENSHOT_DIR.get().expect("CMD_SCREENSHOT_DIR not set");
-                                                    let screenshot_path = cmd_screenshot_dir.join(&filename);
-                                                    let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
-                                                    if let Err(e) = save_source_screenshot(&mut ws, "Scene", &screenshot_path_str).await {
-                                                        eprintln!("Failed to save screenshot: {e}");
+                                            });
+                                            ws.send(Message::Text(stop.to_string().into())).await.unwrap();
+                                                                // Wait for StopRecord response
+                                            if let Some(stop_resp) = ws.next().await {
+                                                if let Ok(stop_msg) = stop_resp {
+                                                    let stop_text = stop_msg.to_text().unwrap();
+                                                    println!("DEBUG: StopRecord response: {stop_text}");
+                                                    let stop_value: serde_json::Value = serde_json::from_str(stop_text).unwrap();
+                                                    if let Some(path) = stop_value["d"]["responseData"]["outputPath"].as_str() {
+                                                        println!("Recording stopped. File saved at: {path}");
                                                     } else {
-                                                         println!("Screenshot saved to: {}", screenshot_path_str);
+                                                        println!("Recording stopped, but output path not found.");
+                                                    }
+
+                                                    // Use project_dir for all subsequent screenshots and video outputs
+                                                    if let Some(dir_str) = RECORD_DIRECTORY.get() {
+                                                        let dir_path = PathBuf::from(dir_str);
+                                                        set_record_directory(&mut ws, &dir_path).await.expect("Failed to set OBS recording directory");
+                                                    } else {
+                                                        eprintln!("RECORD_DIRECTORY is not set");
+                                                    }
+
+                                                }
+                                            }
+                                                        break;
+                                                    }
+                                                    _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                                                                let project_dir = &*DIR;
+                            let cmd_idx = CMD_INDEX.load(std::sync::atomic::Ordering::SeqCst);
+                            if cmd_idx>0 && cmd_idx!=curr_index {
+                                    let prev_dir = project_dir.join(format!("cmd_{}", cmd_idx-1));
+                                    if let Some(last_screenshot) = get_last_screenshot(&prev_dir) {
+                                        let wallpaper_path = project_dir.join(format!("1wallpaper_cmd{}.png", cmd_idx-1));
+                                        if !wallpaper_path.exists() {
+                                            fs::copy(&last_screenshot, &wallpaper_path).expect("Failed to save wallpaper");
+                                            wallpaper::set_from_path(wallpaper_path.to_str().unwrap()).expect("Failed to set wallpaper");
+                                            println!("Wallpaper set from: {}", wallpaper_path.display());
+                                        }
+                                    }
+                            }
+                            let cmd_screenshot_dir = project_dir.join(format!("cmd_{}", cmd_idx));
+                            if !cmd_screenshot_dir.exists() {
+                                fs::create_dir_all(&cmd_screenshot_dir).expect("Failed to create command screenshot directory");
+                                SCREENSHOT_COUNTER.store(0, std::sync::atomic::Ordering::SeqCst);
+                                CMD_GIF_DIRS.lock().unwrap().push(cmd_screenshot_dir.clone());
+                            }
+
+
+                            // The snapshot thread should use CMD_INDEX.load(Ordering::SeqCst) to determine the directory:
+                                                        let count = SCREENSHOT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                                        let filename = format!(
+                                                            "screenshot_{}.png",
+                                                            format!("{:04}", count)
+                                                        );
+                                                        // let screenshot_dir = CMD_SCREENSHOT_DIR.get().expect("CMD_SCREENSHOT_DIR not set");
+                                                        let screenshot_path = cmd_screenshot_dir.join(&filename);
+                                                        let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
+                                                        if let Err(e) = save_source_screenshot(&mut ws, "Scene", &screenshot_path_str).await {
+                                                            eprintln!("Failed to save screenshot: {e}");
+                                                        } else {
+                                                             println!("Screenshot saved to: {}", screenshot_path_str);
+                                                        }
                                                     }
                                                 }
-                                            }
-                    }
-                });
-
-                let num_screenshots = args.num_screenshots.unwrap_or(3);
+                        }
+                    }));
+                }
                 for (i, cmd) in args.cmd.iter().enumerate() {
                     // Set the current command index atomically for the snapshot thread to read
                     CMD_INDEX.store(i, std::sync::atomic::Ordering::SeqCst);
@@ -651,7 +652,12 @@ async fn main() {
                 }
                 // Signal the screenshot task to stop and wait for it to finish
                 let _ = stop_tx.send(());
-                let _ = screenshot_handle.await;
+                if !args.disable_screenshots {
+                    if let Some(screenshot_handle) = screenshot_handle {
+                        println!("Waiting for screenshot task to finish...");
+                        let _ = screenshot_handle.await;
+                    }
+                }
             }
             Err(e) => {
                 println!("DEBUG: Error receiving StartRecord response: {e}");
@@ -706,10 +712,10 @@ fn start_obs() -> std::io::Result<Child> {
 
 fn sha256_b64(input: &str) -> String {
     let hash = Sha256::digest(input.as_bytes());
-    base64::encode(hash)
+    base64::engine::general_purpose::STANDARD.encode(hash)
 }
 
-async fn set_display_capture_monitor<S>(
+async fn _set_display_capture_monitor<S>(
     ws: &mut tokio_tungstenite::WebSocketStream<S>,
     source_name: &str,
     monitor_index: u8,
@@ -732,7 +738,7 @@ where
         }
     });
 
-    ws.send(Message::Text(msg.to_string())).await?;
+    ws.send(Message::Text(msg.to_string().into())).await?;
     Ok(())
 }
 
@@ -758,7 +764,7 @@ where
         }
     });
 
-    ws.send(Message::Text(msg.to_string())).await?;
+    ws.send(Message::Text(msg.to_string().into())).await?;
 
     // Wait for the response
     if let Some(resp) = ws.next().await {
@@ -812,7 +818,8 @@ where
         }
     });
 
-    ws.send(Message::Text(get_settings_msg.to_string())).await?;
+    ws.send(Message::Text(get_settings_msg.to_string().into()))
+        .await?;
 
     let mut current_settings = serde_json::Value::Null;
     if let Some(resp) = ws.next().await {
@@ -851,7 +858,8 @@ where
         }
     });
 
-    ws.send(Message::Text(set_settings_msg.to_string())).await?;
+    ws.send(Message::Text(set_settings_msg.to_string().into()))
+        .await?;
 
     // Wait for the response and consume it
     if let Some(resp) = ws.next().await {
@@ -878,7 +886,7 @@ where
     }
     Ok(())
 }
-async fn sequence_words<S>(
+async fn _sequence_words<S>(
     ws: &mut tokio_tungstenite::WebSocketStream<S>,
     source_name: &str,
     words: Vec<&str>,
@@ -902,7 +910,8 @@ where
             }
         });
 
-        ws.send(Message::Text(get_settings_msg.to_string())).await?;
+        ws.send(Message::Text(get_settings_msg.to_string().into()))
+            .await?;
 
         let mut current_settings = serde_json::Value::Null;
         if let Some(resp) = ws.next().await {
@@ -954,7 +963,8 @@ where
             }
         });
 
-        ws.send(Message::Text(set_settings_msg.to_string())).await?;
+        ws.send(Message::Text(set_settings_msg.to_string().into()))
+            .await?;
 
         // Wait for the response and consume it
         if let Some(resp) = ws.next().await {
@@ -976,7 +986,7 @@ where
     Ok(())
 }
 
-async fn set_text_with_scene_item_properties<S>(
+async fn _set_text_with_scene_item_properties<S>(
     ws: &mut tokio_tungstenite::WebSocketStream<S>,
     scene_name: &str,
     item_name: &str,
@@ -1000,7 +1010,7 @@ where
         }
     });
 
-    ws.send(Message::Text(get_properties_msg.to_string()))
+    ws.send(Message::Text(get_properties_msg.to_string().into()))
         .await?;
 
     let mut current_properties = serde_json::Value::Null;
@@ -1041,7 +1051,7 @@ where
         }
     });
 
-    ws.send(Message::Text(set_properties_msg.to_string()))
+    ws.send(Message::Text(set_properties_msg.to_string().into()))
         .await?;
 
     // Wait for the response and consume it
@@ -1233,7 +1243,7 @@ where
 //     v
 // }
 
-fn get_obs_profile_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn _get_obs_profile_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let appdata = std::env::var("APPDATA")?;
     let obs_profiles_path = Path::new(&appdata).join("obs-studio/basic/profiles");
 
@@ -1418,7 +1428,8 @@ where
         }
     });
 
-    ws.send(Message::Text(set_dir_msg.to_string())).await?;
+    ws.send(Message::Text(set_dir_msg.to_string().into()))
+        .await?;
 
     if let Some(resp) = ws.next().await {
         match resp {
