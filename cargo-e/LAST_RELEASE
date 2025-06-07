@@ -1,6 +1,6 @@
-﻿25/06/03|51f77b6|0.2.37
-## [0.2.37](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.36...cargo-e-v0.2.37) - 2025-06-03
+﻿25/06/07|3d72267|0.2.39
+## [0.2.39](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.38...cargo-e-v0.2.39) - 2025-06-07
 
-### Added
+### Other
 
-- add support for parsing available targets from stdin and default binary as runner option. wgpu\examples\features has a default binary that operates like cargo --example.
+- update Cargo.lock dependencies

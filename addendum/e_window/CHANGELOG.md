@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.4...e_window-v0.1.5) - 2025-06-07
+
+### Other
+
+- update Cargo.lock dependencies
+
+## [0.1.4](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.3...e_window-v0.1.4) - 2025-06-06
+
+### Added
+
+- add e_obs script for OBS control and recording functionality https://www.youtube.com/watch?v=5BXStX87Z0o
+
 ## [0.1.3](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.2...e_window-v0.1.3) - 2025-06-01
 
 ### Other
