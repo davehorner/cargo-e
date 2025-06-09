@@ -488,6 +488,12 @@ pub fn run_example(
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
     let a_blder = Arc::new(builder.clone());
     let pid = a_blder.run(|_pid, handle| {
+        println!(
+            "Registering process handle for PID {} with command: {}",
+            _pid,
+            full_command
+        );
+        println!("handle: {:?}", handle);
         manager.register(handle);
     })?;
     let result = manager.wait(pid, None)?;
@@ -498,8 +504,8 @@ pub fn run_example(
         .map_or(false, |status| status.code() == Some(101))
     {
         println!(
-            "ProcessManager senses pid {} cargo error, running again to capture and analyze",
-            pid
+            "ProcessManager senses pid {} cargo error, running again to capture and analyze {:?}",
+            pid,result,
         );
         match builder.clone().capture_output() {
             Ok(output) => {
@@ -748,6 +754,14 @@ pub fn run_example(
                 if let Some(stdin) = child.stdin.as_mut() {
                     use std::io::Write;
                     let _ = stdin.write_all(card.as_bytes());
+                    if let Some(global) = crate::GLOBAL_EWINDOW_PIDS.get() {
+                        global.insert(child.id(),child.id());
+                        println!("[DEBUG] Added pid {} to GLOBAL_EWINDOW_PIDS", pid);
+                    } else {
+                        eprintln!("[DEBUG] GLOBAL_EWINDOW_PIDS is not initialized");
+                        // If GLOBAL_EWINDOW_PIDS is not initialized, you may want to initialize it or handle the error accordingly.
+                        // For now, just print a debug message.
+                    }
                 }
             }
         }
@@ -786,6 +800,8 @@ pub fn wait_for_tts_to_finish(max_wait_ms: u64) {
     if tts_mutex.is_none() {
         eprintln!("TTS is not initialized, skipping wait.");
         return;
+    } else {
+        println!("Waiting for TTS to finish speaking...");
     }
     let start = std::time::Instant::now();
     let mut tts_guard = None;

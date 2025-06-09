@@ -25,7 +25,7 @@ use winapi::um::winuser::MessageBoxW;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{IsWindow, MessageBeep};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct App {
     input_text: String,
     parsed_data: ParsedText,
@@ -45,6 +45,8 @@ pub struct App {
     pub follow_triggered: bool,
     #[serde(skip)]
     pub decode_debug: bool,
+    #[serde(skip)]
+    pub follow_running: Option<Arc<AtomicBool>>, // Add this field to the App struct
 }
 
 impl Default for App {
@@ -73,6 +75,7 @@ impl Default for App {
             follow_triggered: false,
             follow_hwnd: None,
             decode_debug: false,
+            follow_running: None,
         }
     }
 }
@@ -91,15 +94,19 @@ impl App {
         if let Some(storage) = storage {
             if let Some(restored) = eframe::get_value::<App>(storage, "app") {
                 return App {
+                    input_text: restored.input_text.clone(),
+                    parsed_data: restored.parsed_data.clone(),
                     first_frame: true,
                     initial_window: Some((width, height, x, y, title)),
+                    editor_mode: restored.editor_mode,
                     start_time: Some(Instant::now()),
                     start_datetime: chrono::Local::now()
                         .format("%Y-%m-%d %H:%M:%S%.3f")
                         .to_string(),
                     follow_hwnd: follow_hwnd,
+                    follow_triggered: restored.follow_triggered,
                     decode_debug: decode_debug,
-                    ..restored
+                    follow_running: restored.follow_running.clone(),
                 };
             }
         }
@@ -142,9 +149,10 @@ impl App {
     #[cfg(target_os = "windows")]
     pub fn start_following_hwnd(&mut self, hwnd: usize) {
         let running = Arc::new(AtomicBool::new(true));
-        let running_clone = running.clone();
+        self.follow_running = Some(running.clone()); // Store the flag in the struct
+
         thread::spawn(move || {
-            while running_clone.load(Ordering::Relaxed) {
+            while running.load(Ordering::Relaxed) {
                 unsafe {
                     if hwnd == 0
                         || IsWindow(hwnd as _) == 0
@@ -156,26 +164,18 @@ impl App {
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(500));
-                unsafe {
-                    let msg = format!("Following HWND: 0x{:X}", hwnd);
-                    let wide: Vec<u16> = OsString::from(msg)
-                        .encode_wide()
-                        .chain(std::iter::once(0))
-                        .collect();
-                    let caption: Vec<u16> = OsString::from("e_window Follow")
-                        .encode_wide()
-                        .chain(std::iter::once(0))
-                        .collect();
-                    MessageBoxW(
-                        std::ptr::null_mut(),
-                        wide.as_ptr(),
-                        caption.as_ptr(),
-                        winapi::um::winuser::MB_OK,
-                    );
-                }
             }
+            println!("Follow thread for HWND 0x{:X} has exited.", hwnd);
         });
-        // Store running in self if you want to stop it later
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        println!("App is being dropped.");
+        if let Some(running) = &self.follow_running {
+            running.store(false, Ordering::Relaxed); // Signal the thread to stop
+        }
     }
 }
 
@@ -212,7 +212,9 @@ impl eframe::App for App {
                         } else {
                             new_title = format!("{new_title} | NO FOLLOW");
                         }
-
+                        // Add PID to the window title
+                        let pid = std::process::id();
+                        new_title = format!("{new_title} | PID: {}", pid);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Title(new_title));
                     }
                 }

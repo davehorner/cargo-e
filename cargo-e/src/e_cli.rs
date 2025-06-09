@@ -192,6 +192,14 @@ pub struct Cli {
     #[arg(long = "nW", default_value_t = false, help = "Disable window popups.")]
     pub no_window: bool,
 
+    /// Enable logging to a file or stdout.
+    #[arg(
+        long = "log",
+        value_name = "PATH",
+        help = "Enable logging to a file at the given path, or to stdout if not specified."
+    )]
+    pub log: Option<std::path::PathBuf>,
+
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,
 }

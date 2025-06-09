@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.40](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.39...cargo-e-v0.2.40) - 2025-06-09
+
+### Added
+
+- improve process tracking, timeouts, and logging in cargo-e
+
 ## [0.2.39](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.38...cargo-e-v0.2.39) - 2025-06-07
 
 ### Other

@@ -27,11 +27,23 @@ use cargo_e::e_target::TargetKind;
 use cargo_e::prelude::*;
 use cargo_e::Cli;
 use clap::Parser;
+use futures::executor::block_on;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Console::{AllocConsole, SetConsoleTitleW};
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::AsRawFd;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Console::{SetStdHandle, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HANDLE;
 #[cfg(feature = "tui")]
 use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
 use once_cell::sync::Lazy;
+use std::fs::File;
+use std::io::{self, Write};
+use std::sync::Mutex;
 // Plugin API
 // Imports for plugin system
 #[cfg(feature = "uses_plugins")]
@@ -54,6 +66,10 @@ use std::path::PathBuf;
 static EXPLICIT: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static EXTRA_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
+lazy_static::lazy_static! {
+    static ref LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
+}
+
 fn enable_ansi_support() {
     #[cfg(windows)]
     {
@@ -75,7 +91,63 @@ fn enable_ansi_support() {
     }
 }
 
+fn setup_logging(log_path: Option<std::path::PathBuf>) -> io::Result<()> {
+    if let Some(path) = log_path {
+        println!("Logging output to: {}", path.display());
+        let file = File::create(&path)?;
+        *LOG_FILE.lock().unwrap() = Some(file);
+
+        // On Windows, allocate a new console window to display the log file path.
+        #[cfg(target_os = "windows")]
+        {
+            if unsafe { AllocConsole() }.is_ok() {
+            // let title = format!("cargo-e log: {}", path.display());
+            // let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+            // unsafe { SetConsoleTitleW(windows::core::PWSTR(wide.as_ptr() as _)); }
+            println!("Log file created at: {}", path.display());
+            let hwnd = unsafe { windows::Win32::System::Console::GetConsoleWindow() };
+            let pid = std::process::id();
+            let hwnd_val = hwnd.0 as usize;
+            let version = env!("CARGO_PKG_VERSION");
+            let title = format!("cargo-e v{} | HWND: {:#x} | PID: {}", version, hwnd_val, pid);
+            let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+            println!("Setting console title to: {}", title);
+            let result = unsafe { SetConsoleTitleW(windows::core::PWSTR(wide.as_ptr() as _)) };
+            println!("SetConsoleTitleW result: {:?}", result);
+            }
+        }
+        // On other platforms, just print the log file path to stdout.
+        #[cfg(not(target_os = "windows"))]
+        {
+            println!("Log file created at: {}", path.display());
+        }
+        let file = LOG_FILE.lock().unwrap();
+        if let Some(ref file) = *file {
+            #[cfg(unix)]
+            {
+                let fd = file.as_raw_fd();
+                unsafe {
+                    libc::dup2(fd, libc::STDOUT_FILENO);
+                    libc::dup2(fd, libc::STDERR_FILENO);
+                }
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::AsRawHandle;
+                let handle = HANDLE(file.as_raw_handle() as *mut _);
+                unsafe {
+                    SetStdHandle(STD_OUTPUT_HANDLE, handle);
+                    SetStdHandle(STD_ERROR_HANDLE, handle);
+                }
+                // No need to call set_output_capture for file logging.
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn main() -> anyhow::Result<()> {
+
     enable_ansi_support();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     log::trace!(
@@ -88,6 +160,8 @@ pub fn main() -> anyhow::Result<()> {
     let (run_at_a_time, filtered_args) = custom_cli(&mut args);
 
     let mut cli = Cli::parse_from(filtered_args);
+    let log_path = cli.log.clone();
+    setup_logging(log_path)?;
     if let Some(n) = run_at_a_time {
         cli.run_at_a_time = n;
     }
@@ -98,6 +172,7 @@ pub fn main() -> anyhow::Result<()> {
     cargo_e::GLOBAL_CLI
         .set(cli.clone())
         .expect("Failed to set global CLI");
+    
     let subcommand_provided_explicitly =
         args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
 
@@ -523,7 +598,9 @@ pub fn main() -> anyhow::Result<()> {
                 if cli.run_all != RunAll::NotSpecified {
                     //PROMPT cargo_e::e_prompts::prompt(&"", 2).ok();
                     // Pass in your default packages, which are now generic.
-                    cargo_e::e_runall::run_all_examples(manager, &cli, &fuzzy_matches)?;
+                    cargo_e::e_runall::run_all_examples(manager.clone(), &cli, &fuzzy_matches)?;
+                    manager.generate_report(cli.gist);
+                    Arc::clone(&manager).cleanup();
                     return Ok(());
                 }
 
@@ -533,13 +610,16 @@ pub fn main() -> anyhow::Result<()> {
                 }
                 cli_loop(manager.clone(), &cli, &fuzzy_matches, &[], &[]);
             }
-            manager.generate_report(cli.gist);
+            manager.clone().generate_report(cli.gist);
+            manager.clone().cleanup();
             std::process::exit(1);
         }
     }
 
     if cli.run_all != RunAll::NotSpecified {
-        cargo_e::e_runall::run_all_examples(manager, &cli, &unique_examples)?;
+        cargo_e::e_runall::run_all_examples(manager.clone(), &cli, &unique_examples)?;
+        manager.generate_report(cli.gist);
+        manager.cleanup();
         return Ok(());
     }
 
@@ -592,7 +672,11 @@ pub fn main() -> anyhow::Result<()> {
         //     std::process::exit(1);
         // }
     }
+    println!("Exiting.");
+    manager.kill_all();
+    println!("generate_report.");
     manager.generate_report(cli.gist);
+    println!("Done.");
     Ok(())
 }
 
@@ -982,7 +1066,6 @@ fn process_input(
                 println!("editing {} \"{}\"...", target_type, target.name);
                 // Call the appropriate function to open the target for editing.
                 // For example, if using VSCode:
-                use futures::executor::block_on;
                 block_on(cargo_e::e_findmain::open_vscode_for_sample(target));
                 // After editing, you might want to pause briefly or simply return to the menu.
                 Ok(LoopResult::Run(
@@ -1184,8 +1267,6 @@ fn handle_single_target(
             std::process::exit(0);
         }
         Some('e') => {
-            use futures::executor::block_on;
-
             block_on(cargo_e::e_findmain::open_vscode_for_sample(target));
         }
         Some('i') => {

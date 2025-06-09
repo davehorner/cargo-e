@@ -4,6 +4,8 @@ use std::env;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::time::SystemTime;
@@ -148,11 +150,20 @@ impl CargoCommandBuilder {
         let mut stdout_dispatcher = EventDispatcher::new();
         stdout_dispatcher.add_callback(
             r"listening on",
-            Box::new(|line, _captures, _state, stats, _prior_response| {
-                println!("(STDOUT) Dispatcher caught: {}", line);
-                // Use a regex to capture a URL from the line.
-                if let Ok(url_regex) = Regex::new(r"(http://[^\s]+)") {
-                    if let Some(url_caps) = url_regex.captures(line) {
+            Box::new(
+                |line: &str,
+                 _captures: Option<regex::Captures>,
+                 _state: std::sync::Arc<std::sync::atomic::AtomicBool>,
+                 stats: std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
+                 _prior_response: Option<crate::e_eventdispatcher::CallbackResponse>|
+                 -> Option<crate::e_eventdispatcher::CallbackResponse> {
+                    println!("(STDOUT) Dispatcher caught: {}", line);
+                    // Use a regex to capture a URL from the line.
+                    // Move the regex construction outside the closure to avoid lifetime issues.
+                    static URL_REGEX: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+                        Regex::new(r"(http://[^\s]+)").unwrap()
+                    });
+                    if let Some(url_caps) = URL_REGEX.captures(line) {
                         if let Some(url_match) = url_caps.get(1) {
                             let url = url_match.as_str();
                             // Call open::that on the captured URL.
@@ -163,33 +174,50 @@ impl CargoCommandBuilder {
                             }
                         }
                     }
-                } else {
-                    eprintln!("Failed to create URL regex");
-                }
-                let mut stats = stats.lock().unwrap();
-                if stats.build_finished_time.is_none() {
-                    let now = SystemTime::now();
-                    stats.build_finished_time = Some(now);
-                }
-                None
-            }),
+                    let mut stats = stats.lock().unwrap();
+                    // Add debug statements to trace stats changes
+                    println!("[DEBUG] Locked stats: {:?}", *stats);
+                    if stats.build_finished_time.is_none() {
+                        let now = SystemTime::now();
+                        stats.build_finished_time = Some(now);
+                        // Add debug statements to trace stats changes
+                        println!("[DEBUG] Updated stats.build_finished_time: {:?}", stats.build_finished_time);
+                    }
+                    None
+                },
+            ) as Box<
+                dyn Fn(
+                        &str,
+                        Option<regex::Captures>,
+                        std::sync::Arc<std::sync::atomic::AtomicBool>,
+                        std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
+                        Option<crate::e_eventdispatcher::CallbackResponse>,
+                    ) -> Option<crate::e_eventdispatcher::CallbackResponse>
+                    + Send
+                    + Sync
+                    + 'static,
+            >
         );
 
         stdout_dispatcher.add_callback(
             r"BuildFinished",
-            Box::new(|line, _captures, _state, stats, _prior_response| {
+            Box::new(move |line, _captures, _state, stats, _prior_response| {
                 println!("******* {}", line);
                 let mut stats = stats.lock().unwrap();
+                // Add debug statements to trace stats changes
+                println!("[DEBUG] Locked stats: {:?}", *stats);
                 if stats.build_finished_time.is_none() {
                     let now = SystemTime::now();
                     stats.build_finished_time = Some(now);
+                    // Add debug statements to trace stats changes
+                    println!("[DEBUG] Updated stats.build_finished_time: {:?}", stats.build_finished_time);
                 }
                 None
             }),
         );
         stdout_dispatcher.add_callback(
             r"server listening at:",
-            Box::new(|line, _captures, state, stats, _prior_response| {
+            Box::new(move |line, _captures, state, stats, _prior_response| {
                 // If we're not already in multiline mode, this is the initial match.
                 if !state.load(Ordering::Relaxed) {
                     println!("Matched 'server listening at:' in: {}", line);
@@ -258,9 +286,11 @@ impl CargoCommandBuilder {
 
         let diagnostics_arc = Arc::clone(&self.diagnostics);
         // Callback for Rust panic messages (e.g., "thread 'main' panicked at ...")
+        // To avoid lifetime issues, capture only the data needed by value (clone).
+        let pid_for_panic = self.pid;
         stderr_dispatcher.add_callback(
             r"^thread '([^']+)' panicked at (.+):(\d+):(\d+):$",
-            Box::new(|line, captures, multiline_flag, stats, prior_response| {
+            Box::new(move |line, captures, multiline_flag, stats, prior_response| {
                 multiline_flag.store(false, Ordering::Relaxed);
 
                 if let Some(caps) = captures {
@@ -344,10 +374,13 @@ impl CargoCommandBuilder {
                     }
                     if show_window {
                         show_graphical_panic(
-                            line,
+                            line.to_string(),
                             prior_response,
-                            &PathBuf::from(&context.manifest_path),
+                            PathBuf::from(&context.manifest_path),
+                            pid_for_panic.unwrap_or_default(),
+                            stats.clone(),
                         );
+                        println!("[DEBUG] dispatch stats: {:?}", stats);
                     }
                     #[cfg(feature = "uses_tts")]
                     {
@@ -1313,6 +1346,11 @@ impl CargoCommandBuilder {
                         cargo_process_handle.result.diagnostics = final_diagnostics.clone();
                         cargo_process_handle.result.exit_status = Some(status);
                         cargo_process_handle.result.end_time = Some(SystemTime::now());
+                        let stats_clone = {
+                            let stats = cargo_process_handle.stats.lock().unwrap();
+                            stats.clone()
+                        };
+                        cargo_process_handle.result.stats = stats_clone;
                         cargo_process_handle.result.elapsed_time = Some(
                             cargo_process_handle
                                 .result
@@ -1952,12 +1990,16 @@ impl CargoCommandBuilder {
         // Return the combined string, even if exit was !success
         Ok(all)
     }
+
 }
 
+
 fn show_graphical_panic(
-    line: &str,
+    line: String,
     prior_response: Option<CallbackResponse>,
-    manifest_path: &PathBuf,
+    manifest_path: PathBuf,
+    window_for_pid: u32,
+    stats: std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
 ) {
     if let Ok(e_window_path) = which("e_window") {
         // Compose a nice message for e_window's stdin
@@ -2033,6 +2075,12 @@ fn show_graphical_panic(
         if !anchor.is_empty() {
             card = format!("{}{}", card, anchor);
         }
+        #[cfg(target_os = "windows")]
+        let child = std::process::Command::new(e_window_path)
+            .stdin(std::process::Stdio::piped())
+            .creation_flags(0x00000008) // CREATE_NEW_CONSOLE
+            .spawn();
+        #[cfg(not(target_os = "windows"))]
         let child = std::process::Command::new(e_window_path)
             .stdin(std::process::Stdio::piped())
             .spawn();
@@ -2040,10 +2088,22 @@ fn show_graphical_panic(
             if let Some(stdin) = child.stdin.as_mut() {
                 use std::io::Write;
                 let _ = stdin.write_all(card.as_bytes());
+                let pid = child.id();
+                // Add to global e_window pid list if available
+                if let Some(global) = crate::GLOBAL_EWINDOW_PIDS.get() {
+                    global.insert(pid,pid);
+                    println!("[DEBUG] Added pid {} to GLOBAL_EWINDOW_PIDS", pid);
+                } else {
+                    eprintln!("[DEBUG] GLOBAL_EWINDOW_PIDS is not initialized");
+                    // Sleep briefly to avoid busy waiting if needed
+                    std::thread::sleep(std::time::Duration::from_millis(10000));
+                }
+                std::mem::drop(child)
             }
         }
     }
 }
+
 /// Resolves a file path by:
 ///   1. If the path is relative, try to resolve it relative to the current working directory.
 ///   2. If that file does not exist, try to resolve it relative to the parent directory of the manifest path.

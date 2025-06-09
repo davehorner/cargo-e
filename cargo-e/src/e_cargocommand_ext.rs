@@ -26,7 +26,7 @@ use std::{fmt, thread};
 // }
 
 /// CargoStats tracks counts for different cargo events and also stores the first occurrence times.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct CargoStats {
     pub target_name: String,
     pub is_comiler_target: bool,
@@ -420,6 +420,7 @@ pub struct CargoProcessHandle {
     pub terminal_error_flag: Arc<Mutex<TerminalError>>,
     pub diagnostics: Arc<Mutex<Vec<CargoDiagnostic>>>,
     pub is_filter: bool,
+    pub removed: bool,
 }
 
 impl CargoProcessHandle {
@@ -756,7 +757,7 @@ impl CargoCommandExt for Command {
             elapsed_time: None,
             build_elapsed: None,
             runtime_elapsed: None,
-            stats: s, // CargoStats::default(),
+            stats: s,
             build_output_size: 0,
             runtime_output_size: 0,
             diagnostics: Vec::new(),
@@ -789,6 +790,7 @@ impl CargoCommandExt for Command {
             terminal_error_flag: Arc::new(Mutex::new(TerminalError::NoError)),
             diagnostics,
             is_filter: builder.is_filter,
+            removed: false, // Initially not removed
         }
     }
 
@@ -1244,15 +1246,26 @@ impl CargoCommandExt for Command {
             let diag_lock = diagnostics.lock().unwrap();
             diag_lock.clone()
         };
-        let pid = child.id();
         let (cmd, args) = builder_for_result.injected_args();
         let stats_snapshot = stats.lock().unwrap().clone();
+        // Wait for the child process to finish and get its exit status.
+        let exit_status = match child.try_wait() {
+            Ok(Some(status)) => Some(status),
+            Ok(None) => {
+                None
+            }
+            Err(e) => 
+            {
+                eprintln!("Failed to check child process exit status {:?}"  , e);
+                None
+            }
+        };
         let result = CargoProcessResult {
             target_name: builder_for_closure.target_name.clone(),
             cmd: cmd,
             args: args,
             pid,
-            exit_status: None,
+            exit_status: exit_status,
             start_time: Some(start_time),
             build_finished_time: None,
             end_time: None,
@@ -1286,6 +1299,26 @@ impl CargoCommandExt for Command {
             terminal_error_flag: terminal_flag,
             diagnostics,
             is_filter: builder_for_result.is_filter,
+            removed: false, // Initially not removed
+        }
+    }
+}
+
+impl Clone for CargoStats {
+    fn clone(&self) -> Self {
+        CargoStats {
+            target_name: self.target_name.clone(),
+            is_comiler_target: self.is_comiler_target,
+            is_could_not_compile: self.is_could_not_compile,
+            start_time: self.start_time,
+            compiler_message_count: self.compiler_message_count,
+            compiler_artifact_count: self.compiler_artifact_count,
+            build_script_executed_count: self.build_script_executed_count,
+            build_finished_count: self.build_finished_count,
+            compiler_message_time: self.compiler_message_time,
+            compiler_artifact_time: self.compiler_artifact_time,
+            build_script_executed_time: self.build_script_executed_time,
+            build_finished_time: self.build_finished_time,
         }
     }
 }
