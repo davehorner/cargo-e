@@ -6,13 +6,13 @@ fn unescape_debug_string(debug_string: &str) -> Result<String, snailquote::Unesc
     unescape(&debug_string)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Anchor {
     pub text: String,
     pub href: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ParsedText {
     pub triples: Vec<(String, String, String)>,
     pub title: Option<String>,

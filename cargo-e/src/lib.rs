@@ -50,12 +50,15 @@ pub mod e_tui;
 pub mod e_workspace;
 #[cfg(feature = "uses_tts")]
 use once_cell::sync::OnceCell;
+use dashmap::DashSet;
 
 #[cfg(feature = "uses_tts")]
 pub static GLOBAL_TTS: OnceCell<std::sync::Mutex<tts::Tts>> = OnceCell::new();
 pub static GLOBAL_MANAGER: OnceCell<std::sync::Arc<e_processmanager::ProcessManager>> =
     OnceCell::new();
 pub static GLOBAL_CLI: OnceCell<Cli> = OnceCell::new();
+/// A global set to track PIDs of ewindow processes.
+pub static GLOBAL_EWINDOW_PIDS: OnceCell<dashmap::DashMap<u32,u32>> = OnceCell::new();
 // Plugin system modules
 /// Extension API: unified CLI+targets for embedding cargo-e
 pub mod ext;
