@@ -702,3 +702,210 @@ pub fn ensure_perl() {
 pub fn ensure_perl() {
     println!("auto_sense_perl is only supported on Windows with Chocolatey.");
 }
+
+
+/// Ensure `vcpkg` is on PATH.
+/// If missing, prompts the user to install it manually.
+/// Returns the full path to the `vcpkg` executable.
+pub fn ensure_vcpkg() -> Result<PathBuf> {
+    if let Ok(path) = which("vcpkg") {
+        return Ok(path);
+    }
+
+    println!("`vcpkg` is not installed or not found in PATH.");
+    println!("Automatic installation is not supported.");
+    println!("Please follow the instructions at https://github.com/microsoft/vcpkg to install it manually and ensure it is on your PATH.");
+    // Prompt the user for installation
+    match yesno(
+        "Do you want to automatically clone vcpkg from GitHub? (default: C:\\vcpkg)",
+        Some(true),
+    ) {
+        Ok(Some(true)) => {
+            // Ask for a custom directory
+            println!("Enter the directory to clone vcpkg into (leave blank for C:\\vcpkg):");
+            let mut input = String::new();
+            print!("Directory: ");
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+            std::io::stdin().read_line(&mut input).ok();
+            let dir = input.trim();
+            let vcpkg_dir = if dir.is_empty() {
+                PathBuf::from(r"C:\vcpkg")
+            } else {
+                PathBuf::from(dir)
+            };
+
+            // Clone vcpkg if not already present
+            if !vcpkg_dir.exists() {
+                println!("Cloning vcpkg into {}...", vcpkg_dir.display());
+                let status = Command::new("git")
+                    .args(&["clone", "https://github.com/microsoft/vcpkg", vcpkg_dir.to_str().unwrap()])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .status();
+
+                match status {
+                    Ok(s) if s.success() => {
+                        println!("vcpkg cloned successfully.");
+                    }
+                    Ok(s) => {
+                        bail!("Failed to clone vcpkg (exit code {}).", s);
+                    }
+                    Err(e) => {
+                        bail!("Failed to run git: {}", e);
+                    }
+                }
+            } else {
+                println!("Directory {} already exists, skipping clone.", vcpkg_dir.display());
+            }
+
+            // Bootstrap vcpkg
+            #[cfg(target_os = "windows")]
+            {
+                let bootstrap = vcpkg_dir.join("bootstrap-vcpkg.bat");
+                if bootstrap.exists() {
+                    let status = Command::new(bootstrap)
+                        .current_dir(&vcpkg_dir)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .status();
+                    match status {
+                        Ok(s) if s.success() => {
+                            println!("vcpkg bootstrapped successfully.");
+                        }
+                        Ok(s) => {
+                            bail!("Failed to bootstrap vcpkg (exit code {}).", s);
+                        }
+                        Err(e) => {
+                            bail!("Failed to run bootstrap-vcpkg.bat: {}", e);
+                        }
+                    }
+                } else {
+                    bail!("bootstrap-vcpkg.bat not found in {}", vcpkg_dir.display());
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let bootstrap = vcpkg_dir.join("bootstrap-vcpkg.sh");
+                if bootstrap.exists() {
+                    let status = Command::new("sh")
+                        .arg(bootstrap)
+                        .current_dir(&vcpkg_dir)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .status();
+                    match status {
+                        Ok(s) if s.success() => {
+                            println!("vcpkg bootstrapped successfully.");
+                            // Try to add the vcpkg directory to the user's PATH persistently using PowerShell
+                            let vcpkg_bin = vcpkg_dir.to_string_lossy();
+                            // Check if PowerShell is available
+                            if let Ok(pwsh_path) = which("powershell") {
+                                // PowerShell command to get the current user PATH
+                                let check_cmd = format!(
+                                    "[Environment]::GetEnvironmentVariable('PATH', 'User') -split ';' | ForEach-Object {{ $_.Trim() }} | Where-Object {{ $_ -ne '' }}"
+                                );
+                                let output = Command::new(&pwsh_path)
+                                    .args(&["-NoProfile", "-Command", &check_cmd])
+                                    .output();
+
+                                let already_in_path = output
+                                    .as_ref()
+                                    .map(|o| String::from_utf8_lossy(&o.stdout).contains(&vcpkg_bin))
+                                    .unwrap_or(false);
+
+                                if already_in_path {
+                                    println!("vcpkg directory already present in user PATH.");
+                                } else {
+                                    // PowerShell command to append to user PATH
+                                    let ps_cmd = format!(
+                                        r#"$old = [Environment]::GetEnvironmentVariable('PATH', 'User'); if ($old -notlike '*{}*') {{ [Environment]::SetEnvironmentVariable('PATH', "$old;{}", 'User') }}"#,
+                                        vcpkg_bin, vcpkg_bin
+                                    );
+                                    let status = Command::new(&pwsh_path)
+                                        .args(&["-NoProfile", "-Command", &ps_cmd])
+                                        .status();
+
+                                    match status {
+                                        Ok(s) if s.success() => {
+                                            println!("Added vcpkg directory to user PATH. You may need to restart your terminal for changes to take effect.");
+                                        }
+                                        Ok(s) => {
+                                            println!("PowerShell command failed with exit code {}. Please add vcpkg to your PATH manually.", s);
+                                        }
+                                        Err(e) => {
+                                            println!("Failed to run PowerShell: {}. Please add vcpkg to your PATH manually.", e);
+                                        }
+                                    }
+                                }
+                            } else {
+                                println!("Could not find PowerShell to set PATH persistently. Please add vcpkg to your PATH manually if needed.");
+                            }
+                            if std::env::var("VCPKG_ROOT").is_err() {
+                                println!("Setting VCPKG_ROOT environment variable to {}", vcpkg_dir.display());
+                                std::env::set_var("VCPKG_ROOT", &vcpkg_dir);
+                                // Try to add the VCPKG_ROOT variable to the user's environment persistently using PowerShell
+                                let vcpkg_root = vcpkg_dir.to_string_lossy();
+                                if let Ok(pwsh_path) = which("powershell") {
+                                    let ps_cmd = format!(
+                                        r#"[Environment]::SetEnvironmentVariable('VCPKG_ROOT', '{}', 'User')"#,
+                                        vcpkg_root
+                                    );
+                                    let status = Command::new(&pwsh_path)
+                                        .args(&["-NoProfile", "-Command", &ps_cmd])
+                                        .status();
+
+                                    match status {
+                                        Ok(s) if s.success() => {
+                                            println!("Added VCPKG_ROOT to user environment. You may need to restart your terminal for changes to take effect.");
+                                        }
+                                        Ok(s) => {
+                                            println!("PowerShell command failed with exit code {}. Please set VCPKG_ROOT manually if needed.", s);
+                                        }
+                                        Err(e) => {
+                                            println!("Failed to run PowerShell: {}. Please set VCPKG_ROOT manually if needed.", e);
+                                        }
+                                    }
+                                } else {
+                                    println!("Could not find PowerShell to set VCPKG_ROOT persistently. Please set VCPKG_ROOT manually if needed.");
+                                }
+                            }
+                        }
+                        Ok(s) => {
+                            bail!("Failed to bootstrap vcpkg (exit code {}).", s);
+                        }
+                        Err(e) => {
+                            bail!("Failed to run bootstrap-vcpkg.sh: {}", e);
+                        }
+                    }
+                } else {
+                    bail!("bootstrap-vcpkg.sh not found in {}", vcpkg_dir.display());
+                }
+            }
+
+            // Return the path to the vcpkg executable
+            let exe = if cfg!(windows) {
+                vcpkg_dir.join("vcpkg.exe")
+            } else {
+                vcpkg_dir.join("vcpkg")
+            };
+            if exe.exists() {
+                return Ok(exe);
+            } else {
+                bail!("vcpkg executable not found after installation in {}", vcpkg_dir.display());
+            }
+        }
+        Ok(Some(false)) => {
+            println!("User declined automatic vcpkg installation.");
+        }
+        Ok(None) => {
+            println!("vcpkg installation cancelled (timeout).");
+        }
+        Err(e) => {
+            println!("Error during prompt: {}", e);
+        }
+    }
+    bail!("`vcpkg` not found. Please install it manually and ensure it is on your PATH.");
+}

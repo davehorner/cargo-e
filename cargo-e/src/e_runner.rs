@@ -513,7 +513,27 @@ pub fn run_example(
                     r"\s*The system library `([^`]+)` required by crate `([^`]+)` was not found\.",
                 )
                 .unwrap();
+                // Support both "error:" and "warning:" lines for pkg-config failures
+                let pkg_config_regex = Regex::new(
+                    r#"(?:error|warning): [^:]+: Could not run [`'"]?(PKG_CONFIG_PATH=[^ ]+ PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config [^`'"\n]+)"#
+                ).unwrap();
 
+                if let Some(caps) = pkg_config_regex.captures(&output) {
+                    let pkg_cmd = &caps[1];
+                    println!("cargo-e detected a pkg-config invocation failure.");
+                    println!("Command: {}", pkg_cmd);
+                    if pkg_cmd.contains("gio-") {
+                        println!("It looks like the missing package is related to 'gio-2.0'.");
+                        println!("You may need to install the development files for GIO (e.g., 'libglib2.0-dev' or similar).");
+                    }
+                    if pkg_cmd.contains("gstreamer-") {
+                        println!("It looks like the missing package is related to 'gstreamer'.");
+                        println!("You may need to install the development files for GStreamer (e.g., 'libgstreamer1.0-dev', 'libgstreamer-plugins-base1.0-dev', or similar).");
+                        
+                    }
+                    println!("This usually means that pkg-config or a required system library is missing.");
+                    println!("Please ensure pkg-config is installed and the required libraries are available.");
+                }
                 if let Some(captures) = system_lib_regex.captures(&output) {
                     let library = &captures[1];
                     let crate_name = &captures[2];
@@ -539,6 +559,7 @@ pub fn run_example(
                         "  • macOS (Homebrew): brew install {}",
                         library_hint(library)
                     );
+                    println!("  • Windows (vcpkg): vcpkg install {}", library_hint(library));
                     std::process::exit(0);
                 } else if output.contains("error: failed to load manifest for workspace member") {
                     println!("cargo-e error: failed to load manifest for workspace member, please check your workspace configuration.");
@@ -623,7 +644,40 @@ pub fn run_example(
                     //   } else if output.contains("Command 'perl' not found. Is perl installed?") {
                     //     println!("cargo e sees a perl issue; maybe a prompt in the future or auto-resolution.");
                     //     crate::e_autosense::auto_sense_perl();
-                  }  else if output.contains("Unable to find libclang")
+                }  else if output.contains("The pkg-config command could not be found.")
+          {
+            #[cfg(target_os = "windows")]
+            {
+                println!("cargo-e detected missing pkg-config on Windows. This often means Perl is missing.");
+                // Check if Perl is available in PATH using which
+                match which("perl") {
+                    Ok(perl_path) => {
+                        println!("Perl is already installed at: {}", perl_path.display());
+                    }
+                    Err(_) => {
+                        println!("Perl is required for pkg-config on Windows. Attempting to auto-detect and install Perl...");
+                        crate::e_installer::ensure_perl();
+                        println!("Perl has been installed or ensured. Please restart your shell or terminal to ensure the new PATH is recognized.");
+                    }
+                }
+                if std::env::var("VCPKG_ROOT").is_err() {
+                    println!("VCPKG_ROOT environment variable is not set. Attempting to ensure vcpkg is installed...");
+                    if let Err(e) = crate::e_installer::ensure_vcpkg() {
+                        eprintln!("Failed to ensure vcpkg: {}", e);
+                    }
+                } else {
+                    println!("VCPKG_ROOT is set: {}", std::env::var("VCPKG_ROOT").unwrap());
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                println!("cargo-e detected missing pkg-config. Please install pkg-config using your system package manager.");
+                println!("  • Debian/Ubuntu: sudo apt install pkg-config");
+                println!("  • Fedora: sudo dnf install pkgconf-pkg-config");
+                println!("  • Arch: sudo pacman -S pkgconf");
+                println!("  • macOS (Homebrew): brew install pkg-config");
+            }
+                }  else if output.contains("Unable to find libclang")
       || output.contains("couldn't find any valid shared libraries matching: ['clang.dll', 'libclang.dll']") 
 {
     crate::e_autosense::auto_sense_llvm();
