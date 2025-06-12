@@ -647,20 +647,29 @@ pub fn dedup_single_file_over_default_binary(targets: Vec<CargoTarget>) -> Vec<C
 }
 
 pub fn collect_all_targets(
+    manifest_path: Option<std::path::PathBuf>,
     use_workspace: bool,
     max_concurrency: usize,
+    be_silent: bool,
 ) -> Result<Vec<CargoTarget>, Box<dyn std::error::Error>> {
     use std::path::PathBuf;
     let mut manifest_infos: Vec<(String, PathBuf, bool)> = Vec::new();
 
     // Locate the package manifest in the current directory.
-    let bi = PathBuf::from(crate::locate_manifest(false)?);
+    let mut bi = PathBuf::from(crate::locate_manifest(false)?);
     // We're in workspace mode if the flag is set or if the current Cargo.toml is a workspace manifest.
     let in_workspace = use_workspace || e_workspace::is_workspace_manifest(bi.as_path());
 
+    let manifest_path_cloned = manifest_path.clone();
+    if manifest_path_cloned.is_some() {
+        bi.clone_from(&manifest_path_cloned.as_ref().unwrap());
+    }
+
     if in_workspace {
         // Use an explicit workspace manifest if requested; otherwise, assume the current Cargo.toml is the workspace manifest.
-        let ws = if use_workspace {
+        let ws = if manifest_path_cloned.is_some() {
+            manifest_path_cloned.unwrap()
+        } else if use_workspace {
             PathBuf::from(crate::locate_manifest(true)?)
         } else {
             bi.clone()
@@ -675,13 +684,15 @@ pub fn collect_all_targets(
             .map(|(i, (member, _))| format!("{}. {}", i + 1, member))
             .collect();
         // Print the workspace line: "<workspace_root>/<package>/Cargo.toml [1. member, 2. member, ...]"
-        println!(
-            "workspace: {} [{}]",
-            format_workspace(&ws, &bi),
-            member_displays.join(", ")
-        );
-        // Always print the package line.
-        println!("package: {}", format_package(&bi));
+        if !be_silent {
+            println!(
+                "workspace: {} [{}]",
+                format_workspace(&ws, &bi),
+                member_displays.join(", ")
+            );
+            // Always print the package line.
+            println!("package: {}", format_package(&bi));
+        }
         manifest_infos.push(("-".to_string(), bi.clone(), false));
         for (member, member_manifest) in ws_members {
             debug!("  member: {}", format_package(&member_manifest));
@@ -689,7 +700,9 @@ pub fn collect_all_targets(
         }
     } else {
         // Not in workspace mode: simply print the package manifest.
-        println!("package: {}", format_package(&bi));
+        if !be_silent {
+            println!("package: {}", format_package(&bi));
+        }
         manifest_infos.push(("-".to_string(), bi.clone(), false));
     }
 

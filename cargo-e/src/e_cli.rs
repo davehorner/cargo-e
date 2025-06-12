@@ -1,7 +1,7 @@
 use clap::Parser;
 
 #[derive(Parser, Debug, Clone)]
-#[command(author,version, about = "cargo-e is for Example.", long_about = None)]
+#[command(author, version, about = "cargo-e is for Example.", long_about = None)]
 #[command(disable_version_flag = true)]
 pub struct Cli {
     /// Run all examples for a given number of seconds.
@@ -63,11 +63,11 @@ pub struct Cli {
     )]
     pub cached: bool,
 
-    /// Enable passthrough mode (no cargo output filtering, stdout is captured).
+    /// Enable filter mode. cargo output is filtered and captured."
     #[arg(
         long = "filter",
         short = 'f',
-        help = "Enable passthrough mode. No cargo output is filtered, and stdout is captured."
+        help = "Enable filter mode. cargo output is filtered and captured."
     )]
     pub filter: bool,
     /// Print version and feature flags in JSON format.
@@ -199,6 +199,27 @@ pub struct Cli {
         help = "Enable logging to a file at the given path, or to stdout if not specified."
     )]
     pub log: Option<std::path::PathBuf>,
+
+    #[arg(
+        long = "manifest-path",
+        value_name = "PATH",
+        help = "Specify the path to the Cargo.toml manifest file."
+    )]
+    pub manifest_path: Option<std::path::PathBuf>,
+
+    #[arg(
+        long = "target",
+        value_name = "TARGET",
+        help = "Specify the target triple for the build."
+    )]
+    pub target: Option<String>,
+
+    /// Output the list of targets as JSON.
+    #[arg(
+        long = "json-all-targets",
+        help = "Output the list of all targets as JSON."
+    )]
+    pub json_all_targets: bool,
 
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,

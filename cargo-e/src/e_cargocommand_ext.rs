@@ -1251,12 +1251,9 @@ impl CargoCommandExt for Command {
         // Wait for the child process to finish and get its exit status.
         let exit_status = match child.try_wait() {
             Ok(Some(status)) => Some(status),
-            Ok(None) => {
-                None
-            }
-            Err(e) => 
-            {
-                eprintln!("Failed to check child process exit status {:?}"  , e);
+            Ok(None) => None,
+            Err(e) => {
+                eprintln!("Failed to check child process exit status {:?}", e);
                 None
             }
         };

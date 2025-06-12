@@ -27,23 +27,25 @@ use cargo_e::e_target::TargetKind;
 use cargo_e::prelude::*;
 use cargo_e::Cli;
 use clap::Parser;
-use futures::executor::block_on;
-#[cfg(target_os = "windows")]
-use windows::Win32::System::Console::{AllocConsole, SetConsoleTitleW};
-#[cfg(not(target_os = "windows"))]
-use std::os::fd::AsRawFd;
-#[cfg(target_os = "windows")]
-use windows::Win32::System::Console::{SetStdHandle, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::HANDLE;
 #[cfg(feature = "tui")]
 use crossterm::terminal::size;
 #[cfg(feature = "check-version-program-start")]
 use e_crate_version_checker::prelude::*;
+use futures::executor::block_on;
 use once_cell::sync::Lazy;
+use serde_json::json;
 use std::fs::File;
 use std::io::{self, Write};
+#[cfg(not(target_os = "windows"))]
+use std::os::fd::AsRawFd;
 use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HANDLE;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Console::{AllocConsole, SetConsoleTitleW};
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Console::{SetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE};
+
 // Plugin API
 // Imports for plugin system
 #[cfg(feature = "uses_plugins")]
@@ -83,7 +85,7 @@ fn enable_ansi_support() {
         unsafe {
             let handle = HANDLE(stdout().as_raw_handle() as *mut _);
             use windows::Win32::System::Console::CONSOLE_MODE;
-            let mut mode: CONSOLE_MODE = unsafe { std::mem::zeroed() };
+            let mut mode: CONSOLE_MODE = std::mem::zeroed();
             if GetConsoleMode(handle, &mut mode as *mut CONSOLE_MODE).is_ok() {
                 let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
             }
@@ -101,19 +103,22 @@ fn setup_logging(log_path: Option<std::path::PathBuf>) -> io::Result<()> {
         #[cfg(target_os = "windows")]
         {
             if unsafe { AllocConsole() }.is_ok() {
-            // let title = format!("cargo-e log: {}", path.display());
-            // let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-            // unsafe { SetConsoleTitleW(windows::core::PWSTR(wide.as_ptr() as _)); }
-            println!("Log file created at: {}", path.display());
-            let hwnd = unsafe { windows::Win32::System::Console::GetConsoleWindow() };
-            let pid = std::process::id();
-            let hwnd_val = hwnd.0 as usize;
-            let version = env!("CARGO_PKG_VERSION");
-            let title = format!("cargo-e v{} | HWND: {:#x} | PID: {}", version, hwnd_val, pid);
-            let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-            println!("Setting console title to: {}", title);
-            let result = unsafe { SetConsoleTitleW(windows::core::PWSTR(wide.as_ptr() as _)) };
-            println!("SetConsoleTitleW result: {:?}", result);
+                // let title = format!("cargo-e log: {}", path.display());
+                // let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+                // unsafe { SetConsoleTitleW(windows::core::PWSTR(wide.as_ptr() as _)); }
+                println!("Log file created at: {}", path.display());
+                let hwnd = unsafe { windows::Win32::System::Console::GetConsoleWindow() };
+                let pid = std::process::id();
+                let hwnd_val = hwnd.0 as usize;
+                let version = env!("CARGO_PKG_VERSION");
+                let title = format!(
+                    "cargo-e v{} | HWND: {:#x} | PID: {}",
+                    version, hwnd_val, pid
+                );
+                let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+                println!("Setting console title to: {}", title);
+                let result = unsafe { SetConsoleTitleW(windows::core::PWSTR(wide.as_ptr() as _)) };
+                println!("SetConsoleTitleW result: {:?}", result);
             }
         }
         // On other platforms, just print the log file path to stdout.
@@ -136,8 +141,8 @@ fn setup_logging(log_path: Option<std::path::PathBuf>) -> io::Result<()> {
                 use std::os::windows::io::AsRawHandle;
                 let handle = HANDLE(file.as_raw_handle() as *mut _);
                 unsafe {
-                    SetStdHandle(STD_OUTPUT_HANDLE, handle);
-                    SetStdHandle(STD_ERROR_HANDLE, handle);
+                    let _ = SetStdHandle(STD_OUTPUT_HANDLE, handle);
+                    let _ = SetStdHandle(STD_ERROR_HANDLE, handle);
                 }
                 // No need to call set_output_capture for file logging.
             }
@@ -147,7 +152,6 @@ fn setup_logging(log_path: Option<std::path::PathBuf>) -> io::Result<()> {
 }
 
 pub fn main() -> anyhow::Result<()> {
-
     enable_ansi_support();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("off")).init();
     log::trace!(
@@ -172,7 +176,7 @@ pub fn main() -> anyhow::Result<()> {
     cargo_e::GLOBAL_CLI
         .set(cli.clone())
         .expect("Failed to set global CLI");
-    
+
     let subcommand_provided_explicitly =
         args.iter().any(|arg| arg == "-s" || arg == "--subcommand");
 
@@ -359,8 +363,18 @@ pub fn main() -> anyhow::Result<()> {
             }
         }
 
-        // Print debug info for each diagnostic
-        for diag in diagnostics.lock().unwrap().iter() {
+        // Print debug info for each diagnostic, printing errors last
+        let diags = diagnostics.lock().unwrap();
+        let (errors, others): (
+            Vec<&cargo_e::e_cargocommand_ext::CargoDiagnostic>,
+            Vec<&cargo_e::e_cargocommand_ext::CargoDiagnostic>,
+        ) = diags
+            .iter()
+            .partition(|d: &&cargo_e::e_cargocommand_ext::CargoDiagnostic| d.level.eq("error"));
+        for diag in &others {
+            println!("{:?}", diag);
+        }
+        for diag in &errors {
             println!("{:?}", diag);
         }
 
@@ -400,15 +414,17 @@ pub fn main() -> anyhow::Result<()> {
     // let _ = cargo_e::e_runner::register_ctrlc_handler();
     #[cfg(feature = "check-version-program-start")]
     {
-        e_crate_version_checker::register_user_crate!();
-        // Attempt to retrieve the version from `cargo-e -v`
-        let version = local_crate_version_via_executable("cargo-e")
-            .map(|(_, version)| version)
-            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+        if !cli.json_all_targets {
+            e_crate_version_checker::register_user_crate!();
+            // Attempt to retrieve the version from `cargo-e -v`
+            let version = local_crate_version_via_executable("cargo-e")
+                .map(|(_, version)| version)
+                .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
-        // Use the version from `lookup_cargo_e_version` if valid,
-        // otherwise fallback to the compile-time version.
-        let _ = interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait);
+            // Use the version from `lookup_cargo_e_version` if valid,
+            // otherwise fallback to the compile-time version.
+            let _ = interactive_crate_upgrade(env!("CARGO_PKG_NAME"), &version, cli.wait);
+        }
     }
     let manager = ProcessManager::new(&cli);
     // Control the maximum number of Cargo processes running concurrently.
@@ -417,8 +433,13 @@ pub fn main() -> anyhow::Result<()> {
         .unwrap_or(4);
     // Collect built-in Cargo targets
     #[allow(unused_mut)]
-    let mut examples =
-        cargo_e::e_collect::collect_all_targets(cli.workspace, num_threads).unwrap_or_default();
+    let mut examples = cargo_e::e_collect::collect_all_targets(
+        cli.manifest_path.clone(),
+        cli.workspace,
+        num_threads,
+        cli.json_all_targets,
+    )
+    .unwrap_or_default();
     if cli.parse_available {
         use cargo_e::e_collect::collect_stdin_available;
         let manifest_path = PathBuf::from(
@@ -497,6 +518,31 @@ pub fn main() -> anyhow::Result<()> {
         .iter()
         .filter(|e| e.toml_specified && e.kind == TargetKind::Binary)
         .collect();
+    // If --target is specified and explicit_example is None, set explicit_example to the value of target
+    if cli.explicit_example.is_none() {
+        if let Some(ref target) = cli.target {
+            cli.explicit_example = Some(target.clone());
+        }
+    }
+    // Handle --json-targets: print all discovered targets as JSON and exit
+    if cli.json_all_targets {
+        let json_targets = unique_examples
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.name,
+                    "display_name": t.display_name,
+                    "manifest_path": t.manifest_path.display().to_string(),
+                    "kind": format!("{:?}", t.kind),
+                    "extended": t.extended,
+                    "toml_specified": t.toml_specified,
+                    "origin": t.origin.as_ref().map(|o| format!("{:?}", o)),
+                })
+            })
+            .collect::<Vec<_>>();
+        println!("{}", serde_json::to_string_pretty(&json_targets).unwrap());
+        std::process::exit(0);
+    }
     if let Some(explicit) = cli.explicit_example.clone() {
         if let Some(explicit_example) = cli.explicit_example.clone() {
             let mut explicit_lock = EXPLICIT.lock().unwrap();
@@ -552,7 +598,10 @@ pub fn main() -> anyhow::Result<()> {
                 if cli.tui {
                     do_tui_and_exit(manager, &cli, &unique_examples);
                 }
-                cargo_e::e_runner::run_example(manager.clone(), &cli, target)?;
+                let ret = cargo_e::e_runner::run_example(manager.clone(), &cli, target)?;
+                manager.clone().generate_report(cli.gist);
+                manager.clone().cleanup();
+                std::process::exit(ret.map(|status| status.code().unwrap_or(1)).unwrap_or(1));
             }
         }
         // If not found among examples, search for a binary with that name.
@@ -564,7 +613,10 @@ pub fn main() -> anyhow::Result<()> {
             if cli.tui {
                 do_tui_and_exit(manager, &cli, &unique_examples);
             }
-            cargo_e::e_runner::run_example(manager.clone(), &cli, target)?;
+            let ret = cargo_e::e_runner::run_example(manager.clone(), &cli, target)?;
+            manager.clone().generate_report(cli.gist);
+            manager.clone().cleanup();
+            std::process::exit(ret.map(|status| status.code().unwrap_or(1)).unwrap_or(1));
         } else {
             eprintln!(
                 "error: 0 named '{}' found in examples or binaries.",
@@ -989,7 +1041,6 @@ fn select_and_run_target_loop(
     process_input(manager, &final_input, &combined, cli, 0)
 }
 pub fn append_run_history(target_name: &str) -> io::Result<()> {
-    use std::io::Write;
     let manifest_dir = cargo_e::e_manifest::find_manifest_dir()?;
     let history_path = manifest_dir.join("run_history.txt");
 

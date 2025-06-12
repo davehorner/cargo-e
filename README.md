@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.40</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.41</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -71,6 +71,10 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
 - **tts panics:** When a panic is detected, cargo-e will speak the panic message aloud using text-to-speech (TTS) for immediate feedback. `-f` required.
 - **graphical panics:** Panics are also displayed in a graphical window using [e_window](https://crates.io/crates/e_window), providing a clear and interactive error report. `-f` required.
 - **graphical failed build:** A failed build displays a graphical window using [e_window](https://crates.io/crates/e_window); Errors are anchors and clicking them opens code directly to the error line. `-f` required.
+- **cached builds:**  
+  When the `--cached` flag is used, `cargo-e` will attempt to reuse previously built artifacts instead of rebuilding examples or binaries from scratch.
+- **`--json-all-targets`**:  
+  Outputs a comprehensive JSON list of all discovered targets (examples, binaries, tests, benches, etc.) in the project. This is useful for tooling, scripting, or integration with editors and CI systems. The JSON includes metadata such as target names, types, required features, and paths, enabling automated processing or custom workflows.
 
 ## Introduction
 
@@ -103,7 +107,43 @@ cargo install --path .
 Run an example directly from your project:
 
 ```bash
-cargo e [OPTIONS] [EXAMPLE] [-- extra arguments]
+Usage: cargo-e [OPTIONS] [EXPLICIT_EXAMPLE] [-- <EXTRA>...]
+
+Arguments:
+  [EXPLICIT_EXAMPLE]  Specify an explicit target to run.
+  [EXTRA]...          Additional arguments passed to the command.
+
+Options:
+      --stdout <PATH>                  Path to read/write the stdout of the executed command.
+      --stderr <PATH>                  Path to read/write the stderr of the executed command.
+      --run-all [<RUN_ALL>]            Run all optionally specifying run time (in seconds) per target. If the flag is present without a value, run forever. [default: not_specified]
+      --gist                           Create GIST run_report.md on exit.
+      --release                        Build and run in release mode.
+  -q, --quiet                          Suppress cargo output when running the sample.
+      --pre-build                      If enabled, pre-build the examples before executing them.
+      --cached                         If enabled, execute the existing target directly.
+  -f, --filter                         Enable filter mode. cargo output is filtered and captured.
+  -v, --version                        Print version and feature flags in JSON format.
+  -t, --tui                            Launch the text-based user interface (TUI).
+  -w, --workspace                      Operate on the entire workspace.
+      --pX                             Print the exit code of the process when run. (default: false)
+      --pN                             Print the program name before execution. (default: false)
+      --pI                             Print the user instruction. (default: true)
+  -p, --paging                         Enable or disable paging (default: enabled).
+  -r, --relative-numbers               Relative numbers (default: enabled).
+  -W, --wait <WAIT>                    Set wait time in seconds (default: 15). [default: 15]
+  -s, --subcommand <SUBCOMMAND>        Specify subcommands (e.g., `build|b`, `test|t`). [default: run]
+  -J, --run-at-a-time <RUN_AT_A_TIME>  Number of targets to run at a time in --run-all mode (--run-at-a-time) [default: 1]
+      --nS                             Disable status lines during runtime loop output.
+      --nT                             Disable text-to-speech output.
+      --parse-available                Parse available targets from stdin (one per line).
+      --default-binary-is-runner       If enabled, treat the default binary as the runner for targets.
+      --nW                             Disable window popups.
+      --log <PATH>                     Enable logging to a file at the given path, or to stdout if not specified.
+      --manifest-path <PATH>           Specify the path to the Cargo.toml manifest file.
+      --target <TARGET>                Specify the target triple for the build.
+      --json-all-targets               Output the list of all targets as JSON.
+  -h, --help                           Print help
 ```
 
 If there is only one example, it will run that example, did I mention that already?
@@ -299,7 +339,7 @@ Many developers create their own custom scripts or tools to expose examples and 
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.40</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.41</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 

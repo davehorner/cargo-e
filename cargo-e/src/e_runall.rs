@@ -210,128 +210,130 @@ pub fn run_all_examples(
                 // Main thread continues to monitor the process
                 loop {
                     if manager.is_alive(pid) {
-                    println!(
-                        "Monitoring process {} for target {} ({} of {})...",
-                        pid, target.name, idx + 1, targets_len
-                    );
-                    match manager.try_wait(pid) {
-                        Ok(Some(status)) => {
-                            println!("Process {} finished naturally. {:?}", pid,status);
-                            // manager.e_window_kill(pid);
-                            // manager.remove(pid);
-                            break;
-                        }
-                        _ => {
-                            // Process is still running.
-                            // We can check for timeout here as well.
-                            if let Ok(start_guard) = start_for_callback.lock() {
-                                if let Some(start_time) = *start_guard {
-                                    if start_time.elapsed() >= timeout {
-                                        println!(
+                        println!(
+                            "Monitoring process {} for target {} ({} of {})...",
+                            pid,
+                            target.name,
+                            idx + 1,
+                            targets_len
+                        );
+                        match manager.try_wait(pid) {
+                            Ok(Some(status)) => {
+                                println!("Process {} finished naturally. {:?}", pid, status);
+                                // manager.e_window_kill(pid);
+                                // manager.remove(pid);
+                                break;
+                            }
+                            _ => {
+                                // Process is still running.
+                                // We can check for timeout here as well.
+                                if let Ok(start_guard) = start_for_callback.lock() {
+                                    if let Some(start_time) = *start_guard {
+                                        if start_time.elapsed() >= timeout {
+                                            println!(
                                             "\nTimeout reached for target {}. Killing child process {}.",
                                             target.name,pid);
-                                        manager.kill_by_pid(pid).ok();
-                                        // manager.remove(pid);
-                                        // user_requested_kill_thread.store(true, Ordering::SeqCst);
-                                        // pids_to_kill_thread.lock().push(pid);
+                                            manager.kill_by_pid(pid).ok();
+                                            // manager.remove(pid);
+                                            // user_requested_kill_thread.store(true, Ordering::SeqCst);
+                                            // pids_to_kill_thread.lock().push(pid);
+                                            break;
+                                        }
+                                    }
+                                }
+                                std::thread::sleep(Duration::from_millis(100));
+                            }
+                        }
+                        if manager.has_signalled() > 0 {
+                            println!("Detected Ctrl+C. {}", manager.has_signalled());
+                            manager.remove(pid); // Clean up the process handle
+
+                            if manager.has_signalled() > 1 {
+                                if let Some(dur) = manager.time_between_signals() {
+                                    if dur < Duration::from_millis(350) {
+                                        println!("User requested quit two times quickly (<350ms).");
+                                        user_requested_quit_thread.store(true, Ordering::SeqCst);
                                         break;
                                     }
                                 }
                             }
-                            std::thread::sleep(Duration::from_millis(100));
+                            println!("Dectected Ctrl+C, coninuing to next target.");
+                            manager.reset_signalled();
+                            break;
                         }
-                    }
-                    if manager.has_signalled() > 0 {
-                        println!("Detected Ctrl+C. {}", manager.has_signalled());
-                        manager.remove(pid); // Clean up the process handle
 
-                        if manager.has_signalled() > 1 {
-                            if let Some(dur) = manager.time_between_signals() {
-                                if dur < Duration::from_millis(350) {
-                                    println!("User requested quit two times quickly (<350ms).");
-                                    user_requested_quit_thread.store(true, Ordering::SeqCst);
-                                    break;
-                                }
-                            }
-                        }
-                        println!("Dectected Ctrl+C, coninuing to next target.");
-                        manager.reset_signalled();
-                        break;
-                    }
+                        // let (_stats, runtime_start, end_time, status_display) = {
+                        //     let (stats, runtime_start, end_time) =
+                        //         if let Some(process_handle) = manager.get(pid) {
+                        //             if let Ok(handle) = process_handle.lock() {
+                        //                 let stats =
+                        //                     handle.stats.lock().map(|s| s.clone()).unwrap_or_default();
+                        //                 let runtime_start = if stats.is_comiler_target {
+                        //                     stats.build_finished_time
+                        //                 } else {
+                        //                     stats.start_time
+                        //                 };
+                        //                 let end_time = handle.result.end_time;
+                        //                 (stats, runtime_start, end_time)
+                        //             } else {
+                        //                 // If we can't lock, fallback to defaults
+                        //                 (Default::default(), None, None)
+                        //             }
+                        //         } else {
+                        //             // If process handle not found, fallback to defaults
+                        //             (Default::default(), None, None)
+                        //         };
+                        //     let status_display = if !cli.no_status_lines {
+                        //         ProcessManager::format_process_status(
+                        //             pid,
+                        //             runtime_start,
+                        //             &target,
+                        //             (idx + 1, targets_len),
+                        //         )
+                        //     } else {
+                        //         String::new()
+                        //     };
+                        //     (stats, runtime_start, end_time, status_display)
+                        // };
 
-                    // let (_stats, runtime_start, end_time, status_display) = {
-                    //     let (stats, runtime_start, end_time) =
-                    //         if let Some(process_handle) = manager.get(pid) {
-                    //             if let Ok(handle) = process_handle.lock() {
-                    //                 let stats =
-                    //                     handle.stats.lock().map(|s| s.clone()).unwrap_or_default();
-                    //                 let runtime_start = if stats.is_comiler_target {
-                    //                     stats.build_finished_time
-                    //                 } else {
-                    //                     stats.start_time
-                    //                 };
-                    //                 let end_time = handle.result.end_time;
-                    //                 (stats, runtime_start, end_time)
-                    //             } else {
-                    //                 // If we can't lock, fallback to defaults
-                    //                 (Default::default(), None, None)
-                    //             }
-                    //         } else {
-                    //             // If process handle not found, fallback to defaults
-                    //             (Default::default(), None, None)
-                    //         };
-                    //     let status_display = if !cli.no_status_lines {
-                    //         ProcessManager::format_process_status(
-                    //             pid,
-                    //             runtime_start,
-                    //             &target,
-                    //             (idx + 1, targets_len),
-                    //         )
-                    //     } else {
-                    //         String::new()
-                    //     };
-                    //     (stats, runtime_start, end_time, status_display)
-                    // };
-
-                    // if cli.filter && !cli.no_status_lines {
-                    //     // let mut system_guard = system.lock().unwrap();
-                    //     // system_guard.refresh_processes_specifics(
-                    //     //     ProcessesToUpdate::All,
-                    //     //     true,
-                    //     //     ProcessRefreshKind::nothing().with_cpu(),
-                    //     // );
-                    //     // drop(system_guard);
-                    //     ProcessManager::update_status_line(&status_display, true).ok();
-                    // }
-                    // if runtime_start.is_some() {
-                    //     // let mut start_guard = start_for_callback.lock().unwrap();
-                    //     // if start_guard.is_none() {
-                    //     //     *start_guard = Some(Instant::now());
-                    //     // }
-                    //     if let Some(start_time) = *start_for_callback.lock().unwrap() {
-                    //         if start_time.elapsed() >= timeout {
-                    //             println!(
-                    //                 "\nTimeout reached for target {} after {:.2?}. Killing child process {}.",
-                    //                 target.name,
-                    //                 start_time.elapsed(),
-                    //                 pid
-                    //             );
-                    //             manager.e_window_kill(pid);
-                    //             manager.remove(pid);
-                    //             manager.kill_by_pid(pid).ok();
-                    //             break;
-                    //         }
-                    //     }
-                    //     // std::thread::sleep(Duration::from_millis(500));
-                    // } else if end_time.is_some() {
-                    //     println!("Process finished naturally.");
-                    //     manager.e_window_kill(pid);
-                    //     manager.remove(pid);
-                    //     break;
-                    // }
+                        // if cli.filter && !cli.no_status_lines {
+                        //     // let mut system_guard = system.lock().unwrap();
+                        //     // system_guard.refresh_processes_specifics(
+                        //     //     ProcessesToUpdate::All,
+                        //     //     true,
+                        //     //     ProcessRefreshKind::nothing().with_cpu(),
+                        //     // );
+                        //     // drop(system_guard);
+                        //     ProcessManager::update_status_line(&status_display, true).ok();
+                        // }
+                        // if runtime_start.is_some() {
+                        //     // let mut start_guard = start_for_callback.lock().unwrap();
+                        //     // if start_guard.is_none() {
+                        //     //     *start_guard = Some(Instant::now());
+                        //     // }
+                        //     if let Some(start_time) = *start_for_callback.lock().unwrap() {
+                        //         if start_time.elapsed() >= timeout {
+                        //             println!(
+                        //                 "\nTimeout reached for target {} after {:.2?}. Killing child process {}.",
+                        //                 target.name,
+                        //                 start_time.elapsed(),
+                        //                 pid
+                        //             );
+                        //             manager.e_window_kill(pid);
+                        //             manager.remove(pid);
+                        //             manager.kill_by_pid(pid).ok();
+                        //             break;
+                        //         }
+                        //     }
+                        //     // std::thread::sleep(Duration::from_millis(500));
+                        // } else if end_time.is_some() {
+                        //     println!("Process finished naturally.");
+                        //     manager.e_window_kill(pid);
+                        //     manager.remove(pid);
+                        //     break;
+                        // }
                         std::thread::sleep(Duration::from_millis(100));
                     }
-                    
                 }
 
                 // Wait for the timeout thread to finish
