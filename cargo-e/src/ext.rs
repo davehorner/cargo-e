@@ -49,8 +49,13 @@ impl ExtContext {
         let threads = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4);
-        let mut all = collect_all_targets(self.cli.workspace, threads)
-            .map_err(|e| anyhow!("collect_all_targets failed: {}", e))?;
+        let mut all = collect_all_targets(
+            self.cli.manifest_path.clone(),
+            self.cli.workspace,
+            threads,
+            self.cli.json_all_targets,
+        )
+        .map_err(|e| anyhow!("collect_all_targets failed: {}", e))?;
         // 2. Plugin targets (load plugins only once)
         #[cfg(feature = "uses_plugins")]
         {

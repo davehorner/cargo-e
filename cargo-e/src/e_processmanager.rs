@@ -21,10 +21,10 @@ use crossterm::{
 use std::io::{self, Write};
 use std::sync::atomic::Ordering;
 use std::sync::Mutex as StdMutex;
-#[cfg(target_os = "windows")] 
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
-#[cfg(target_os = "windows")] 
+#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::CloseHandle;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 #[cfg(unix)]
 use {
     nix::sys::signal::{kill as nix_kill, Signal},
@@ -34,8 +34,7 @@ use {
 
 impl ProcessObserver for ProcessManager {
     fn on_spawn(&self, pid: u32, handle: CargoProcessHandle) {
-        self.processes
-            .insert(pid, Arc::new(Mutex::new(handle)));
+        self.processes.insert(pid, Arc::new(Mutex::new(handle)));
     }
     // let pid = handle.lock().unwrap().pid;
     // self.processes.lock().unwrap().insert(pid, handle);
@@ -131,12 +130,12 @@ impl ProcessManager {
         crate::GLOBAL_EWINDOW_PIDS.get_or_init(|| dashmap::DashMap::new());
         manager
     }
-  pub fn cleanup(&self) {
-        eprintln!("[ProcessManager::drop] Dropping ProcessManager and cleaning up processes.");
+    pub fn cleanup(&self) {
+        // eprintln!("[ProcessManager::drop] Dropping ProcessManager and cleaning up processes.");
         // Try to kill all managed processes.
         for entry in self.processes.iter() {
             let pid = *entry.key();
-            eprintln!("[ProcessManager::drop] Attempting to kill PID {}", pid);
+            // eprintln!("[ProcessManager::drop] Attempting to kill PID {}", pid);
             if let Ok(mut handle) = entry.value().try_lock() {
                 let _ = handle.kill();
             }
@@ -144,7 +143,7 @@ impl ProcessManager {
         }
         self.e_window_kill_all();
     }
-    
+
     pub fn last_signal_time(&self) -> Option<SystemTime> {
         self.signal_times.last_signal_time()
     }
@@ -187,7 +186,11 @@ impl ProcessManager {
     fn handle_signal(&self) {
         self.signal_times.record_signal();
         println!("ctrlc>");
-        let processes: Vec<_> = self.processes.iter().map(|entry| (*entry.key(), entry.value().clone())).collect();
+        let processes: Vec<_> = self
+            .processes
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect();
         for (pid, handle) in processes {
             println!("ctrlc> Terminating process with PID: {}", pid);
             if let Ok(mut h) = handle.try_lock() {
@@ -254,11 +257,13 @@ impl ProcessManager {
     pub fn take(&self, pid: u32) -> Option<Arc<Mutex<CargoProcessHandle>>> {
         // self.processes.remove(&pid).map(|(_, handle)| handle)
         self.processes.get(&pid).map(|entry| entry.clone())
-
     }
 
     pub fn remove(&self, pid: u32) {
-        println!("[ProcessManager::remove] Removing process with PID: {}", pid);
+        println!(
+            "[ProcessManager::remove] Removing process with PID: {}",
+            pid
+        );
         if let Some(handle_arc) = self.processes.get(&pid) {
             match handle_arc.try_lock() {
                 Ok(mut h) => {
@@ -304,7 +309,13 @@ impl ProcessManager {
         // 2. Lock the individual process handle to perform try_wait.
         let mut handle = match handle_arc.try_lock() {
             Ok(h) => h,
-            Err(e) => return Err(anyhow::anyhow!("Failed to acquire process handle lock for PID {}: {}", pid, e)),
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to acquire process handle lock for PID {}: {}",
+                    pid,
+                    e
+                ))
+            }
         };
         // Here, try_wait returns a Result<Option<ExitStatus>, std::io::Error>.
         // The '?' operator will convert any std::io::Error to anyhow::Error automatically.
@@ -323,14 +334,11 @@ impl ProcessManager {
         #[cfg(unix)]
         {
             // On Unix, sending signal 0 checks if the process exists
-            unsafe {
-                libc::kill(pid as i32, 0) == 0
-            }
+            unsafe { libc::kill(pid as i32, 0) == 0 }
         }
 
         #[cfg(windows)]
         {
-
             // Use the windows crate to check if the process exists.
 
             unsafe {
@@ -480,9 +488,7 @@ impl ProcessManager {
     /// all signals (in which case we drop the handle), or Err if something went wrong.
     pub fn kill_try_by_pid(&self, pid: u32) -> anyhow::Result<bool> {
         // Grab the handle, if any.
-        let handle_opt = {
-            self.processes.get(&pid).map(|entry| entry.clone())
-        };
+        let handle_opt = { self.processes.get(&pid).map(|entry| entry.clone()) };
         if let Some(handle) = handle_opt {
             eprintln!("Attempting to kill PID: {}", pid);
             #[cfg(unix)]
@@ -533,7 +539,7 @@ impl ProcessManager {
                                         pid, status
                                     );
                                 }
-                        }
+                            }
                             did_exit = true;
                             break;
                         }
@@ -582,7 +588,7 @@ impl ProcessManager {
 
                                 // let mut descendants = Vec::new();
                                 // collect_descendants(&sys, parent_pid, &mut descendants);
-                       
+
                                 // for &child_pid in &descendants {
                                 //     eprintln!("Attempting to kill descendant PID {} of parent PID {}", child_pid, pid);
                                 //     let _ = std::process::Command::new("taskkill")
@@ -605,7 +611,10 @@ impl ProcessManager {
                                         }
                                     }
                                     Ok(Some(status)) => {
-                                        eprintln!("PID {} already exited with status: {:?}", pid, status);
+                                        eprintln!(
+                                            "PID {} already exited with status: {:?}",
+                                            pid, status
+                                        );
                                     }
                                     Err(e) => {
                                         eprintln!("Error checking status for PID {}: {}", pid, e);
@@ -621,7 +630,7 @@ impl ProcessManager {
                     }
                 } else {
                     eprintln!("Could not lock handle for PID {}", pid);
-                    
+
                     break;
                 }
 
@@ -630,7 +639,11 @@ impl ProcessManager {
                     break;
                 }
             }
-                    eprintln!("Reference count for PID {} before lock: {}", pid, Arc::strong_count(&handle));
+            eprintln!(
+                "Reference count for PID {} before lock: {}",
+                pid,
+                Arc::strong_count(&handle)
+            );
 
             // println!("doing e_window cleanup for PID {}", pid);
             // // Handle global e_window_pids for this PID
@@ -651,9 +664,9 @@ impl ProcessManager {
             //         eprintln!("[DEBUG] No global e_window PID found for parent PID {}", pid);
             //     }
             // }
-                                
+
             // Remove the handle so it drops (and on Windows that will kill if still alive)
-//                if let Some((_, handle_arc)) = self.processes.remove(&pid) {
+            //                if let Some((_, handle_arc)) = self.processes.remove(&pid) {
             if did_exit {
                 eprintln!("Process {} removed from map after exit.", pid);
             } else {
@@ -679,7 +692,10 @@ impl ProcessManager {
 
         // Try to get the e_window PID for this process from GLOBAL_EWINDOW_PIDS
         if let Some(global) = crate::GLOBAL_EWINDOW_PIDS.get() {
-            eprintln!("[DEBUG] Searching for e_window PID for parent PID {} in map: {:?}", pid, global);
+            eprintln!(
+                "[DEBUG] Searching for e_window PID for parent PID {} in map: {:?}",
+                pid, global
+            );
 
             // Extract the e_window_pid and drop the reference to avoid deadlocks
             if let Some(e_window_pid) = global.get(&pid).map(|entry| *entry.value()) {
@@ -691,7 +707,10 @@ impl ProcessManager {
                 // Check if the process is still running before attempting to kill it
                 let mut sys = sysinfo::System::new_all();
                 sys.refresh_all();
-                if sys.process(sysinfo::Pid::from(e_window_pid as usize)).is_some() {
+                if sys
+                    .process(sysinfo::Pid::from(e_window_pid as usize))
+                    .is_some()
+                {
                     let _ = std::process::Command::new("taskkill")
                         .args(["/F", "/PID", &format!("{}", e_window_pid)])
                         .spawn();
@@ -702,7 +721,6 @@ impl ProcessManager {
                 }
 
                 // Remove the entry after handling the PID
-                drop(e_window_pid);
                 global.remove(&pid);
                 eprintln!("[DEBUG] Removed e_window PID {} from map", e_window_pid);
             } else {
@@ -718,7 +736,7 @@ impl ProcessManager {
             // Collect the PIDs first to avoid mutating while iterating
             let pids: Vec<u32> = global.iter().map(|entry| *entry.key()).collect();
             for pid in pids {
-            self.e_window_kill(pid);
+                self.e_window_kill(pid);
             }
         }
     }
@@ -963,8 +981,8 @@ impl ProcessManager {
         self.e_window_kill_all();
         for pid in pids {
             println!("Killing PID: {}", pid);
-            self.kill_by_pid(pid);
-//            if let Some((_, handle)) = self.processes.remove(&pid) {
+            let _ = self.kill_by_pid(pid);
+            //            if let Some((_, handle)) = self.processes.remove(&pid) {
             // if let Some(handle) = self.processes.get(&pid) {
 
             //     eprintln!("Killing PID: {}", pid);
@@ -1027,33 +1045,40 @@ impl ProcessManager {
 
         // 1. Remove the handle from the map
         let handle_arc = {
-            self.processes.get(&pid).map(|entry| entry.clone()).ok_or_else(|| {
-                println!("Process with PID {} not found in the process map.", pid);
-                let result = CargoProcessResult {
-                    target_name: String::new(), // Placeholder, should be set properly in actual use
-                    cmd: String::new(),         // Placeholder, should be set properly in actual use
-                    args: Vec::new(),           // Placeholder, should be set properly in actual use
-                    pid,
-                    exit_status: None,
-                    diagnostics: Vec::new(),
-                    start_time: None,
-                    end_time: Some(SystemTime::now()),
-                    elapsed_time: None,
-                    terminal_error: None, // Placeholder, should be set properly in actual use
-                    build_finished_time: None, // Placeholder, should be set properly in actual use
-                    build_elapsed: None,  // Placeholder, should be set properly in actual use
-                    runtime_elapsed: None, // Placeholder, should be set properly in actual use
-                    stats: crate::e_cargocommand_ext::CargoStats::default(), // Provide a default instance of CargoStats
-                    build_output_size: 0,        // Default value set to 0
-                    runtime_output_size: 0, // Placeholder, should be set properly in actual use
-                    is_filter: false,       // Placeholder, should be set properly in actual use
-                    is_could_not_compile: false, // Placeholder, should be set properly in actual use
-                };
-                self.record_result(result.clone());
-                anyhow::anyhow!("Process handle with PID {} not found", pid)
-            })?
+            self.processes
+                .get(&pid)
+                .map(|entry| entry.clone())
+                .ok_or_else(|| {
+                    println!("Process with PID {} not found in the process map.", pid);
+                    let result = CargoProcessResult {
+                        target_name: String::new(), // Placeholder, should be set properly in actual use
+                        cmd: String::new(), // Placeholder, should be set properly in actual use
+                        args: Vec::new(),   // Placeholder, should be set properly in actual use
+                        pid,
+                        exit_status: None,
+                        diagnostics: Vec::new(),
+                        start_time: None,
+                        end_time: Some(SystemTime::now()),
+                        elapsed_time: None,
+                        terminal_error: None, // Placeholder, should be set properly in actual use
+                        build_finished_time: None, // Placeholder, should be set properly in actual use
+                        build_elapsed: None, // Placeholder, should be set properly in actual use
+                        runtime_elapsed: None, // Placeholder, should be set properly in actual use
+                        stats: crate::e_cargocommand_ext::CargoStats::default(), // Provide a default instance of CargoStats
+                        build_output_size: 0,        // Default value set to 0
+                        runtime_output_size: 0, // Placeholder, should be set properly in actual use
+                        is_filter: false,       // Placeholder, should be set properly in actual use
+                        is_could_not_compile: false, // Placeholder, should be set properly in actual use
+                    };
+                    self.record_result(result.clone());
+                    anyhow::anyhow!("Process handle with PID {} not found", pid)
+                })?
         };
-        eprintln!("Reference count for PID {} before try_unwrap: {}", pid, Arc::strong_count(&handle_arc));
+        eprintln!(
+            "Reference count for PID {} before try_unwrap: {}",
+            pid,
+            Arc::strong_count(&handle_arc)
+        );
         // 2. Unwrap Arc<Mutex<...>> to get the handle
         let mut handle = match Arc::try_unwrap(handle_arc) {
             Ok(mutex) => match mutex.into_inner() {
@@ -1109,7 +1134,8 @@ impl ProcessManager {
                         handle.result.diagnostics = final_diagnostics.clone();
                         handle.result.exit_status = Some(es);
                         handle.result.end_time = Some(SystemTime::now());
-                        if let (Some(start), Some(end)) = (handle.result.start_time, handle.result.end_time)
+                        if let (Some(start), Some(end)) =
+                            (handle.result.start_time, handle.result.end_time)
                         {
                             handle.result.elapsed_time =
                                 Some(end.duration_since(start).unwrap_or_default());
@@ -1180,8 +1206,10 @@ impl ProcessManager {
                 handle.result.diagnostics = final_diagnostics.clone();
                 handle.result.exit_status = Some(es);
                 handle.result.end_time = Some(SystemTime::now());
-                if let (Some(start), Some(end)) = (handle.result.start_time, handle.result.end_time) {
-                    handle.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
+                if let (Some(start), Some(end)) = (handle.result.start_time, handle.result.end_time)
+                {
+                    handle.result.elapsed_time =
+                        Some(end.duration_since(start).unwrap_or_default());
                 }
                 println!(
                     "\nProcess with PID {} finished {:?} {}",
@@ -1223,7 +1251,11 @@ impl ProcessManager {
     }
 
     pub fn generate_report(&self, create_gist: bool) {
-        let results: Vec<_> = self.results.iter().map(|entry| entry.value().clone()).collect();
+        let results: Vec<_> = self
+            .results
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
         let report = crate::e_reports::generate_markdown_report(&results);
         if let Err(e) = crate::e_reports::save_report_to_file(&report, "run_report.md") {
             eprintln!("Failed to save report: {}", e);
@@ -1341,7 +1373,11 @@ impl ProcessManager {
     /// Print a one‑line summary per warning, numbered with leading zeros.
     pub fn print_prefixed_summary(&self) {
         // 1. Grab a snapshot of the handles (Arc clones) from DashMap.
-        let handles: Vec<_> = self.processes.iter().map(|entry| (entry.key().clone(), entry.value().clone())).collect();
+        let handles: Vec<_> = self
+            .processes
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
 
         // 2. Now we can iterate without holding any DashMap guard.
         for (pid, handle_arc) in handles {
@@ -1354,37 +1390,39 @@ impl ProcessManager {
 
             // Determine width for zero-padding for warnings.
             let warning_width = warnings.len().to_string().len().max(1);
-            println!(
-                "\n\n--- Warnings for PID {} --- {} {}",
-                pid,
-                warning_width,
-                warnings.len()
-            );
+            if warnings.len() > 0 {
+                println!(
+                    "\n\n--- Warnings for PID {} --- {} {}",
+                    pid,
+                    warning_width,
+                    warnings.len()
+                );
 
-            for (i, diag) in warnings.iter().enumerate() {
-                // Format the index with leading zeros for warnings.
-                let index = format!("{:0width$}", i + 1, width = warning_width);
-                // Print the warning with the index.
-                println!("{}: {}", index, diag.message.trim());
+                for (i, diag) in warnings.iter().enumerate() {
+                    // Format the index with leading zeros for warnings.
+                    let index = format!("{:0width$}", i + 1, width = warning_width);
+                    // Print the warning with the index.
+                    println!("{}: {}", index, diag.message.trim());
+                }
             }
-
             // Collect errors.
             let errors: Vec<_> = diags.iter().filter(|d| d.level.eq("error")).collect();
+            if errors.len() > 0 {
+                // Determine width for zero-padding for errors.
+                let error_width = errors.len().to_string().len().max(1);
+                println!(
+                    "\n\n--- Errors for PID {} --- {} {}",
+                    pid,
+                    error_width,
+                    errors.len()
+                );
 
-            // Determine width for zero-padding for errors.
-            let error_width = errors.len().to_string().len().max(1);
-            println!(
-                "\n\n--- Errors for PID {} --- {} {}",
-                pid,
-                error_width,
-                errors.len()
-            );
-
-            for (i, diag) in errors.iter().enumerate() {
-                // Format the index with leading zeros for errors.
-                let index = format!("{:0width$}", i + 1, width = error_width);
-                // Print the error with the index.
-                println!("{}: {}", index, diag.message.trim());
+                for (i, diag) in errors.iter().enumerate() {
+                    // Format the index with leading zeros for errors.
+                    let index = format!("{:0width$}", i + 1, width = error_width);
+                    // Print the error with the index.
+                    println!("{}: {}", index, diag.message.trim());
+                }
             }
         }
     }
@@ -1434,67 +1472,66 @@ impl ProcessManager {
     }
 
     pub fn kill_by_pid(&self, pid: u32) -> anyhow::Result<bool> {
-    // Check if the process is alive
-    if !self.is_alive(pid) {
-        eprintln!("Process with PID {} is not running.", pid);
-        return Ok(false);
-    }
-
-    #[cfg(unix)]
-    {
-        let signals = [
-            Signal::SIGHUP,
-            Signal::SIGINT,
-            Signal::SIGQUIT,
-            Signal::SIGABRT,
-            Signal::SIGKILL,
-            Signal::SIGALRM,
-            Signal::SIGTERM,
-        ];
-        let mut killed = false;
-        for (i, sig) in signals.iter().enumerate() {
-            eprintln!("Attempt {}: sending {:?} to PID {}", i + 1, sig, pid);
-            if let Err(e) = nix_kill(Pid::from_raw(pid as i32), *sig) {
-                eprintln!("Failed to send {:?} to PID {}: {}", sig, pid, e);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if !self.is_alive(pid) {
-                killed = true;
-                break;
-            }
+        // Check if the process is alive
+        if !self.is_alive(pid) {
+            eprintln!("Process with PID {} is not running.", pid);
+            return Ok(false);
         }
-        Ok(killed)
-    }
 
-    #[cfg(windows)]
-    {
-        eprintln!("Attempting to kill PID {} on Windows", pid);
-        let output = std::process::Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
-            .output();
-        match output {
-            Ok(out) => {
-                if out.status.success() {
-                    // Give a moment for the process to terminate
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    Ok(!self.is_alive(pid))
-                } else {
-                    eprintln!(
-                        "taskkill failed for PID {}: {}",
-                        pid,
-                        String::from_utf8_lossy(&out.stderr)
-                    );
+        #[cfg(unix)]
+        {
+            let signals = [
+                Signal::SIGHUP,
+                Signal::SIGINT,
+                Signal::SIGQUIT,
+                Signal::SIGABRT,
+                Signal::SIGKILL,
+                Signal::SIGALRM,
+                Signal::SIGTERM,
+            ];
+            let mut killed = false;
+            for (i, sig) in signals.iter().enumerate() {
+                eprintln!("Attempt {}: sending {:?} to PID {}", i + 1, sig, pid);
+                if let Err(e) = nix_kill(Pid::from_raw(pid as i32), *sig) {
+                    eprintln!("Failed to send {:?} to PID {}: {}", sig, pid, e);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                if !self.is_alive(pid) {
+                    killed = true;
+                    break;
+                }
+            }
+            Ok(killed)
+        }
+
+        #[cfg(windows)]
+        {
+            eprintln!("Attempting to kill PID {} on Windows", pid);
+            let output = std::process::Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output();
+            match output {
+                Ok(out) => {
+                    if out.status.success() {
+                        // Give a moment for the process to terminate
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        Ok(!self.is_alive(pid))
+                    } else {
+                        eprintln!(
+                            "taskkill failed for PID {}: {}",
+                            pid,
+                            String::from_utf8_lossy(&out.stderr)
+                        );
+                        Ok(false)
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to execute taskkill for PID {}: {}", pid, e);
                     Ok(false)
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to execute taskkill for PID {}: {}", pid, e);
-                Ok(false)
-            }
         }
     }
-}
-
 }
 
 // #[cfg(feature = "uses_async")]
@@ -1522,4 +1559,3 @@ impl Drop for CursorGuard {
         }
     }
 }
-

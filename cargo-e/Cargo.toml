@@ -1,6 +1,6 @@
 [package]
 name = "cargo-e"
-version = "0.2.40"
+version = "0.2.41"
 edition = "2021"
 rust-version = "1.85.1"
 description = "e is for Example. A command-line tool for running and exploring source, examples, and binaries from Rust projects. It will run the first example, if no options are given."

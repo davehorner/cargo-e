@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.41](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.40...cargo-e-v0.2.41) - 2025-06-12
+
+### Added
+
+- add new CLI arguments for manifest path, target, and JSON output in cargo-e; if explicit example is specified, it will not continue to a cli loop; remove debug output I missed.
+
 ## [0.2.40](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.39...cargo-e-v0.2.40) - 2025-06-09
 
 ### Added

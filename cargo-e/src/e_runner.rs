@@ -488,12 +488,6 @@ pub fn run_example(
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
     let a_blder = Arc::new(builder.clone());
     let pid = a_blder.run(|_pid, handle| {
-        println!(
-            "Registering process handle for PID {} with command: {}",
-            _pid,
-            full_command
-        );
-        println!("handle: {:?}", handle);
         manager.register(handle);
     })?;
     let result = manager.wait(pid, None)?;
@@ -504,8 +498,8 @@ pub fn run_example(
         .map_or(false, |status| status.code() == Some(101))
     {
         println!(
-            "ProcessManager senses pid {} cargo error, running again to capture and analyze {:?}",
-            pid,result,
+            "ProcessManager senses pid {} cargo error, running again to capture and analyze",
+            pid,
         );
         match builder.clone().capture_output() {
             Ok(output) => {
@@ -755,7 +749,7 @@ pub fn run_example(
                     use std::io::Write;
                     let _ = stdin.write_all(card.as_bytes());
                     if let Some(global) = crate::GLOBAL_EWINDOW_PIDS.get() {
-                        global.insert(child.id(),child.id());
+                        global.insert(child.id(), child.id());
                         println!("[DEBUG] Added pid {} to GLOBAL_EWINDOW_PIDS", pid);
                     } else {
                         eprintln!("[DEBUG] GLOBAL_EWINDOW_PIDS is not initialized");
@@ -798,7 +792,6 @@ pub fn run_example(
 pub fn wait_for_tts_to_finish(max_wait_ms: u64) {
     let tts_mutex = crate::GLOBAL_TTS.get();
     if tts_mutex.is_none() {
-        eprintln!("TTS is not initialized, skipping wait.");
         return;
     } else {
         println!("Waiting for TTS to finish speaking...");
@@ -1189,7 +1182,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
             // Run the child process in a separate thread to allow Ctrl+C handling
             let handle = thread::spawn(move || {
                 let extra_str_slice_cloned: Vec<String> = extra_str_slice.clone();
-                let child = run_scriptisto(
+                let mut child = run_scriptisto(
                     &relative,
                     &extra_str_slice_cloned
                         .iter()
@@ -1200,7 +1193,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
                     eprintln!("Failed to run rust-script: {:?}", &explicit);
                     std::process::exit(1); // Exit with an error code
                 });
-
+                child.wait();
                 // // Lock global to store the child process
                 // {
                 //     let mut global = GLOBAL_CHILD.lock().unwrap();

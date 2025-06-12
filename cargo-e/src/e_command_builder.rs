@@ -2,10 +2,10 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::time::SystemTime;
@@ -160,9 +160,8 @@ impl CargoCommandBuilder {
                     println!("(STDOUT) Dispatcher caught: {}", line);
                     // Use a regex to capture a URL from the line.
                     // Move the regex construction outside the closure to avoid lifetime issues.
-                    static URL_REGEX: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-                        Regex::new(r"(http://[^\s]+)").unwrap()
-                    });
+                    static URL_REGEX: once_cell::sync::Lazy<Regex> =
+                        once_cell::sync::Lazy::new(|| Regex::new(r"(http://[^\s]+)").unwrap());
                     if let Some(url_caps) = URL_REGEX.captures(line) {
                         if let Some(url_match) = url_caps.get(1) {
                             let url = url_match.as_str();
@@ -181,22 +180,27 @@ impl CargoCommandBuilder {
                         let now = SystemTime::now();
                         stats.build_finished_time = Some(now);
                         // Add debug statements to trace stats changes
-                        println!("[DEBUG] Updated stats.build_finished_time: {:?}", stats.build_finished_time);
+                        println!(
+                            "[DEBUG] Updated stats.build_finished_time: {:?}",
+                            stats.build_finished_time
+                        );
                     }
                     None
                 },
-            ) as Box<
-                dyn Fn(
-                        &str,
-                        Option<regex::Captures>,
-                        std::sync::Arc<std::sync::atomic::AtomicBool>,
-                        std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
-                        Option<crate::e_eventdispatcher::CallbackResponse>,
-                    ) -> Option<crate::e_eventdispatcher::CallbackResponse>
-                    + Send
-                    + Sync
-                    + 'static,
-            >
+            )
+                as Box<
+                    dyn Fn(
+                            &str,
+                            Option<regex::Captures>,
+                            std::sync::Arc<std::sync::atomic::AtomicBool>,
+                            std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
+                            Option<crate::e_eventdispatcher::CallbackResponse>,
+                        )
+                            -> Option<crate::e_eventdispatcher::CallbackResponse>
+                        + Send
+                        + Sync
+                        + 'static,
+                >,
         );
 
         stdout_dispatcher.add_callback(
@@ -210,7 +214,10 @@ impl CargoCommandBuilder {
                     let now = SystemTime::now();
                     stats.build_finished_time = Some(now);
                     // Add debug statements to trace stats changes
-                    println!("[DEBUG] Updated stats.build_finished_time: {:?}", stats.build_finished_time);
+                    println!(
+                        "[DEBUG] Updated stats.build_finished_time: {:?}",
+                        stats.build_finished_time
+                    );
                 }
                 None
             }),
@@ -290,118 +297,122 @@ impl CargoCommandBuilder {
         let pid_for_panic = self.pid;
         stderr_dispatcher.add_callback(
             r"^thread '([^']+)' panicked at (.+):(\d+):(\d+):$",
-            Box::new(move |line, captures, multiline_flag, stats, prior_response| {
-                multiline_flag.store(false, Ordering::Relaxed);
+            Box::new(
+                move |line, captures, multiline_flag, stats, prior_response| {
+                    multiline_flag.store(false, Ordering::Relaxed);
 
-                if let Some(caps) = captures {
-                    multiline_flag.store(true, Ordering::Relaxed); // the next line is the panic message
-                    let thread = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
-                    let message = caps.get(2).map(|m| m.as_str()).unwrap_or("unknown panic");
-                    let file = caps.get(3).map(|m| m.as_str()).unwrap_or("unknown file");
-                    let line_num = caps
-                        .get(4)
-                        .map(|m| m.as_str())
-                        .unwrap_or("0")
-                        .parse()
-                        .unwrap_or(0);
-                    let col_num = caps
-                        .get(5)
-                        .map(|m| m.as_str())
-                        .unwrap_or("0")
-                        .parse()
-                        .unwrap_or(0);
-                    println!("\n\n\n");
-                    println!("{}", line);
-                    // Use a global TTS instance via OnceCell for program lifetime
+                    if let Some(caps) = captures {
+                        multiline_flag.store(true, Ordering::Relaxed); // the next line is the panic message
+                        let thread = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
+                        let message = caps.get(2).map(|m| m.as_str()).unwrap_or("unknown panic");
+                        let file = caps.get(3).map(|m| m.as_str()).unwrap_or("unknown file");
+                        let line_num = caps
+                            .get(4)
+                            .map(|m| m.as_str())
+                            .unwrap_or("0")
+                            .parse()
+                            .unwrap_or(0);
+                        let col_num = caps
+                            .get(5)
+                            .map(|m| m.as_str())
+                            .unwrap_or("0")
+                            .parse()
+                            .unwrap_or(0);
+                        println!("\n\n\n");
+                        println!("{}", line);
+                        // Use a global TTS instance via OnceCell for program lifetime
 
-                    #[cfg(feature = "uses_tts")]
-                    {
+                        #[cfg(feature = "uses_tts")]
+                        {
+                            let mut say_something = true;
+                            if let Some(cli) = crate::GLOBAL_CLI.get() {
+                                if cli.no_tts {
+                                    say_something = false;
+                                }
+                            }
+                            if say_something {
+                                let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                                    std::sync::Mutex::new(
+                                        tts::Tts::default().expect("TTS engine failure"),
+                                    )
+                                });
+                                // Extract the filename without extension
+                                let filename = Path::new(message)
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("unknown file");
+                                let speech = format!(
+                                    "thread {} panic, {} line {}",
+                                    thread, filename, line_num
+                                );
+                                println!("TTS: {}", speech);
+                                crate::e_runner::wait_for_tts_to_finish(15000);
+                                let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                                let _ = tts.speak(&speech, false);
+                                drop(tts);
+                            }
+                        }
+
+                        println!(
+                            "Panic detected: thread='{}', message='{}', file='{}:{}:{}'",
+                            thread, message, file, line_num, col_num
+                        );
+                        println!("\n\n\n");
+                        Some(CallbackResponse {
+                            callback_type: CallbackType::Error,
+                            message: Some(format!(
+                                "thread '{}' panicked at {} ({}:{}:{})",
+                                thread, message, file, line_num, col_num
+                            )),
+                            file: Some(message.to_string()),
+                            line: Some(file.parse::<usize>().unwrap_or(0)),
+                            column: Some(line_num),
+                            suggestion: None,
+                            terminal_status: None,
+                        })
+                    } else {
+                        let context = ThreadLocalContext::get_context();
+                        let mut show_window = true;
                         let mut say_something = true;
                         if let Some(cli) = crate::GLOBAL_CLI.get() {
+                            if cli.no_window {
+                                show_window = false;
+                            }
                             if cli.no_tts {
                                 say_something = false;
                             }
                         }
-                        if say_something {
-                            let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
-                                std::sync::Mutex::new(
-                                    tts::Tts::default().expect("TTS engine failure"),
-                                )
-                            });
-                            // Extract the filename without extension
-                            let filename = Path::new(message)
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("unknown file");
-                            let speech =
-                                format!("thread {} panic, {} line {}", thread, filename, line_num);
-                            println!("TTS: {}", speech);
-                            crate::e_runner::wait_for_tts_to_finish(15000);
-                            let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
-                            let _ = tts.speak(&speech, false);
-                            drop(tts);
+                        if show_window {
+                            show_graphical_panic(
+                                line.to_string(),
+                                prior_response,
+                                PathBuf::from(&context.manifest_path),
+                                pid_for_panic.unwrap_or_default(),
+                                stats.clone(),
+                            );
+                            println!("[DEBUG] dispatch stats: {:?}", stats);
                         }
-                    }
+                        #[cfg(feature = "uses_tts")]
+                        {
+                            if say_something {
+                                let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
+                                    std::sync::Mutex::new(
+                                        tts::Tts::default().expect("TTS engine failure"),
+                                    )
+                                });
 
-                    println!(
-                        "Panic detected: thread='{}', message='{}', file='{}:{}:{}'",
-                        thread, message, file, line_num, col_num
-                    );
-                    println!("\n\n\n");
-                    Some(CallbackResponse {
-                        callback_type: CallbackType::Error,
-                        message: Some(format!(
-                            "thread '{}' panicked at {} ({}:{}:{})",
-                            thread, message, file, line_num, col_num
-                        )),
-                        file: Some(message.to_string()),
-                        line: Some(file.parse::<usize>().unwrap_or(0)),
-                        column: Some(line_num),
-                        suggestion: None,
-                        terminal_status: None,
-                    })
-                } else {
-                    let context = ThreadLocalContext::get_context();
-                    let mut show_window = true;
-                    let mut say_something = true;
-                    if let Some(cli) = crate::GLOBAL_CLI.get() {
-                        if cli.no_window {
-                            show_window = false;
+                                let speech = format!("panic says {}", line);
+                                println!("TTS: {}", speech);
+                                crate::e_runner::wait_for_tts_to_finish(15000);
+                                let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
+                                let _ = tts.speak(&speech, true);
+                            }
                         }
-                        if cli.no_tts {
-                            say_something = false;
-                        }
-                    }
-                    if show_window {
-                        show_graphical_panic(
-                            line.to_string(),
-                            prior_response,
-                            PathBuf::from(&context.manifest_path),
-                            pid_for_panic.unwrap_or_default(),
-                            stats.clone(),
-                        );
-                        println!("[DEBUG] dispatch stats: {:?}", stats);
-                    }
-                    #[cfg(feature = "uses_tts")]
-                    {
-                        if say_something {
-                            let tts_mutex = crate::GLOBAL_TTS.get_or_init(|| {
-                                std::sync::Mutex::new(
-                                    tts::Tts::default().expect("TTS engine failure"),
-                                )
-                            });
 
-                            let speech = format!("panic says {}", line);
-                            println!("TTS: {}", speech);
-                            crate::e_runner::wait_for_tts_to_finish(15000);
-                            let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
-                            let _ = tts.speak(&speech, true);
-                        }
+                        None
                     }
-
-                    None
-                }
-            }),
+                },
+            ),
         );
 
         // Add a callback to detect "could not compile" errors
@@ -1990,9 +2001,7 @@ impl CargoCommandBuilder {
         // Return the combined string, even if exit was !success
         Ok(all)
     }
-
 }
-
 
 fn show_graphical_panic(
     line: String,
@@ -2091,7 +2100,7 @@ fn show_graphical_panic(
                 let pid = child.id();
                 // Add to global e_window pid list if available
                 if let Some(global) = crate::GLOBAL_EWINDOW_PIDS.get() {
-                    global.insert(pid,pid);
+                    global.insert(pid, pid);
                     println!("[DEBUG] Added pid {} to GLOBAL_EWINDOW_PIDS", pid);
                 } else {
                     eprintln!("[DEBUG] GLOBAL_EWINDOW_PIDS is not initialized");
