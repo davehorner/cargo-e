@@ -33,11 +33,14 @@ use crossterm::terminal::size;
 use e_crate_version_checker::prelude::*;
 use futures::executor::block_on;
 use once_cell::sync::Lazy;
+#[cfg(feature = "uses_serde")]
 use serde_json::json;
+use std::fs;
 use std::fs::File;
 use std::io::{self, Write};
 #[cfg(not(target_os = "windows"))]
 use std::os::fd::AsRawFd;
+use std::path::Path;
 use std::sync::Mutex;
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::HANDLE;
@@ -438,8 +441,25 @@ pub fn main() -> anyhow::Result<()> {
         cli.workspace,
         num_threads,
         cli.json_all_targets,
+        false,
     )
     .unwrap_or_default();
+
+    if let Some(scan_dir) = &cli.scan_dir {
+        let scanned_targets = cargo_e::e_discovery::scan_directory_for_targets(
+            scan_dir,
+            cli.quiet || cli.json_all_targets,
+        );
+        if scanned_targets.is_empty() {
+            eprintln!("No targets found in scanned directories.");
+        } else {
+            examples.extend(scanned_targets);
+            if !(cli.quiet || cli.json_all_targets) {
+                println!("Scanned targets from directory: {}", scan_dir.display());
+            }
+        }
+    }
+
     if cli.parse_available {
         use cargo_e::e_collect::collect_stdin_available;
         let manifest_path = PathBuf::from(
@@ -504,7 +524,7 @@ pub fn main() -> anyhow::Result<()> {
         .clone()
         .into_iter()
         .filter(|e| {
-            let key = (e.name.clone(), e.extended, e.kind, e.toml_specified);
+            let key = (e.name.clone(), e.kind); //, e.extended //, e.toml_specified
             seen.insert(key)
         })
         .collect();
@@ -525,10 +545,31 @@ pub fn main() -> anyhow::Result<()> {
         }
     }
     // Handle --json-targets: print all discovered targets as JSON and exit
+    #[cfg(feature = "uses_serde")]
     if cli.json_all_targets {
         let json_targets = unique_examples
             .iter()
             .map(|t| {
+                let command = {
+                    use cargo_e::e_command_builder::CargoCommandBuilder;
+                    let manifest_path = t
+                        .manifest_path
+                        .canonicalize()
+                        .unwrap_or_else(|_| t.manifest_path.clone());
+                    let builder = CargoCommandBuilder::new(
+                        &t.name,
+                        &manifest_path,
+                        &cli.subcommand,
+                        cli.filter,
+                        cli.cached,
+                        cli.default_binary_is_runner,
+                        cli.quiet || cli.json_all_targets,
+                    )
+                    .with_target(&t)
+                    .with_cli(&cli)
+                    .with_extra_args(&cli.extra);
+                    builder.injected_args()
+                };
                 json!({
                     "name": t.name,
                     "display_name": t.display_name,
@@ -537,6 +578,8 @@ pub fn main() -> anyhow::Result<()> {
                     "extended": t.extended,
                     "toml_specified": t.toml_specified,
                     "origin": t.origin.as_ref().map(|o| format!("{:?}", o)),
+                    "program": command.0,
+                    "args": command.1,
                 })
             })
             .collect::<Vec<_>>();
@@ -741,15 +784,14 @@ fn do_tui_and_exit(manager: Arc<ProcessManager>, cli: &Cli, unique_examples: &[C
             eprintln!("TUI Error: {:?}", e);
             std::process::exit(1);
         }
-        std::process::exit(0);
     }
     #[cfg(not(feature = "tui"))]
     {
         // If TUI is not enabled, just print a message and exit.
         eprintln!("TUI is not supported in this build. Exiting.");
         cli_loop(manager, &cli, &unique_examples, &[], &[]);
-        std::process::exit(0);
     }
+    std::process::exit(0);
 }
 
 fn provide_notice_of_no_examples(
@@ -819,6 +861,7 @@ fn run_equivalent_example(cli: &Cli) -> Result<(), Box<dyn Error>> {
 /// The result returned by the selection loop.
 enum LoopResult {
     Quit,
+    Continue,
     Run(std::process::ExitStatus, usize), // second value is the current offset/page index
 }
 
@@ -832,15 +875,49 @@ fn select_and_run_target_loop(
     start_offset: usize, // new parameter for starting page offset
 ) -> Result<LoopResult, Box<dyn Error + Send + Sync>> {
     let current_offset = start_offset;
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let prompt_loop = format!(
         "== # to run, tui, e<#> edit, i<#> info, 'q' to quit (waiting {} seconds) ",
         cli.wait
     );
+
+    // Determine if there are multiple manifest paths
+    let manifest_paths: Vec<_> = unique_targets
+        .iter()
+        .map(|t| t.manifest_path.clone())
+        .collect();
+    let has_multiple_manifests = manifest_paths
+        .iter()
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+        > 1;
+
     // Build a combined list: examples first, then binaries.
     let mut combined: Vec<(String, &CargoTarget)> = Vec::new();
     for target in unique_targets {
         let label = target.display_label();
-        combined.push((label, target));
+        let manifest_relative = if has_multiple_manifests {
+            target
+                .manifest_path
+                .strip_prefix(&cwd)
+                .unwrap_or(&target.manifest_path)
+                .parent()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| String::from("<unknown>"))
+        } else {
+            String::new()
+        };
+        let manifest_relative = manifest_relative
+            .trim_start_matches("./")
+            .trim_start_matches(".\\");
+        let manifest_relative =
+            manifest_relative.replace(['/', '\\'], &std::path::MAIN_SEPARATOR.to_string());
+        let display_label = if has_multiple_manifests && !manifest_relative.is_empty() {
+            format!("{} {}", manifest_relative, label)
+        } else {
+            label
+        };
+        combined.push((display_label, target));
     }
 
     combined.sort_by(|(a, ex_a), (b, ex_b)| {
@@ -853,7 +930,8 @@ fn select_and_run_target_loop(
     // Determine the required padding width based on the number of targets
     let pad_width = combined.len().to_string().len();
     // Load run history from file.
-    let manifest_dir = cargo_e::e_manifest::find_manifest_dir()?;
+    let manifest_dir = cargo_e::e_manifest::find_manifest_dir()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap());
     let history_path = manifest_dir.join("run_history.txt");
     let run_history = cargo_e::e_parser::read_run_history(&history_path);
 
@@ -1041,7 +1119,8 @@ fn select_and_run_target_loop(
     process_input(manager, &final_input, &combined, cli, 0)
 }
 pub fn append_run_history(target_name: &str) -> io::Result<()> {
-    let manifest_dir = cargo_e::e_manifest::find_manifest_dir()?;
+    let manifest_dir = cargo_e::e_manifest::find_manifest_dir()
+        .unwrap_or_else(|_| std::env::current_dir().expect("Failed to get current directory"));
     let history_path = manifest_dir.join("run_history.txt");
 
     let mut file = fs::OpenOptions::new()
@@ -1126,7 +1205,7 @@ fn process_input(
             }
         } else {
             eprintln!("error: Invalid edit command: {}", trimmed);
-            Ok(LoopResult::Quit)
+            Ok(LoopResult::Continue)
         }
     } else if let Ok(rel_index) = trimmed.parse::<usize>() {
         let abs_index = if cli.relative_numbers {
@@ -1136,7 +1215,7 @@ fn process_input(
         };
         if abs_index > combined.len() {
             eprintln!("invalid number: {}", trimmed);
-            Ok(LoopResult::Quit)
+            Ok(LoopResult::Continue)
         } else {
             let (target_type, target) = &combined[abs_index];
             if cli.print_program_name {
@@ -1155,7 +1234,7 @@ fn process_input(
             //PROMPT let _ = cargo_e::e_prompts::prompt(&message, cli.wait)?;
 
             Ok(LoopResult::Run(
-                status.unwrap_or(<std::process::ExitStatus as process::ExitStatusExt>::from_raw(0)),
+                status.unwrap_or(<std::process::ExitStatus as process::ExitStatusExt>::from_raw(1)),
                 offset,
             ))
         }
@@ -1200,6 +1279,10 @@ fn cli_loop(
                     println!("finished with status: {:?}", status.code());
                     continue;
                 }
+            }
+            Ok(LoopResult::Continue) => {
+                // Continue to the next iteration of the loop
+                continue;
             }
             Err(err) => {
                 eprintln!("Error: {:?}", err);

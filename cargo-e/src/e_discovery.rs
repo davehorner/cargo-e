@@ -284,3 +284,146 @@ pub fn is_extended_target(manifest_path: &Path, candidate: &Path) -> bool {
 //         assert!(example_target.is_some());
 //     }
 // }
+
+pub fn scan_directory_for_targets(scan_dir: &Path, be_silent: bool) -> Vec<CargoTarget> {
+    let mut targets = Vec::new();
+    let mut dirs_to_visit = vec![scan_dir.to_path_buf()]; // Use a stack for iterative traversal
+
+    // Collect all manifest paths found in the directory tree
+    let mut manifest_paths = Vec::new();
+
+    while let Some(current_dir) = dirs_to_visit.pop() {
+        if let Ok(entries) = fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // // Skip directories that contain ".." or the system separator in their path
+                    // if path.to_string_lossy().contains(&format!("..{}", std::path::MAIN_SEPARATOR)) {
+                    //     if let Ok(current_dir) = std::env::current_dir() {
+                    //         // Avoid infinite recursion if the scan_dir is the current working directory
+                    //         println!(
+                    //             "DEBUG: scan_dir = {}, current_dir = {}, path = {}",
+                    //             scan_dir.display(),
+                    //             current_dir.display(),
+                    //             path.display()
+                    //         );
+                    //         // and we're traversing into it again (e.g., via symlink or path confusion)
+                    //         if path == current_dir {
+                    //             continue;
+                    //         }
+                    //     }
+                    // }
+                    // Skip irrelevant directories
+                    if path.file_name().map_or(false, |name| {
+                        name == "node_modules" || name == "target" || name == "build"
+                    }) {
+                        continue;
+                    }
+                    dirs_to_visit.push(path); // Add subdirectory to stack
+                } else if path.file_name().map_or(false, |name| name == "Cargo.toml") {
+                    manifest_paths.push(Some(path));
+                }
+            }
+        } else if !be_silent {
+            eprintln!("Failed to read directory: {}", current_dir.display());
+        }
+    }
+    // Print the manifest paths and wait for 5 seconds
+    if !be_silent {
+        for manifest in &manifest_paths {
+            if let Some(path) = manifest {
+                println!("Found Cargo.toml at: {}", path.display());
+            }
+        }
+    }
+    // Now call the parallel collector if any manifests were found
+    if !manifest_paths.is_empty() {
+        #[cfg(feature = "concurrent")]
+        {
+            let file_targets = crate::e_collect::collect_all_targets_parallel(
+                manifest_paths,
+                false, // workspace
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4),
+                be_silent,
+            )
+            .unwrap_or_default();
+
+            if !be_silent {
+                println!(
+                    "Found {} targets in scanned directories",
+                    file_targets.len()
+                );
+            }
+            targets.extend(file_targets);
+        }
+        #[cfg(not(feature = "concurrent"))]
+        {
+            for manifest in manifest_paths {
+                if let Some(path) = manifest {
+                    match crate::e_collect::collect_all_targets(
+                        Some(path.clone()),
+                        false, // workspace
+                        std::thread::available_parallelism()
+                            .map(|n| n.get())
+                            .unwrap_or(4),
+                        false, // be_silent
+                        false, // print_parent
+                    ) {
+                        Ok(file_targets) => {
+                            if !be_silent {
+                                println!(
+                                    "Found {} targets in {}",
+                                    file_targets.len(),
+                                    path.display()
+                                );
+                            }
+                            targets.extend(file_targets);
+                        }
+                        Err(e) => {
+                            eprintln!("Error processing {}: {}", path.display(), e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    targets
+}
+//                     dirs_to_visit.push(path); // Add subdirectory to stack
+//                 } else if path.file_name().map_or(false, |name| name == "Cargo.toml") {
+//                     if !be_silent {
+//                       println!("Found Cargo.toml at: {}", path.display());
+//                     }
+//                     match crate::e_collect::collect_all_targets(
+//                         Some(path.clone()),
+//                         false,
+//                         std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+//                         false,
+//                     ) {
+//                         Ok(file_targets) => {
+//                             if !be_silent {
+//                             println!(
+//                                 "Found {} targets in {}",
+//                                 file_targets.len(),
+//                                 path.display()
+//                             );
+//                             }
+//                             targets.extend(file_targets);
+//                         }
+//                         Err(e) => {
+//                             eprintln!("Error processing {}: {}", path.display(), e);
+//                         }
+//                     }
+//                 }
+//             }
+//         } else {
+//             eprintln!("Failed to read directory: {}", current_dir.display());
+//         }
+//     }
+
+//     targets
+
+// }

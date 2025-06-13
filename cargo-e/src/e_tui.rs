@@ -95,7 +95,8 @@ pub mod tui_interactive {
         }
         exs.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         // Determine the directory containing the Cargo.toml at runtime.
-        let manifest_dir = crate::e_manifest::find_manifest_dir()?;
+        let manifest_dir = crate::e_manifest::find_manifest_dir()
+            .unwrap_or_else(|_| std::env::current_dir().expect("Failed to get current directory"));
         let history_path = manifest_dir.join("run_history.txt");
         let mut run_history: HashSet<String> = HashSet::new();
         if let Ok(contents) = fs::read_to_string(&history_path) {
@@ -535,6 +536,7 @@ pub mod tui_interactive {
             cli.filter,
             cli.cached,
             cli.default_binary_is_runner,
+            cli.quiet || cli.json_all_targets,
         )
         .with_target(target)
         .with_cli(cli);

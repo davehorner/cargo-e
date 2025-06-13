@@ -646,29 +646,74 @@ pub fn dedup_single_file_over_default_binary(targets: Vec<CargoTarget>) -> Vec<C
     map.into_values().collect()
 }
 
+#[cfg(feature = "concurrent")]
+pub fn collect_all_targets_parallel(
+    manifest_paths: Vec<Option<std::path::PathBuf>>,
+    use_workspace: bool,
+    max_concurrency: usize,
+    be_silent: bool,
+) -> Result<Vec<CargoTarget>, Box<dyn std::error::Error>> {
+    use std::sync::mpsc;
+    use threadpool::ThreadPool;
+
+    let pool = ThreadPool::new(max_concurrency);
+    let (tx, rx) = mpsc::channel();
+
+    for manifest_path in manifest_paths {
+        let tx = tx.clone();
+        pool.execute(move || {
+            let result = collect_all_targets(
+                manifest_path,
+                use_workspace,
+                max_concurrency,
+                be_silent,
+                true,
+            );
+            if let Ok(targets) = result {
+                tx.send(targets).expect("Failed to send targets");
+            }
+        });
+    }
+
+    drop(tx);
+    pool.join();
+
+    let mut all_targets = Vec::new();
+    for targets in rx {
+        all_targets.extend(targets);
+    }
+
+    Ok(all_targets)
+}
+
 pub fn collect_all_targets(
     manifest_path: Option<std::path::PathBuf>,
     use_workspace: bool,
     max_concurrency: usize,
     be_silent: bool,
+    print_parent: bool,
 ) -> Result<Vec<CargoTarget>, Box<dyn std::error::Error>> {
     use std::path::PathBuf;
     let mut manifest_infos: Vec<(String, PathBuf, bool)> = Vec::new();
 
     // Locate the package manifest in the current directory.
-    let mut bi = PathBuf::from(crate::locate_manifest(false)?);
+    let bi = if let Some(ref path) = manifest_path {
+        path.clone()
+    } else {
+        PathBuf::from(crate::locate_manifest(false)?)
+    };
     // We're in workspace mode if the flag is set or if the current Cargo.toml is a workspace manifest.
     let in_workspace = use_workspace || e_workspace::is_workspace_manifest(bi.as_path());
 
-    let manifest_path_cloned = manifest_path.clone();
-    if manifest_path_cloned.is_some() {
-        bi.clone_from(&manifest_path_cloned.as_ref().unwrap());
-    }
-
+    // let manifest_path_cloned = manifest_path.clone();
+    // if manifest_path_cloned.is_some() {
+    //     bi.clone_from(&manifest_path_cloned.as_ref().unwrap());
+    // }
+    // Print some info about the manifest and workspace state
     if in_workspace {
         // Use an explicit workspace manifest if requested; otherwise, assume the current Cargo.toml is the workspace manifest.
-        let ws = if manifest_path_cloned.is_some() {
-            manifest_path_cloned.unwrap()
+        let ws = if manifest_path.is_some() {
+            manifest_path.unwrap()
         } else if use_workspace {
             PathBuf::from(crate::locate_manifest(true)?)
         } else {
@@ -701,7 +746,18 @@ pub fn collect_all_targets(
     } else {
         // Not in workspace mode: simply print the package manifest.
         if !be_silent {
-            println!("package: {}", format_package(&bi));
+            if print_parent {
+                let parent_str = bi.display().to_string();
+                let parent_str = parent_str
+                    .trim_start_matches(".\\")
+                    .trim_start_matches("./");
+                let parent_str = parent_str
+                    .replace("\\", std::path::MAIN_SEPARATOR_STR)
+                    .replace("/", std::path::MAIN_SEPARATOR_STR);
+                println!("package: {}", parent_str);
+            } else {
+                println!("package: {}", format_package(&bi));
+            }
         }
         manifest_infos.push(("-".to_string(), bi.clone(), false));
     }

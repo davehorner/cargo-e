@@ -134,7 +134,7 @@ impl ProcessManager {
         // eprintln!("[ProcessManager::drop] Dropping ProcessManager and cleaning up processes.");
         // Try to kill all managed processes.
         for entry in self.processes.iter() {
-            let pid = *entry.key();
+            // let pid = *entry.key();
             // eprintln!("[ProcessManager::drop] Attempting to kill PID {}", pid);
             if let Ok(mut handle) = entry.value().try_lock() {
                 let _ = handle.kill();
@@ -172,6 +172,15 @@ impl ProcessManager {
                             "ctrlc> signal received.  {}",
                             self_.signalled_count.load(Ordering::SeqCst)
                         );
+                        // Record the signal time and check if two signals were received in quick succession
+                        self_.signal_times.record_signal();
+                        if let Some(duration) = self_.signal_times.time_between_signals() {
+                            // If the last two signals were within .5 seconds, exit immediately
+                            if duration < Duration::from_millis(500) {
+                                println!("ctrlc> Received two signals in quick succession, exiting immediately.");
+                                std::process::exit(1);
+                            }
+                        }
                         self_.handle_signal();
                     }
                 });
@@ -192,32 +201,37 @@ impl ProcessManager {
             .map(|entry| (*entry.key(), entry.value().clone()))
             .collect();
         for (pid, handle) in processes {
-            println!("ctrlc> Terminating process with PID: {}", pid);
             if let Ok(mut h) = handle.try_lock() {
+                if h.removed {
+                    continue;
+                }
+
+                println!("ctrlc> Terminating process with PID: {}", pid);
                 let _ = h.kill();
-                let final_diagnostics = {
-                    let diag_lock = match h.diagnostics.try_lock() {
-                        Ok(lock) => lock.clone(),
-                        Err(e) => {
-                            eprintln!("Failed to acquire diagnostics lock for PID {}: {}", pid, e);
-                            Vec::new()
-                        }
-                    };
-                    h.result.diagnostics = diag_lock.clone();
-
-                    if let Some(exit_status) = h.child.try_wait().ok().flatten() {
-                        h.result.exit_status = Some(exit_status);
-                    }
-
-                    h.result.end_time = Some(SystemTime::now());
-                    if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
-                        h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
-                    }
-                    self.record_result(h.result.clone());
-                    if let Some(manager) = GLOBAL_MANAGER.get() {
-                        manager.e_window_kill_all();
+                h.removed = true;
+                let diag_lock = match h.diagnostics.try_lock() {
+                    Ok(lock) => lock.clone(),
+                    Err(e) => {
+                        eprintln!("Failed to acquire diagnostics lock for PID {}: {}", pid, e);
+                        Vec::new()
                     }
                 };
+                h.result.diagnostics = diag_lock.clone();
+
+                if let Some(exit_status) = h.child.try_wait().ok().flatten() {
+                    h.result.exit_status = Some(exit_status);
+                }
+
+                h.result.end_time = Some(SystemTime::now());
+                if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
+                    h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
+                }
+                self.record_result(h.result.clone());
+                if let Some(manager) = GLOBAL_MANAGER.get() {
+                    manager.e_window_kill_all();
+                }
+            } else {
+                eprintln!("Failed to acquire lock for PID {}", pid);
             }
             //self.processes.remove(&pid);
         }
@@ -320,6 +334,11 @@ impl ProcessManager {
         // Here, try_wait returns a Result<Option<ExitStatus>, std::io::Error>.
         // The '?' operator will convert any std::io::Error to anyhow::Error automatically.
         let status = handle.child.try_wait()?;
+        if let Some(status) = status {
+            if status.success() || status.code().is_some() {
+                handle.removed = true;
+            }
+        }
         drop(handle);
         // Return the exit status (or None) wrapped in Ok.
         Ok(status)
@@ -977,9 +996,17 @@ impl ProcessManager {
 
     pub fn kill_all(&self) {
         let pids: Vec<u32> = self.processes.iter().map(|entry| *entry.key()).collect();
-        println!("Killing all processes: {:?}", pids);
+        // println!("Killing all processes: {:?}", pids);
         self.e_window_kill_all();
         for pid in pids {
+            // Check if the process is marked as removed before killing
+            if let Some(handle_arc) = self.processes.get(&pid) {
+                if let Ok(h) = handle_arc.try_lock() {
+                    if h.removed {
+                        continue;
+                    }
+                }
+            }
             println!("Killing PID: {}", pid);
             let _ = self.kill_by_pid(pid);
             //            if let Some((_, handle)) = self.processes.remove(&pid) {
@@ -1074,11 +1101,6 @@ impl ProcessManager {
                     anyhow::anyhow!("Process handle with PID {} not found", pid)
                 })?
         };
-        eprintln!(
-            "Reference count for PID {} before try_unwrap: {}",
-            pid,
-            Arc::strong_count(&handle_arc)
-        );
         // 2. Unwrap Arc<Mutex<...>> to get the handle
         let mut handle = match Arc::try_unwrap(handle_arc) {
             Ok(mutex) => match mutex.into_inner() {
@@ -1140,6 +1162,7 @@ impl ProcessManager {
                             handle.result.elapsed_time =
                                 Some(end.duration_since(start).unwrap_or_default());
                         }
+                        handle.removed = true;
                         println!(
                             "\nProcess with PID {} finished {:?} {}",
                             pid,
@@ -1211,6 +1234,7 @@ impl ProcessManager {
                     handle.result.elapsed_time =
                         Some(end.duration_since(start).unwrap_or_default());
                 }
+                handle.removed = true;
                 println!(
                     "\nProcess with PID {} finished {:?} {}",
                     pid,
@@ -1227,6 +1251,7 @@ impl ProcessManager {
                 handle.result.exit_status = None;
                 handle.result.end_time = Some(SystemTime::now());
                 self.e_window_kill(pid);
+                handle.removed = true;
                 break;
             }
 
@@ -1341,7 +1366,7 @@ impl ProcessManager {
             .paint(&runtime_str)
             .to_string();
         let left_len = left_plain.len();
-        let right_len = runtime_str.len();
+        // let right_len = runtime_str.len();
         let visible_right_len = runtime_str.len();
         let padding = if total_width > left_len + visible_right_len {
             total_width.saturating_sub(left_len + visible_right_len)

@@ -306,7 +306,7 @@ Any other positional arguments are collected as files or piped input."#
 
             // Spawn the pool manager as a detached process and exit this process
             let mut cmd = std::process::Command::new(&exe);
-            cmd.arg("--w-pool-manager".to_string())
+            cmd.arg("--w-pool-manager")
                 .arg("--parent-pid")
                 .arg(std::process::id().to_string())
                 .arg(format!("--w-pool-cnt={}", pool_size))
@@ -515,10 +515,10 @@ fn count_running_windows(_exe: &std::path::Path) -> usize {
 
 #[cfg(not(target_os = "windows"))]
 fn count_running_windows(_exe: &std::path::Path) -> usize {
-    #[cfg(target_os = "windows")]
-    use sysinfo::{ProcessExt, System, SystemExt};
     #[cfg(not(target_os = "windows"))]
     use sysinfo::System;
+    #[cfg(target_os = "windows")]
+    use sysinfo::{ProcessExt, System, SystemExt};
     let mut sys = System::new_all();
     #[cfg(target_os = "windows")]
     sys.refresh_processes();

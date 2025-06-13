@@ -48,7 +48,6 @@ pub mod e_runner;
 pub mod e_target;
 pub mod e_tui;
 pub mod e_workspace;
-#[cfg(feature = "uses_tts")]
 use once_cell::sync::OnceCell;
 
 #[cfg(feature = "uses_tts")]

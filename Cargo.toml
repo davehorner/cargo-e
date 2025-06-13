@@ -1,4 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["cargo-e","addendum/e_crate_version_checker", "addendum/e_ai_summarize", "addendum/e_window","addendum/e_obs"]
+members = [
+  "cargo-e",
+  "addendum/e_crate_version_checker",
+  "addendum/e_ai_summarize",
+  "addendum/e_window",
+] # ,"addendum/e_obs"]
 exclude = ["addenda"]

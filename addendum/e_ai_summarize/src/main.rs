@@ -3,7 +3,7 @@ use e_ai_summarize::summarizer::summarize_source_session;
 use log::debug;
 use rustyline::DefaultEditor;
 use std::path::Path;
-use tokio;
+//use tokio;
 
 // Our CLI now includes a flag for generating a Rust script to recreate the crate.
 #[derive(Parser, Debug)]

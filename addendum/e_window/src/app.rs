@@ -7,11 +7,7 @@ use eframe::egui;
 use eframe::Frame;
 use eframe::Storage;
 use serde::{Deserialize, Serialize};
-#[cfg(target_os = "windows")]
-use std::ffi::OsString;
 use std::io::Write;
-#[cfg(target_os = "windows")]
-use std::os::windows::ffi::OsStrExt;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -20,8 +16,6 @@ use std::thread;
 use std::time::Instant;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::GetForegroundWindow;
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::MessageBoxW;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{IsWindow, MessageBeep};
 
@@ -81,6 +75,8 @@ impl Default for App {
 }
 
 impl App {
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub fn with_initial_window(
         width: f32,
         height: f32,
@@ -103,9 +99,9 @@ impl App {
                     start_datetime: chrono::Local::now()
                         .format("%Y-%m-%d %H:%M:%S%.3f")
                         .to_string(),
-                    follow_hwnd: follow_hwnd,
+                    follow_hwnd,
                     follow_triggered: restored.follow_triggered,
-                    decode_debug: decode_debug,
+                    decode_debug,
                     follow_running: restored.follow_running.clone(),
                 };
             }
@@ -115,6 +111,7 @@ impl App {
         app
     }
 
+    #[allow(dead_code)]
     pub fn with_input_data(mut self, input: String) -> Self {
         if input.trim().is_empty() {
             let hwnd = {
@@ -135,6 +132,7 @@ impl App {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_input_data_and_mode(mut self, input: String, editor_mode: bool) -> Self {
         self.input_text = input.clone();
         self.parsed_data = parse_text(&self.input_text, self.decode_debug); // Changed to ParsedText

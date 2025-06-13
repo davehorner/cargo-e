@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use crate::e_cargocommand_ext::CargoStats;
 use crate::e_command_builder::TerminalError;
 
-/// Consolidated thread-local storage for context and prior response.
+// Consolidated thread-local storage for context and prior response.
 thread_local! {
     pub static THREAD_CONTEXT: RefCell<ThreadLocalContext> = RefCell::new(ThreadLocalContext {
         target_name: String::new(),

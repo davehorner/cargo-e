@@ -10,7 +10,7 @@ use std::time::SystemTime;
 use which::which;
 
 use crate::e_cargocommand_ext::CargoDiagnostic;
-use crate::e_command_builder::{resolve_file_path, TerminalError};
+use crate::e_command_builder::resolve_file_path; //{resolve_file_path, TerminalError};
 use crate::e_eventdispatcher::{
     CallbackResponse, CallbackType, CargoDiagnosticLevel, EventDispatcher,
 };
@@ -203,11 +203,7 @@ pub fn create_stderr_dispatcher(
                         std::sync::Mutex::new(tts::Tts::default().expect("TTS engine failure"))
                     });
                     let mut tts = tts_mutex.lock().expect("Failed to lock TTS mutex");
-                    // Extract the filename without extension
-                    let filename = Path::new(line)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown file");
+
                     let speech = format!("panic says {}", line);
                     println!("TTS: {}", speech);
                     let _ = tts.speak(&speech, true);
@@ -788,11 +784,11 @@ pub fn create_stderr_dispatcher(
         r"IO\(Custom \{ kind: NotConnected",
         Box::new(move |line, _captures, _state, _stats, _prior_response| {
             println!("(STDERR) Terminal error detected: {:?}", &line);
-            let result = if line.contains("NotConnected") {
-                TerminalError::NoTerminal
-            } else {
-                TerminalError::NoError
-            };
+            // let result = if line.contains("NotConnected") {
+            //     TerminalError::NoTerminal
+            // } else {
+            //     TerminalError::NoError
+            // };
             // let sender = sender.lock().unwrap();
             // sender.send(result).ok();
             Some(CallbackResponse {

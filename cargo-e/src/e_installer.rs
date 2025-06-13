@@ -282,23 +282,32 @@ pub fn ensure_rust_script() -> Result<PathBuf> {
     which("rust-script").context("`rust-script` still not found in PATH after installation")
 }
 // Helper function to check for package.json and run npm install if needed
-pub fn check_npm_and_install(workspace_parent: &Path) -> Result<(), Box<dyn Error>> {
+pub fn check_npm_and_install(
+    workspace_parent: &Path,
+    be_silent: bool,
+) -> Result<(), Box<dyn Error>> {
     if workspace_parent.join("pnpm-workspace.yaml").exists() {
         // If this is a pnpm workspace, skip npm checks
         println!("Skipping npm checks for pnpm workspace.");
         return Ok(());
     }
     // Check if package.json exists at the workspace parent level
-    println!(
-        "Checking for package.json in: {}",
-        workspace_parent.display()
-    );
+    if !be_silent {
+        println!(
+            "Checking for package.json in: {}",
+            workspace_parent.display()
+        );
+    }
     if workspace_parent.join("package.json").exists() {
-        println!("package.json found in: {}", workspace_parent.display());
+        if !be_silent {
+            println!("package.json found in: {}", workspace_parent.display());
+        }
         // Get the path to npm using `which`.
         match which("npm") {
             Ok(npm_path) => {
-                println!("Found npm at: {}", npm_path.display());
+                if !be_silent {
+                    println!("Found npm at: {}", npm_path.display());
+                }
 
                 // Run `npm ls --depth=1` in the specified directory
                 let output = Command::new(npm_path.clone())
@@ -310,7 +319,9 @@ pub fn check_npm_and_install(workspace_parent: &Path) -> Result<(), Box<dyn Erro
                     .ok();
 
                 if let Some(output) = output {
-                    println!("npm ls output: {}", String::from_utf8_lossy(&output.stdout));
+                    if !be_silent {
+                        println!("npm ls output: {}", String::from_utf8_lossy(&output.stdout));
+                    }
                     if !output.status.success() {
                         // Print the npm error output for debugging.
                         eprintln!(
@@ -320,10 +331,12 @@ pub fn check_npm_and_install(workspace_parent: &Path) -> Result<(), Box<dyn Erro
                         eprintln!("{}", String::from_utf8_lossy(&output.stderr));
 
                         // Run `npm install` to fix the missing dependencies
-                        println!(
-                            "Running npm install in directory: {}",
-                            workspace_parent.display()
-                        );
+                        if !be_silent {
+                            println!(
+                                "Running npm install in directory: {}",
+                                workspace_parent.display()
+                            );
+                        }
                         let install_output = Command::new(npm_path)
                             .arg("install")
                             .current_dir(workspace_parent)
@@ -331,22 +344,27 @@ pub fn check_npm_and_install(workspace_parent: &Path) -> Result<(), Box<dyn Erro
                             .map_err(|e| eprintln!("Failed to execute npm install: {}", e))
                             .ok();
 
-                        if let Some(install_output) = install_output {
-                            println!(
-                                "npm install output: {}",
-                                String::from_utf8_lossy(&install_output.stdout)
-                            );
-                            if install_output.status.success() {
+                        if !be_silent {
+                            if let Some(install_output) = install_output {
                                 println!(
-                                    "npm install completed successfully in: {}",
-                                    workspace_parent.display()
+                                    "npm install output: {}",
+                                    String::from_utf8_lossy(&install_output.stdout)
                                 );
-                            } else {
-                                eprintln!(
-                                    "npm install failed in directory: {}",
-                                    workspace_parent.display()
-                                );
-                                eprintln!("{}", String::from_utf8_lossy(&install_output.stderr));
+                                if install_output.status.success() {
+                                    println!(
+                                        "npm install completed successfully in: {}",
+                                        workspace_parent.display()
+                                    );
+                                } else {
+                                    eprintln!(
+                                        "npm install failed in directory: {}",
+                                        workspace_parent.display()
+                                    );
+                                    eprintln!(
+                                        "{}",
+                                        String::from_utf8_lossy(&install_output.stderr)
+                                    );
+                                }
                             }
                         }
                     }
@@ -363,17 +381,19 @@ pub fn check_npm_and_install(workspace_parent: &Path) -> Result<(), Box<dyn Erro
 
 /// Check for a pnpm workspace and, if found, run `pnpm install`.  
 /// Returns the full path to the `pnpm` executable.
-pub fn check_pnpm_and_install(workspace_parent: &Path) -> Result<PathBuf> {
+pub fn check_pnpm_and_install(workspace_parent: &Path, be_silent: bool) -> Result<PathBuf> {
     // if this is a pnpm workspace, install deps
     let workspace_yaml = workspace_parent.join("pnpm-workspace.yaml");
     if workspace_yaml.exists() {
         // ensure pnpm is available (and install it if necessary)
         let pnpm = ensure_pnpm()?;
-        println!(
-            "Found pnpm-workspace.yaml in: {}",
-            workspace_parent.display()
-        );
-        println!("Running `pnpm install`…");
+        if !be_silent {
+            println!(
+                "Found pnpm-workspace.yaml in: {}",
+                workspace_parent.display()
+            );
+            println!("Running `pnpm install`…");
+        }
 
         let status = Command::new(&pnpm)
             .arg("install")
@@ -422,13 +442,17 @@ pub fn check_pnpm_and_install(workspace_parent: &Path) -> Result<PathBuf> {
             .status()?;
         // };
 
-        println!("✅ pnpm install succeeded");
+        if !be_silent {
+            println!("pnpm install succeeded");
+        }
         return Ok(pnpm);
     } else {
-        println!(
-            "No pnpm-workspace.yaml found in {}, skipping `pnpm install`.",
-            workspace_parent.display()
-        );
+        if !be_silent {
+            println!(
+                "No pnpm-workspace.yaml found in {}, skipping `pnpm install`.",
+                workspace_parent.display()
+            );
+        }
     }
     Ok(PathBuf::new())
 }
