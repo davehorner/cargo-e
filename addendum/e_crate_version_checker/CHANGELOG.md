@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.29](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.28...e_crate_version_checker-v0.1.29) - 2025-06-13
+
+### Added
+
+- *(cli)* add --scan-dir flag to recursively discover and run targets in subdirectories
+
 ## [0.1.28](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.27...e_crate_version_checker-v0.1.28) - 2025-06-07
 
 ### Other

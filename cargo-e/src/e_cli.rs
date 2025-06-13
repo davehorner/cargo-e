@@ -62,7 +62,13 @@ pub struct Cli {
         help = "If enabled, execute the existing target directly."
     )]
     pub cached: bool,
-
+    /// Scan the given directory for targets to run.
+    #[arg(
+        long = "scan-dir",
+        value_name = "DIR",
+        help = "Scan the given directory for targets to run."
+    )]
+    pub scan_dir: Option<std::path::PathBuf>,
     /// Enable filter mode. cargo output is filtered and captured."
     #[arg(
         long = "filter",

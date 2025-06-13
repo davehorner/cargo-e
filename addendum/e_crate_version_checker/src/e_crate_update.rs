@@ -118,6 +118,7 @@ pub mod version {
         }
     }
 
+    #[cfg(feature = "uses_reqwest")]
     pub fn get_version_info(
         url: &'static str,
     ) -> Result<(String, String, String, String), Box<dyn Error + 'static>> {

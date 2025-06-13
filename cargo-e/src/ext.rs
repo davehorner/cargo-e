@@ -54,6 +54,7 @@ impl ExtContext {
             self.cli.workspace,
             threads,
             self.cli.json_all_targets,
+            false,
         )
         .map_err(|e| anyhow!("collect_all_targets failed: {}", e))?;
         // 2. Plugin targets (load plugins only once)

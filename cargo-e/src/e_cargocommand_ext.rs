@@ -746,8 +746,8 @@ impl CargoCommandExt for Command {
         // Create the CargoProcessHandle
         let result = CargoProcessResult {
             target_name: builder.target_name.clone(),
-            cmd: cmd,
-            args: args,
+            cmd,
+            args,
             pid,
             terminal_error: None,
             exit_status: None,
@@ -948,7 +948,7 @@ impl CargoCommandExt for Command {
                                         //     sd.dispatch(&format!("Stage: Diagnostic occurred at {:?}", now));
                                         // }
                                     }
-                                    Message::CompilerArtifact(a) => {
+                                    Message::CompilerArtifact(_a) => {
                                         let mut s = stats_stdout_clone.lock().unwrap();
                                         // if let Some(exe) = a.executable.as_deref() {
                                         //     if !exe.as_str().is_empty() {
@@ -1259,10 +1259,10 @@ impl CargoCommandExt for Command {
         };
         let result = CargoProcessResult {
             target_name: builder_for_closure.target_name.clone(),
-            cmd: cmd,
-            args: args,
+            cmd,
+            args,
             pid,
-            exit_status: exit_status,
+            exit_status,
             start_time: Some(start_time),
             build_finished_time: None,
             end_time: None,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.42](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.41...cargo-e-v0.2.42) - 2025-06-13
+
+### Added
+
+- *(cli)* add --scan-dir flag to recursively discover and run targets in subdirectories
+
 ## [0.2.41](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.40...cargo-e-v0.2.41) - 2025-06-12
 
 ### Added

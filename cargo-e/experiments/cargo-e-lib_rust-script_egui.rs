@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|n| n.get())
         .unwrap_or(4);
 
-    let targets = collect_all_targets(true, num_threads)?;
+    let targets = collect_all_targets(None,true, num_threads,true)?;
     let mut seen = HashSet::new();
     let unique: Vec<CargoTarget> = targets
         .into_iter()

@@ -220,6 +220,7 @@ pub fn generate_comfy_report(results: &[CargoProcessResult]) -> String {
 
 pub fn generate_markdown_report(results: &[CargoProcessResult]) -> String {
     return generate_comfy_report(results);
+    #[allow(unreachable_code)]
     let mut system = sysinfo::System::new_all();
     system.refresh_all();
 

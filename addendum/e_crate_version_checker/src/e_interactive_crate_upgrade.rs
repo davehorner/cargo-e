@@ -1,7 +1,6 @@
 use std::io::IsTerminal;
 
 use crate::e_crate_update::update_crate;
-use crate::prelude::version::get_version_info;
 #[cfg(feature = "fortune")]
 use rand::{rng, seq::IteratorRandom};
 use std::sync::mpsc;
@@ -94,7 +93,7 @@ pub fn interactive_crate_upgrade(
         std::env::var("E_CRATE_CURRENT_VERSION").unwrap_or_else(|_| current_version.to_string());
     // Skip terminal check if forced (for testing)
     if std::env::var("E_CRATE_FORCE_INTERACTIVE").is_err() && !std::io::stdin().is_terminal() {
-        println!("Non-interactive mode detected; skipping update prompt.");
+        //println!("Non-interactive mode detected; skipping update prompt.");
         return Ok(());
     }
     // If fortune feature is enabled, display a random line from the consumer's fortunes file
@@ -111,35 +110,49 @@ pub fn interactive_crate_upgrade(
         }
     }
 
-    let (latest_version, changelog) = {
-        #[cfg(feature = "uses_github")]
+    // Declare latest_version and changelog so they are available in this scope
+    let (mut latest_version, mut changelog): (String, String) = (String::new(), String::new());
+
+    #[cfg(all(
+        feature = "uses_github",
+        any(feature = "check-version", feature = "check-version-program-start"),
+        feature = "uses_reqwest"
+    ))]
+    {
+        use crate::prelude::version::get_version_info;
+        let url = env!("GITHUB_LAST_RELEASE_URL");
+        let (_date, _commit, version, changelog_raw) = get_version_info(url)?;
+        // Remove empty lines from changelog
+        let changelog_clean = changelog_raw
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        latest_version = version;
+        changelog = changelog_clean;
+    }
+
+    #[cfg(not(feature = "uses_github"))]
+    {
+        #[cfg(all(
+            any(feature = "check-version", feature = "check-version-program-start"),
+            feature = "uses_reqwest"
+        ))]
         {
-            let url = env!("GITHUB_LAST_RELEASE_URL");
-            let (_date, _commit, version, changelog_raw) = get_version_info(url)?;
-            // Remove empty lines from changelog
-            let changelog = changelog_raw
-                .lines()
-                .filter(|line| !line.trim().is_empty())
-                .collect::<Vec<_>>()
-                .join("\n");
-            // println!(
-            //     "LAST_RELEASE: date={}, commit={}, version={}, changelog={}",
-            //     date, commit, version, changelog
-            // );
-            (version, changelog)
-        }
-        #[cfg(not(feature = "uses_github"))]
-        {
+            use crate::e_crate_update::get_latest_version;
             let version = match get_latest_version(crate_name) {
                 Ok(v) => v,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return Ok(());
-                }
+                Err(_) => "unknown".to_string(),
             };
-            (version, String::new())
+            let changelog_str = "No changelog available".to_string(); // Example placeholder
+            latest_version = version;
+            changelog = changelog_str;
         }
-    };
+        #[cfg(not(any(feature = "check-version", feature = "check-version-program-start")))]
+        {
+            return Ok(());
+        }
+    }
     if current_version == "0.0.0" {
         print!("'{}' is not installed.", crate_name);
     } else if let (
@@ -154,6 +167,7 @@ pub fn interactive_crate_upgrade(
         // Print changelog if feature is enabled and versions differ
         #[cfg(all(feature = "changelog", not(feature = "uses_github")))]
         {
+            use parse_changelog::parse;
             if latest_version != current_version {
                 let changelog_str = FULL_CHANGELOG;
                 match parse(changelog_str) {

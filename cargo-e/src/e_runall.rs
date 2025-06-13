@@ -112,6 +112,7 @@ pub fn run_all_examples(
                     cli.filter,
                     cli.cached,
                     cli.default_binary_is_runner,
+                    cli.quiet || cli.json_all_targets,
                 )
                 .with_target(&target)
                 .with_cli(&cli)
@@ -173,7 +174,7 @@ pub fn run_all_examples(
 
                 // Use an Arc<Mutex<Option<Instant>>> so it can be set in the run callback and accessed in the main loop.
                 let start_for_callback = Arc::clone(&start);
-                let target_name_for_timeout = target.name.clone();
+                // let target_name_for_timeout = target.name.clone();
                 // let timeout_thread = std::thread::spawn({
                 //     let manager = Arc::clone(&manager);
                 //     let pid = pid.clone();
@@ -210,13 +211,7 @@ pub fn run_all_examples(
                 // Main thread continues to monitor the process
                 loop {
                     if manager.is_alive(pid) {
-                        println!(
-                            "Monitoring process {} for target {} ({} of {})...",
-                            pid,
-                            target.name,
-                            idx + 1,
-                            targets_len
-                        );
+                        std::thread::sleep(Duration::from_millis(500));
                         match manager.try_wait(pid) {
                             Ok(Some(status)) => {
                                 println!("Process {} finished naturally. {:?}", pid, status);

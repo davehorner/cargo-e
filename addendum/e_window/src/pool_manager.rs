@@ -105,7 +105,6 @@ impl eframe::App for PoolManagerApp {
         }
         self.shutdown
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        let handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
         #[cfg(target_os = "windows")]
         use winapi::um::winuser::{PostMessageW, WM_QUIT};
@@ -123,10 +122,7 @@ impl eframe::App for PoolManagerApp {
         {
             let hwnds: Vec<usize> = {
                 let children = self.children.lock().unwrap();
-                children
-                    .iter()
-                    .filter_map(|child| get_hwnd_for_child(child))
-                    .collect()
+                children.iter().filter_map(get_hwnd_for_child).collect()
             }; // Release the lock here
 
             send_quit_to_hwnds_concurrently(hwnds);

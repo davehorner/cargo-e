@@ -454,6 +454,7 @@ pub fn run_example(
         cli.filter,
         cli.cached,
         cli.default_binary_is_runner,
+        cli.quiet || cli.json_all_targets,
     )
     .with_target(target)
     .with_required_features(&target.manifest_path, target)
@@ -465,11 +466,15 @@ pub fn run_example(
     // Before spawning, determine the directory to run from.
     // If a custom execution directory was set (e.g. for Tauri targets), that is used.
     // Otherwise, if the target is extended, run from its parent directory.
-    if let Some(ref exec_dir) = builder.execution_dir {
-        cmd.current_dir(exec_dir);
+    // Set the execution directory if specified, or use the target's manifest parent if extended.
+    let mut exec_dir: Option<&Path> = None;
+    if let Some(ref dir) = builder.execution_dir {
+        cmd.current_dir(dir);
+        exec_dir = Some(dir.as_path());
     } else if target.extended {
         if let Some(dir) = target.manifest_path.parent() {
             cmd.current_dir(dir);
+            exec_dir = Some(dir);
         }
     }
 
@@ -482,7 +487,7 @@ pub fn run_example(
             .collect::<Vec<_>>()
             .join(" ")
     );
-    println!("Running: {}", full_command);
+    println!("Running: {}  [from {:?}]", full_command, exec_dir);
 
     // Check if the manifest triggers the workspace error.
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
@@ -783,6 +788,7 @@ pub fn run_example(
     if let Some(original) = maybe_backup {
         fs::write(&target.manifest_path, original)?;
     }
+    #[cfg(feature = "uses_tts")]
     wait_for_tts_to_finish(15000);
 
     Ok(result.exit_status)
@@ -1193,7 +1199,7 @@ pub fn run_scriptisto_with_ctrlc_handling(explicit: String, extra_args: Vec<Stri
                     eprintln!("Failed to run rust-script: {:?}", &explicit);
                     std::process::exit(1); // Exit with an error code
                 });
-                child.wait();
+                let _ = child.wait();
                 // // Lock global to store the child process
                 // {
                 //     let mut global = GLOBAL_CHILD.lock().unwrap();

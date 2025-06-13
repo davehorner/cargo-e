@@ -54,6 +54,7 @@ pub struct CargoCommandBuilder {
     pub is_filter: bool,
     pub use_cache: bool,
     pub default_binary_is_runner: bool,
+    pub be_silent: bool,
 }
 
 impl std::fmt::Display for CargoCommandBuilder {
@@ -83,6 +84,7 @@ impl Default for CargoCommandBuilder {
             false,
             false,
             false,
+            false,
         )
     }
 }
@@ -95,6 +97,7 @@ impl CargoCommandBuilder {
         is_filter: bool,
         use_cache: bool,
         default_binary_is_runner: bool,
+        be_silent: bool,
     ) -> Self {
         ThreadLocalContext::set_context(target_name, manifest.to_str().unwrap_or_default());
         let (sender, _receiver) = channel::<TerminalError>();
@@ -118,6 +121,7 @@ impl CargoCommandBuilder {
             is_filter,
             use_cache,
             default_binary_is_runner,
+            be_silent,
         };
         builder.set_default_dispatchers();
         builder
@@ -580,7 +584,6 @@ impl CargoCommandBuilder {
                 let backtrace_lines = Arc::clone(&backtrace_lines);
                 let pending_diag = Arc::clone(&pending_diag);
                 let diagnostics_arc = Arc::clone(&diagnostics_arc);
-                let look_behind = Arc::clone(&look_behind);
 
                 // Regex for numbered backtrace line: "  0: type::path"
                 let re_number_type = Regex::new(r"^\s*(\d+):\s+(.*)$").unwrap();
@@ -1432,10 +1435,12 @@ impl CargoCommandBuilder {
 
     /// Configure the command based on the target kind.
     pub fn with_target(mut self, target: &CargoTarget) -> Self {
-        if let Some(origin) = target.origin.clone() {
-            println!("Target origin: {:?}", origin);
-        } else {
-            println!("Target origin is not set");
+        if !self.be_silent {
+            if let Some(origin) = target.origin.clone() {
+                println!("\nTarget origin: {:?}", origin);
+            } else {
+                println!("\nTarget origin is not set");
+            }
         }
         match target.kind {
             TargetKind::Unknown | TargetKind::Plugin => {
@@ -1464,36 +1469,40 @@ impl CargoCommandBuilder {
             | TargetKind::Example
             | TargetKind::ExtendedExample => {
                 self.args.push(self.subcommand.clone());
+                // Set execution_dir to the parent of the manifest path
+                self.execution_dir = target.manifest_path.parent().map(|p| p.to_path_buf());
                 //self.args.push("--message-format=json".into());
                 self.args.push("--example".into());
                 self.args.push(target.name.clone());
-                self.args.push("--manifest-path".into());
-                self.args.push(
-                    target
-                        .manifest_path
-                        .clone()
-                        .to_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                );
+                // self.args.push("--manifest-path".into());
+                // self.args.push(
+                //     target
+                //         .manifest_path
+                //         .clone()
+                //         .to_str()
+                //         .unwrap_or_default()
+                //         .to_owned(),
+                // );
                 self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::UnknownBinary
             | TargetKind::UnknownExtendedBinary
             | TargetKind::Binary
             | TargetKind::ExtendedBinary => {
+                // Set execution_dir to the parent of the manifest path
+                self.execution_dir = target.manifest_path.parent().map(|p| p.to_path_buf());
                 self.args.push(self.subcommand.clone());
                 self.args.push("--bin".into());
                 self.args.push(target.name.clone());
-                self.args.push("--manifest-path".into());
-                self.args.push(
-                    target
-                        .manifest_path
-                        .clone()
-                        .to_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                );
+                // self.args.push("--manifest-path".into());
+                // self.args.push(
+                //     target
+                //         .manifest_path
+                //         .clone()
+                //         .to_str()
+                //         .unwrap_or_default()
+                //         .to_owned(),
+                // );
                 self = self.with_required_features(&target.manifest_path, target);
             }
             TargetKind::Manifest => {
@@ -1570,11 +1579,15 @@ impl CargoCommandBuilder {
                 }
             }
             TargetKind::ManifestTauri => {
-                // First, locate the Cargo.toml using the existing function
-                let manifest_path = crate::locate_manifest(true).unwrap_or_else(|_| {
-                    eprintln!("Error: Unable to locate Cargo.toml file.");
-                    std::process::exit(1);
-                });
+                // Only locate the Cargo.toml if self.manifest_path is empty
+                let manifest_path = if self.manifest_path.as_os_str().is_empty() {
+                    crate::locate_manifest(true).unwrap_or_else(|_| {
+                        eprintln!("Error: Unable to locate Cargo.toml file.");
+                        std::process::exit(1);
+                    })
+                } else {
+                    self.manifest_path.clone().display().to_string()
+                };
 
                 // Now, get the workspace parent from the manifest directory
                 let manifest_dir = Path::new(&manifest_path)
@@ -1582,15 +1595,16 @@ impl CargoCommandBuilder {
                     .unwrap_or(Path::new(".."));
 
                 // Ensure npm dependencies are handled at the workspace parent level
-                let pnpm =
-                    crate::e_installer::check_pnpm_and_install(manifest_dir).unwrap_or_else(|_| {
+                let pnpm = crate::e_installer::check_pnpm_and_install(manifest_dir, self.be_silent)
+                    .unwrap_or_else(|_| {
                         eprintln!("Error: Unable to check pnpm dependencies.");
                         PathBuf::new()
                     });
                 if pnpm == PathBuf::new() {
-                    crate::e_installer::check_npm_and_install(manifest_dir).unwrap_or_else(|_| {
-                        eprintln!("Error: Unable to check npm dependencies.");
-                    });
+                    crate::e_installer::check_npm_and_install(manifest_dir, self.be_silent)
+                        .unwrap_or_else(|_| {
+                            eprintln!("Error: Unable to check npm dependencies.");
+                        });
                 }
 
                 self.suppressed_flags.insert("quiet".to_string());
@@ -1608,67 +1622,97 @@ impl CargoCommandBuilder {
 
                 if let Some(candidate_dir) = candidate_dir_opt {
                     if has_tauri_conf(candidate_dir) {
-                        println!("Using candidate directory: {}", candidate_dir.display());
+                        if !self.be_silent {
+                            println!("Using candidate directory: {}", candidate_dir.display());
+                        }
                         self.execution_dir = Some(candidate_dir.to_path_buf());
                     } else if let Some(manifest_parent) = target.manifest_path.parent() {
                         if has_tauri_conf(manifest_parent) {
-                            println!("Using manifest parent: {}", manifest_parent.display());
+                            if !self.be_silent {
+                                println!("Using manifest parent: {}", manifest_parent.display());
+                            }
                             self.execution_dir = Some(manifest_parent.to_path_buf());
                         } else if let Some(grandparent) = manifest_parent.parent() {
                             if has_tauri_conf(grandparent) {
-                                println!("Using manifest grandparent: {}", grandparent.display());
+                                if !self.be_silent {
+                                    println!(
+                                        "Using manifest grandparent: {}",
+                                        grandparent.display()
+                                    );
+                                }
                                 self.execution_dir = Some(grandparent.to_path_buf());
                             } else {
-                                println!("No tauri.conf.json found in candidate, manifest parent, or grandparent; defaulting to manifest parent: {}", manifest_parent.display());
+                                if !self.be_silent {
+                                    println!("No tauri.conf.json found in candidate, manifest parent, or grandparent; defaulting to manifest parent: {}", manifest_parent.display());
+                                }
                                 self.execution_dir = Some(manifest_parent.to_path_buf());
                             }
                         } else {
-                            println!("No grandparent for manifest; defaulting to candidate directory: {}", candidate_dir.display());
+                            if !self.be_silent {
+                                println!("No grandparent for manifest; defaulting to candidate directory: {}", candidate_dir.display());
+                            }
                             self.execution_dir = Some(candidate_dir.to_path_buf());
                         }
                     } else {
+                        if !self.be_silent {
+                            println!(
+                                "No manifest parent found for: {}",
+                                target.manifest_path.display()
+                            );
+                        }
+                    }
+                    // Check for package.json and run npm ls if found.
+                    if !self.be_silent {
+                        println!("Checking for package.json in: {}", candidate_dir.display());
+                    }
+                    if has_file(candidate_dir, "package.json") {
+                        crate::e_installer::check_npm_and_install(candidate_dir, self.be_silent)
+                            .ok();
+                    }
+                } else if let Some(manifest_parent) = target.manifest_path.parent() {
+                    if has_tauri_conf(manifest_parent) {
+                        if !self.be_silent {
+                            println!("Using manifest parent: {}", manifest_parent.display());
+                        }
+                        self.execution_dir = Some(manifest_parent.to_path_buf());
+                    } else if let Some(grandparent) = manifest_parent.parent() {
+                        if has_tauri_conf(grandparent) {
+                            if !self.be_silent {
+                                println!("Using manifest grandparent: {}", grandparent.display());
+                            }
+                            self.execution_dir = Some(grandparent.to_path_buf());
+                        } else {
+                            if !self.be_silent {
+                                println!(
+                                    "No tauri.conf.json found; defaulting to manifest parent: {}",
+                                    manifest_parent.display()
+                                );
+                            }
+                            self.execution_dir = Some(manifest_parent.to_path_buf());
+                        }
+                    }
+                    // Check for package.json and run npm ls if found.
+                    if !self.be_silent {
+                        println!(
+                            "Checking for package.json in: {}",
+                            manifest_parent.display()
+                        );
+                    }
+                    if has_file(manifest_parent, "package.json") {
+                        crate::e_installer::check_npm_and_install(manifest_parent, self.be_silent)
+                            .ok();
+                    }
+                    if has_file(Path::new("."), "package.json") {
+                        crate::e_installer::check_npm_and_install(manifest_parent, self.be_silent)
+                            .ok();
+                    }
+                } else {
+                    if !self.be_silent {
                         println!(
                             "No manifest parent found for: {}",
                             target.manifest_path.display()
                         );
                     }
-                    // Check for package.json and run npm ls if found.
-                    println!("Checking for package.json in: {}", candidate_dir.display());
-                    if has_file(candidate_dir, "package.json") {
-                        crate::e_installer::check_npm_and_install(candidate_dir).ok();
-                    }
-                } else if let Some(manifest_parent) = target.manifest_path.parent() {
-                    if has_tauri_conf(manifest_parent) {
-                        println!("Using manifest parent: {}", manifest_parent.display());
-                        self.execution_dir = Some(manifest_parent.to_path_buf());
-                    } else if let Some(grandparent) = manifest_parent.parent() {
-                        if has_tauri_conf(grandparent) {
-                            println!("Using manifest grandparent: {}", grandparent.display());
-                            self.execution_dir = Some(grandparent.to_path_buf());
-                        } else {
-                            println!(
-                                "No tauri.conf.json found; defaulting to manifest parent: {}",
-                                manifest_parent.display()
-                            );
-                            self.execution_dir = Some(manifest_parent.to_path_buf());
-                        }
-                    }
-                    // Check for package.json and run npm ls if found.
-                    println!(
-                        "Checking for package.json in: {}",
-                        manifest_parent.display()
-                    );
-                    if has_file(manifest_parent, "package.json") {
-                        crate::e_installer::check_npm_and_install(manifest_parent).ok();
-                    }
-                    if has_file(Path::new("."), "package.json") {
-                        crate::e_installer::check_npm_and_install(manifest_parent).ok();
-                    }
-                } else {
-                    println!(
-                        "No manifest parent found for: {}",
-                        target.manifest_path.display()
-                    );
                 }
                 self.args.push("tauri".into());
                 self.args.push("dev".into());
@@ -1694,7 +1738,9 @@ impl CargoCommandBuilder {
                             && contents.contains("cargo leptos watch")
                         {
                             // Use cargo leptos watch
-                            println!("Detected 'cargo leptos watch' in {}", readme.display());
+                            if !self.be_silent {
+                                println!("Detected 'cargo leptos watch' in {}", readme.display());
+                            }
                             crate::e_installer::ensure_leptos().unwrap_or_else(|_| {
                                 eprintln!("Error: Unable to ensure leptos installation.");
                                 PathBuf::new() // Return an empty PathBuf as a fallback
@@ -1708,11 +1754,17 @@ impl CargoCommandBuilder {
                             self = self.with_required_features(&target.manifest_path, target);
                             if let Some(exec_dir) = &self.execution_dir {
                                 if exec_dir.join("package.json").exists() {
-                                    println!(
-                                        "Found package.json in execution directory: {}",
-                                        exec_dir.display()
-                                    );
-                                    crate::e_installer::check_npm_and_install(exec_dir).ok();
+                                    if !self.be_silent {
+                                        println!(
+                                            "Found package.json in execution directory: {}",
+                                            exec_dir.display()
+                                        );
+                                    }
+                                    crate::e_installer::check_npm_and_install(
+                                        exec_dir,
+                                        self.be_silent,
+                                    )
+                                    .ok();
                                 }
                             }
                             return self;
@@ -1729,26 +1781,30 @@ impl CargoCommandBuilder {
                     }
                 };
 
-                if let Some(manifest_parent) = target.manifest_path.parent() {
-                    println!("Manifest path: {}", target.manifest_path.display());
-                    println!(
-                        "Execution directory (same as manifest folder): {}",
-                        manifest_parent.display()
-                    );
-                    self.execution_dir = Some(manifest_parent.to_path_buf());
-                } else {
-                    println!(
-                        "No manifest parent found for: {}",
-                        target.manifest_path.display()
-                    );
+                if !self.be_silent {
+                    if let Some(manifest_parent) = target.manifest_path.parent() {
+                        println!("Manifest path: {}", target.manifest_path.display());
+                        println!(
+                            "Execution directory (same as manifest folder): {}",
+                            manifest_parent.display()
+                        );
+                        self.execution_dir = Some(manifest_parent.to_path_buf());
+                    } else {
+                        println!(
+                            "No manifest parent found for: {}",
+                            target.manifest_path.display()
+                        );
+                    }
                 }
                 if let Some(exec_dir) = &self.execution_dir {
                     if exec_dir.join("package.json").exists() {
-                        println!(
-                            "Found package.json in execution directory: {}",
-                            exec_dir.display()
-                        );
-                        crate::e_installer::check_npm_and_install(exec_dir).ok();
+                        if !self.be_silent {
+                            println!(
+                                "Found package.json in execution directory: {}",
+                                exec_dir.display()
+                            );
+                        }
+                        crate::e_installer::check_npm_and_install(exec_dir, self.be_silent).ok();
                     }
                 }
                 self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
@@ -1768,18 +1824,20 @@ impl CargoCommandBuilder {
                     }
                 };
                 // to be the same directory as the manifest.
-                if let Some(manifest_parent) = target.manifest_path.parent() {
-                    println!("Manifest path: {}", target.manifest_path.display());
-                    println!(
-                        "Execution directory (same as manifest folder): {}",
-                        manifest_parent.display()
-                    );
-                    self.execution_dir = Some(manifest_parent.to_path_buf());
-                } else {
-                    println!(
-                        "No manifest parent found for: {}",
-                        target.manifest_path.display()
-                    );
+                if !self.be_silent {
+                    if let Some(manifest_parent) = target.manifest_path.parent() {
+                        println!("Manifest path: {}", target.manifest_path.display());
+                        println!(
+                            "Execution directory (same as manifest folder): {}",
+                            manifest_parent.display()
+                        );
+                        self.execution_dir = Some(manifest_parent.to_path_buf());
+                    } else {
+                        println!(
+                            "No manifest parent found for: {}",
+                            target.manifest_path.display()
+                        );
+                    }
                 }
                 self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
                 self.args.push("serve".into());
@@ -1795,18 +1853,20 @@ impl CargoCommandBuilder {
                 };
                 // For Dioxus targets, print the manifest path and set the execution directory
                 // to be the same directory as the manifest.
-                if let Some(manifest_parent) = target.manifest_path.parent() {
-                    println!("Manifest path: {}", target.manifest_path.display());
-                    println!(
-                        "Execution directory (same as manifest folder): {}",
-                        manifest_parent.display()
-                    );
-                    self.execution_dir = Some(manifest_parent.to_path_buf());
-                } else {
-                    println!(
-                        "No manifest parent found for: {}",
-                        target.manifest_path.display()
-                    );
+                if !self.be_silent {
+                    if let Some(manifest_parent) = target.manifest_path.parent() {
+                        println!("Manifest path: {}", target.manifest_path.display());
+                        println!(
+                            "Execution directory (same as manifest folder): {}",
+                            manifest_parent.display()
+                        );
+                        self.execution_dir = Some(manifest_parent.to_path_buf());
+                    } else {
+                        println!(
+                            "No manifest parent found for: {}",
+                            target.manifest_path.display()
+                        );
+                    }
                 }
                 self.alternate_cmd = Some(exe_path.as_os_str().to_string_lossy().to_string());
                 self.args.push("serve".into());
@@ -2007,8 +2067,8 @@ fn show_graphical_panic(
     line: String,
     prior_response: Option<CallbackResponse>,
     manifest_path: PathBuf,
-    window_for_pid: u32,
-    stats: std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
+    _window_for_pid: u32,
+    _stats: std::sync::Arc<std::sync::Mutex<crate::e_cargocommand_ext::CargoStats>>,
 ) {
     if let Ok(e_window_path) = which("e_window") {
         // Compose a nice message for e_window's stdin
@@ -2024,8 +2084,8 @@ fn show_graphical_panic(
                 // Try to parse the line as "file:line:col"
                 let prior = prior_response.as_ref().unwrap();
                 let file = prior.file.as_deref().unwrap_or("");
-                let line_num = prior.line.map(|n| n.to_string()).unwrap_or_default();
-                let col_num = prior.column.map(|n| n.to_string()).unwrap_or_default();
+                //let line_num = prior.line.map(|n| n.to_string()).unwrap_or_default();
+                //let col_num = prior.column.map(|n| n.to_string()).unwrap_or_default();
 
                 let full_path = std::fs::canonicalize(file).unwrap_or_else(|_| {
                     // Remove the top folder from the file path if possible
@@ -2099,13 +2159,12 @@ fn show_graphical_panic(
                 let _ = stdin.write_all(card.as_bytes());
                 let pid = child.id();
                 // Add to global e_window pid list if available
+
                 if let Some(global) = crate::GLOBAL_EWINDOW_PIDS.get() {
                     global.insert(pid, pid);
-                    println!("[DEBUG] Added pid {} to GLOBAL_EWINDOW_PIDS", pid);
+                    log::trace!("Added pid {} to GLOBAL_EWINDOW_PIDS", pid);
                 } else {
-                    eprintln!("[DEBUG] GLOBAL_EWINDOW_PIDS is not initialized");
-                    // Sleep briefly to avoid busy waiting if needed
-                    std::thread::sleep(std::time::Duration::from_millis(10000));
+                    log::trace!("GLOBAL_EWINDOW_PIDS is not initialized");
                 }
                 std::mem::drop(child)
             }
@@ -2165,18 +2224,23 @@ mod tests {
         let extra_args = vec!["--flag".to_string(), "value".to_string()];
 
         let manifest_path = PathBuf::from("Cargo.toml");
-        let args =
-            CargoCommandBuilder::new(&target_name, &manifest_path, "run", false, false, false)
-                .with_target(&target)
-                .with_extra_args(&extra_args)
-                .build();
+        let args = CargoCommandBuilder::new(
+            &target_name,
+            &manifest_path,
+            "run",
+            false,
+            false,
+            false,
+            false,
+        )
+        .with_target(&target)
+        .with_extra_args(&extra_args)
+        .build();
 
         // For an example target, we expect something like:
         // cargo run --example my_example --manifest-path Cargo.toml -- --flag value
         assert!(args.contains(&"--example".to_string()));
         assert!(args.contains(&"my_example".to_string()));
-        assert!(args.contains(&"--manifest-path".to_string()));
-        assert!(args.contains(&"Cargo.toml".to_string()));
         assert!(args.contains(&"--".to_string()));
         assert!(args.contains(&"--flag".to_string()));
         assert!(args.contains(&"value".to_string()));

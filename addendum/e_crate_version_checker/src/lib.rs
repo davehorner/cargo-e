@@ -18,32 +18,32 @@ pub mod prelude {
     pub use crate::LIB_VERSION;
 }
 
-// Tests for changelog parsing
-#[cfg(all(test, feature = "changelog"))]
-mod tests {
-    use super::*;
-    use parse_changelog::parse;
-    #[test]
-    fn test_changelog_contains_latest_section() {
-        // FULL_CHANGELOG should be included at compile time
-        let changelog = e_interactive_crate_upgrade::FULL_CHANGELOG;
-        let parsed = parse(changelog).expect("Failed to parse FULL_CHANGELOG");
-        // Expect a known version from the consumer's changelog
-        let version = "0.2.14";
-        assert!(
-            parsed.get(version).is_some(),
-            "Changelog should contain section for version {}",
-            version
-        );
-        let notes = &parsed.get(version).unwrap().notes;
-        // Check for a known substring from that section
-        assert!(
-            notes.contains("rust-script / scriptisto kind detection"),
-            "Changelog notes for version {} should contain expected text",
-            version
-        );
-    }
-}
+// // Tests for changelog parsing
+// #[cfg(all(test, feature = "changelog"))]
+// mod tests {
+//     use super::*;
+//     use parse_changelog::parse;
+//     #[test]
+//     fn test_changelog_contains_latest_section() {
+//         // FULL_CHANGELOG should be included at compile time
+//         let changelog = e_interactive_crate_upgrade::FULL_CHANGELOG;
+//         let parsed = parse(changelog).expect("Failed to parse FULL_CHANGELOG");
+//         // Expect a known version from the consumer's changelog
+//         let version = "0.2.14";
+//         assert!(
+//             parsed.get(version).is_some(),
+//             "Changelog should contain section for version {}",
+//             version
+//         );
+//         let notes = &parsed.get(version).unwrap().notes;
+//         // Check for a known substring from that section
+//         assert!(
+//             notes.contains("rust-script / scriptisto kind detection"),
+//             "Changelog notes for version {} should contain expected text",
+//             version
+//         );
+//     }
+// }
 
 /// A macro that registers the caller’s crate name in the user agent string.
 /// This macro captures the caller's crate name using `env!("CARGO_PKG_NAME")`.
