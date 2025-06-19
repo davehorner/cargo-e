@@ -33,12 +33,9 @@ use {
 };
 
 impl ProcessObserver for ProcessManager {
-    fn on_spawn(&self, pid: u32, handle: CargoProcessHandle) {
-        self.processes.insert(pid, Arc::new(Mutex::new(handle)));
+    fn on_spawn(&self, pid: u32, handle: Arc<Mutex<CargoProcessHandle>>) {
+        self.processes.insert(pid, handle.clone());
     }
-    // let pid = handle.lock().unwrap().pid;
-    // self.processes.lock().unwrap().insert(pid, handle);
-    // Ok(())
 }
 
 // #[cfg(feature = "uses_async")]
@@ -47,7 +44,7 @@ impl ProcessObserver for ProcessManager {
 // pub static PROCESS_MANAGER: Lazy<ProcessManager> = Lazy::new(ProcessManager::new);
 
 pub trait ProcessObserver: Send + Sync + 'static {
-    fn on_spawn(&self, pid: u32, handle: CargoProcessHandle);
+    fn on_spawn(&self, pid: u32, handle: Arc<Mutex<CargoProcessHandle>>);
 }
 pub trait SignalTimeTracker {
     /// Returns the time when the last signal was received, if any.
@@ -262,9 +259,8 @@ impl ProcessManager {
         stdout.flush()
     }
 
-    pub fn register(&self, handle: CargoProcessHandle) -> u32 {
-        let pid = handle.pid;
-        self.processes.insert(pid, Arc::new(Mutex::new(handle)));
+    pub fn register(&self, pid: u32, handle: Arc<Mutex<CargoProcessHandle>>) -> u32 {
+        self.processes.insert(pid, handle.clone());
         pid
     }
 
@@ -1533,7 +1529,7 @@ impl ProcessManager {
         {
             eprintln!("Attempting to kill PID {} on Windows", pid);
             let output = std::process::Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
+                .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output();
             match output {
                 Ok(out) => {

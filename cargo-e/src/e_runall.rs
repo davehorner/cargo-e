@@ -113,6 +113,7 @@ pub fn run_all_examples(
                     cli.cached,
                     cli.default_binary_is_runner,
                     cli.quiet || cli.json_all_targets,
+                    cli.detached,
                 )
                 .with_target(&target)
                 .with_cli(&cli)
@@ -143,7 +144,11 @@ pub fn run_all_examples(
                     let start = Arc::clone(&start_for_callback);
                     // let system_clone = system.clone();
                     move |pid, handle| {
-                        let stats = handle.stats.lock().unwrap().clone();
+                        let stats = {
+                            let handle_guard = handle.lock().unwrap();
+                            let stats = handle_guard.stats.lock().unwrap().clone();
+                            stats
+                        };
                         let runtime_start = if stats.is_comiler_target {
                             stats.build_finished_time
                         } else {
@@ -162,7 +167,7 @@ pub fn run_all_examples(
                             );
                             ProcessManager::update_status_line(&status_display, true).ok();
                         }
-                        manager_ref.register(handle);
+                        manager_ref.register(pid, handle);
                     }
                 })?;
 
@@ -215,6 +220,11 @@ pub fn run_all_examples(
                         match manager.try_wait(pid) {
                             Ok(Some(status)) => {
                                 println!("Process {} finished naturally. {:?}", pid, status);
+                                let hold = cli.detached_hold.unwrap_or(0);
+                                if cli.detached_hold.is_some() && hold > 0 {
+                                    println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                                    std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                                }
                                 // manager.e_window_kill(pid);
                                 // manager.remove(pid);
                                 break;
@@ -228,6 +238,11 @@ pub fn run_all_examples(
                                             println!(
                                             "\nTimeout reached for target {}. Killing child process {}.",
                                             target.name,pid);
+                                            let hold = cli.detached_hold.unwrap_or(0);
+                                            if cli.detached_hold.is_some() && hold > 0 {
+                                                println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                                                std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                                            }
                                             manager.kill_by_pid(pid).ok();
                                             // manager.remove(pid);
                                             // user_requested_kill_thread.store(true, Ordering::SeqCst);

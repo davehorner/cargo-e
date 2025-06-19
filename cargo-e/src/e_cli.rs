@@ -63,6 +63,13 @@ pub struct Cli {
     )]
     pub cached: bool,
     /// Scan the given directory for targets to run.
+
+    /// Run the command in detached mode.
+    #[arg(
+        long = "detached",
+        help = "Run the targets in detached mode. (cmd /c show | alacritty)"
+    )]
+    pub detached: bool,
     #[arg(
         long = "scan-dir",
         value_name = "DIR",
@@ -229,6 +236,11 @@ pub struct Cli {
 
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,
+
+    #[clap(long, value_name = "SECONDS", help = "Time in seconds to keep detached windows open before killing.")]
+    pub detached_hold: Option<u32>,
+    #[clap(long, value_name = "SECONDS", help = "Time in seconds for detached windows to delay before executing target")]
+    pub detached_delay: Option<u32>,
 }
 
 /// Print the version and the JSON array of feature flags.

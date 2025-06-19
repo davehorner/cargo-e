@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/davehorner/cargo-e/compare/e_obs-v0.1.1...e_obs-v0.1.2) - 2025-06-19
+
+### Added
+
+- *(detached)* add support for detached mode with hold and delay options
+
 ## [0.1.1](https://github.com/davehorner/cargo-e/compare/e_obs-v0.1.0...e_obs-v0.1.1) - 2025-06-07
 
 ### Other

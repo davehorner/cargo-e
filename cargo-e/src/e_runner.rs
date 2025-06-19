@@ -455,6 +455,7 @@ pub fn run_example(
         cli.cached,
         cli.default_binary_is_runner,
         cli.quiet || cli.json_all_targets,
+        cli.detached,
     )
     .with_target(target)
     .with_required_features(&target.manifest_path, target)
@@ -492,8 +493,8 @@ pub fn run_example(
     // Check if the manifest triggers the workspace error.
     let maybe_backup = crate::e_manifest::maybe_patch_manifest_for_run(&target.manifest_path)?;
     let a_blder = Arc::new(builder.clone());
-    let pid = a_blder.run(|_pid, handle| {
-        manager.register(handle);
+    let pid = a_blder.run(|pid, handle| {
+        manager.register(pid, handle);
     })?;
     let result = manager.wait(pid, None)?;
     // println!("HERE IS THE RESULT!{} {:?}",pid,manager.get(pid));

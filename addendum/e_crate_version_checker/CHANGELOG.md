@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.30](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.29...e_crate_version_checker-v0.1.30) - 2025-06-19
+
+### Added
+
+- *(detached)* add support for detached mode with hold and delay options
+
 ## [0.1.29](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.28...e_crate_version_checker-v0.1.29) - 2025-06-13
 
 ### Added

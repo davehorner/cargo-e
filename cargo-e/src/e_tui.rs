@@ -537,6 +537,7 @@ pub mod tui_interactive {
             cli.cached,
             cli.default_binary_is_runner,
             cli.quiet || cli.json_all_targets,
+            cli.detached,
         )
         .with_target(target)
         .with_cli(cli);
@@ -582,8 +583,8 @@ pub mod tui_interactive {
         // // let args_ref: Vec<&str> = args.iter().map(|s| &**s).collect();
         // let mut child = crate::e_runner::spawn_cargo_process(&args_ref)?;
 
-        let pid = Arc::new(builder).run(|_pid, handle| {
-            manager.register(handle);
+        let pid = Arc::new(builder).run(|pid, handle| {
+            manager.register(pid, handle);
         })?;
         // let ret=manager.wait(pid, None)?;
         let handle = manager.get(pid).unwrap().clone();

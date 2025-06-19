@@ -55,6 +55,10 @@ pub struct CargoCommandBuilder {
     pub use_cache: bool,
     pub default_binary_is_runner: bool,
     pub be_silent: bool,
+    pub detached: bool,
+    pub time_limit: Option<u32>,
+    pub detached_hold: Option<u32>,
+    pub detached_delay: Option<u32>,
 }
 
 impl std::fmt::Display for CargoCommandBuilder {
@@ -85,6 +89,7 @@ impl Default for CargoCommandBuilder {
             false,
             false,
             false,
+            false,
         )
     }
 }
@@ -98,6 +103,7 @@ impl CargoCommandBuilder {
         use_cache: bool,
         default_binary_is_runner: bool,
         be_silent: bool,
+        detached: bool,
     ) -> Self {
         ThreadLocalContext::set_context(target_name, manifest.to_str().unwrap_or_default());
         let (sender, _receiver) = channel::<TerminalError>();
@@ -122,6 +128,10 @@ impl CargoCommandBuilder {
             use_cache,
             default_binary_is_runner,
             be_silent,
+            detached,
+            time_limit: None,
+            detached_hold: None,
+            detached_delay: None,
         };
         builder.set_default_dispatchers();
         builder
@@ -130,7 +140,7 @@ impl CargoCommandBuilder {
     // Switch to passthrough mode when the terminal error is detected
     fn switch_to_passthrough_mode<F>(self: Arc<Self>, on_spawn: F) -> anyhow::Result<u32>
     where
-        F: FnOnce(u32, CargoProcessHandle),
+        F: FnOnce(u32, Arc<Mutex<CargoProcessHandle>>),
     {
         let mut command = self.build_command();
 
@@ -138,6 +148,7 @@ impl CargoCommandBuilder {
         let cargo_process_handle = command.spawn_cargo_passthrough(Arc::clone(&self));
         let pid = cargo_process_handle.pid;
         // Notify observer
+        let cargo_process_handle = Arc::new(Mutex::new(cargo_process_handle));
         on_spawn(pid, cargo_process_handle);
 
         Ok(pid)
@@ -1279,13 +1290,13 @@ impl CargoCommandBuilder {
 
     pub fn run<F>(self: Arc<Self>, on_spawn: F) -> anyhow::Result<u32>
     where
-        F: FnOnce(u32, CargoProcessHandle),
+        F: FnOnce(u32, Arc<Mutex<CargoProcessHandle>>),
     {
         if !self.is_filter {
             return self.switch_to_passthrough_mode(on_spawn);
         }
-        let mut command = self.build_command();
 
+        let mut command = self.build_command();
         let mut cargo_process_handle = command.spawn_cargo_capture(
             self.clone(),
             self.stdout_dispatcher.clone(),
@@ -1297,8 +1308,35 @@ impl CargoCommandBuilder {
         cargo_process_handle.diagnostics = Arc::clone(&self.diagnostics);
         let pid = cargo_process_handle.pid;
 
+        // Wrap the handle in Arc<Mutex<>> for thread-safe sharing
+        let cargo_process_handle = Arc::new(Mutex::new(cargo_process_handle));
+
         // Notify observer
-        on_spawn(pid, cargo_process_handle);
+        on_spawn(pid, cargo_process_handle.clone());
+
+        if self.detached {
+            let timeout = std::time::Duration::from_secs(self.time_limit.unwrap_or(0) as u64);
+            let (tx, rx) = std::sync::mpsc::channel();
+            let cargo_process_handle_clone = Arc::clone(&cargo_process_handle);
+            let handle = std::thread::spawn(move || {
+                let result = cargo_process_handle_clone.lock().unwrap().child.wait();
+                let _ = tx.send(result);
+            });
+            // Wait for the thread to finish to ensure proper cleanup
+            let _ = handle.join();
+
+            match rx.recv_timeout(timeout) {
+                Ok(result) => { result?; },
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    eprintln!("Timeout reached for process with PID: {}", pid);
+                    let _ = cargo_process_handle.lock().unwrap().kill();
+                    return Err(anyhow::anyhow!("Timeout reached for process with PID: {}", pid));
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Thread join error: {}", e));
+                }
+            }
+        }
 
         Ok(pid)
     }
@@ -1898,6 +1936,15 @@ impl CargoCommandBuilder {
                 self.args.push("--release".into());
             }
         }
+        if cli.detached_hold.is_some() {
+            self.detached_hold = cli.detached_hold;
+        }
+        if cli.detached_delay.is_some() {
+            self.detached_delay = cli.detached_delay;
+        }
+        if cli.detached {
+            self.detached = true;
+        }
         // Append extra arguments (if any) after a "--" separator.
         if !cli.extra.is_empty() {
             self.args.push("--".into());
@@ -2011,7 +2058,7 @@ impl CargoCommandBuilder {
             } else {
                 program = self.alternate_cmd.as_deref().unwrap_or("cargo").to_string();
             }
-            new_args = vec![]
+            // new_args = vec![]
         }
 
         if self.default_binary_is_runner {
@@ -2035,8 +2082,98 @@ impl CargoCommandBuilder {
     pub fn build_command(&self) -> Command {
         let (program, new_args) = self.injected_args();
 
-        let mut cmd = Command::new(program);
-        cmd.args(new_args);
+        let mut cmd = if self.detached {
+            #[cfg(target_os = "windows")]
+            {
+                let mut detached_cmd = Command::new("cmd");
+                // On Windows, to ensure the timeout is applied after the command runs, you should use the `timeout` command after the actual command and its arguments.
+                // However, the Windows `cmd /c start` command does not natively support running a command and then a timeout in sequence directly.
+                // Instead, you can chain commands using `&&` so that the timeout runs after the main command completes.
+
+                // Try to find "startt" using which::which
+                let startt_path = which("startt").ok();
+                if let Some(hold_time) = self.detached_hold {
+                    println!(
+                        "Running detached command with hold time: {} seconds",
+                        hold_time
+                    );
+                    let cmdline = format!("{} {}", program, new_args.join(" "));
+                    if let Some(startt) = startt_path {
+                        // Use startt directly if found
+                        detached_cmd = Command::new(startt);
+                        //detached_cmd.creation_flags(0x00000008); // CREATE_NEW_CONSOLE
+                        detached_cmd.args(&["/wait"]);
+                        if let Some(_hold_time) = self.detached_hold {
+                            detached_cmd.args(&["--detached-hold", &hold_time.to_string()]);
+                        }
+                        if let Some(delay_time) = self. detached_delay {
+                            detached_cmd.args(&["--detached-delay", &delay_time.to_string()]);// &delay_time.to_string()]);
+                        }
+                        detached_cmd.args(&[&program]);
+                        detached_cmd.args(&new_args);
+                        println!("Using startt: {:?}", detached_cmd);
+                        return detached_cmd;
+                    } else {
+                        // Fallback to cmd /c start /wait
+                        // To enforce a timeout regardless of how cmdline exits, use PowerShell's Start-Process with -Wait and a timeout loop.
+                        // This launches the process and then waits up to hold_time seconds, killing it if it exceeds the timeout.
+                        // Note: This requires PowerShell to be available.
+                        if let Some(hold_time) = self.detached_hold {
+                            let ps_script = format!(
+                                "Start-Process -NoNewWindow -Wait -FilePath cmd -ArgumentList '/c', '{}' ; $p = Get-Process -Name '{}' -ErrorAction SilentlyContinue; $t = 0; while ($p -and $t -lt {}) {{ Start-Sleep -Seconds 1; $t++; $p = Get-Process -Name '{}' -ErrorAction SilentlyContinue }}; if ($p) {{ $p | Stop-Process }}",
+                                cmdline,
+                                program,
+                                hold_time,
+                                program
+                            );
+                            detached_cmd = Command::new("powershell");
+                            detached_cmd.args(&["-NoProfile", "-Command", &ps_script]);
+                        } else {
+                            detached_cmd.args(&["/c", "start", "/wait", "cmd", "/c", &cmdline]);
+                        }
+                        return detached_cmd;
+                    }
+                } else {
+                    let cmdline = format!("{} {}", program, new_args.join(" "));
+                    if let Some(startt) = startt_path {
+                        // Use startt directly if found
+                        detached_cmd = Command::new(startt);
+                        detached_cmd.args(&[&program]);
+                        detached_cmd.args(&new_args);
+                        return detached_cmd;
+                    } else {
+                        // Fallback to cmd /c start /wait
+                        detached_cmd.args(&["/c", "start", "/wait", "cmd", "/c", &cmdline]);
+                    }
+                }
+                detached_cmd
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let mut detached_cmd = Command::new("xterm");
+                detached_cmd.args(&["-e", &program]);
+                detached_cmd.args(&new_args);
+                detached_cmd
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut detached_cmd = Command::new("osascript");
+                detached_cmd.args(&[
+                    "-e",
+                    &format!(
+                        "tell application \"Terminal\" to do script \"{} {}; sleep {}; exit\"",
+                        program,
+                        new_args.join(" "),
+                        self.detached_hold.unwrap_or(0)
+                    ),
+                ]);
+                detached_cmd
+            }
+        } else {
+            let mut cmd = Command::new(program);
+            cmd.args(&new_args);
+            cmd
+        };
 
         if let Some(dir) = &self.execution_dir {
             cmd.current_dir(dir);
@@ -2228,6 +2365,7 @@ mod tests {
             &target_name,
             &manifest_path,
             "run",
+            false,
             false,
             false,
             false,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.43](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.42...cargo-e-v0.2.43) - 2025-06-19
+
+### Added
+
+- *(detached)* add support for detached mode with hold and delay options
+
 ## [0.2.42](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.41...cargo-e-v0.2.42) - 2025-06-13
 
 ### Added
