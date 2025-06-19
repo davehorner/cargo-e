@@ -4,7 +4,7 @@
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.42</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.43</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 <img id="screenshot"
@@ -77,6 +77,8 @@ e is for Example. `cargo-e` is a Cargo subcommand for running and exploring exam
   Outputs a comprehensive JSON list of all discovered targets (examples, binaries, tests, benches, etc.) in the project. This is useful for tooling, scripting, or integration with editors and CI systems. The JSON includes metadata such as target names, types, required features, and paths, enabling automated processing or custom workflows.
 - **`--scan-dir <DIR>`:**  
   Scan a specific directory recursively for Rust targets (examples, binaries, etc.) outside the current project or workspace.
+- **detached execution and options:**  
+  Run targets in detached mode using the `--detached` flag, which launches each target in a separate terminal window (e.g., `cmd /c start` or `xterm/alacritty/terminal`). Additional options include `--detached-hold <SECONDS>` to specify how long the detached window remains open after execution, and `--detached-delay <SECONDS>` to delay execution after opening the window. This is useful for running multiple targets concurrently or keeping output visible after completion.
 
 ## Introduction
 
@@ -124,6 +126,7 @@ Options:
   -q, --quiet                          Suppress cargo output when running the sample.
       --pre-build                      If enabled, pre-build the examples before executing them.
       --cached                         If enabled, execute the existing target directly.
+      --detached                       Run the targets in detached mode. (cmd /c show | alacritty)
       --scan-dir <DIR>                 Scan the given directory for targets to run.
   -f, --filter                         Enable filter mode. cargo output is filtered and captured.
   -v, --version                        Print version and feature flags in JSON format.
@@ -146,7 +149,9 @@ Options:
       --manifest-path <PATH>           Specify the path to the Cargo.toml manifest file.
       --target <TARGET>                Specify the target triple for the build.
       --json-all-targets               Output the list of all targets as JSON.
-  -h, --help                           Print help
+      --detached-hold <SECONDS>        Time in seconds to keep detached windows open before killing.
+      --detached-delay <SECONDS>       Time in seconds for detached windows to delay before executing target
+  -h, --help 
 ```
 
 If there is only one example, it will run that example, did I mention that already?
@@ -297,7 +302,7 @@ Note: Disabling the version check means you forgo a mechanism designed to ensure
 
 <!-- Version notice -->
 <p style="font-style: italic; color: #ccc; margin-top: 0.5em;">
-  You are reading documentation version <span id="doc-version" style="color: white;">0.2.42</span>.
+  You are reading documentation version <span id="doc-version" style="color: white;">0.2.43</span>.
   If this does not match the version displayed above, then you're not reading the latest documentation.
 </p>
 

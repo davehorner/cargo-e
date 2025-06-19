@@ -108,6 +108,14 @@ async fn main() {
         std::process::exit(0);
     }
     let args = Args::parse();
+    // Log the arguments passed to e_obs
+    println!("DEBUG: e_obs invoked with arguments: {:?}", std::env::args().collect::<Vec<_>>());
+
+    let args = Args::parse();
+
+    if !args.cmd.is_empty() {
+        println!("DEBUG: Commands to execute: {:?}", args.cmd);
+    }
 
     if check_obs_running().await {
         println!("OBS is already running, not starting a new instance.");
@@ -405,11 +413,12 @@ async fn main() {
                             .and_then(|o| String::from_utf8(o.stdout.clone()).ok())
                             .map(|s| s.trim().to_string())
                             .unwrap_or_else(|| "unknown".to_string());
-                        let sha1_short = if sha1.len() >= 4 {
-                            sha1[sha1.len() - 4..].to_string()
-                        } else {
-                            sha1.clone()
-                        };
+                        let sha1_short = sha1.clone();
+                        //  if sha1.len() >= 4 {
+                        //     sha1[sha1.len() - 4..].to_string()
+                        // } else {
+                        //     sha1.clone()
+                        // };
                         let git_remote_url = Command::new("git")
                             .args(["remote", "get-url", "origin"])
                             .output()

@@ -1,6 +1,6 @@
-﻿25/06/13|0374bfb|0.2.42
-## [0.2.42](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.41...cargo-e-v0.2.42) - 2025-06-13
+﻿25/06/19|35b4532|0.2.43
+## [0.2.43](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.42...cargo-e-v0.2.43) - 2025-06-19
 
 ### Added
 
-- *(cli)* add --scan-dir flag to recursively discover and run targets in subdirectories
+- *(detached)* add support for detached mode with hold and delay options

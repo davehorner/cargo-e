@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.17...e_ai_summarize-v0.1.18) - 2025-06-19
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.17](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.16...e_ai_summarize-v0.1.17) - 2025-06-13
 
 ### Added

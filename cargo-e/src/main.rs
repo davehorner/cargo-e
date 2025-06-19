@@ -564,6 +564,7 @@ pub fn main() -> anyhow::Result<()> {
                         cli.cached,
                         cli.default_binary_is_runner,
                         cli.quiet || cli.json_all_targets,
+                        cli.detached,
                     )
                     .with_target(&t)
                     .with_cli(&cli)
@@ -1253,8 +1254,9 @@ fn cli_loop(
     builtin_examples: &[&CargoTarget],
     builtin_binaries: &[&CargoTarget],
 ) {
-    let mut current_offset = 0; // persist the current page offset
+    let mut current_offset = 0;
     let manager_clone = manager.clone();
+
     loop {
         match select_and_run_target_loop(
             manager_clone.clone(),
@@ -1270,23 +1272,52 @@ fn cli_loop(
                 break;
             }
             Ok(LoopResult::Run(status, new_offset)) => {
-                // Update the offset so the next iteration starts at the same page
                 current_offset = new_offset;
                 if status.code() == Some(130) {
                     println!("interrupted (Ctrl+C). returning to menu.");
                     continue;
+                }
+                if cli.run_at_a_time > 0 {
+                    let timeout = std::time::Duration::from_secs(cli.run_at_a_time as u64);
+                    let handle = std::thread::spawn(move || status);
+
+                    match handle.join_timeout(timeout) {
+                        Ok(_) => { println!("Process finished successfully.");
+                                                    let hold = cli.detached_hold.unwrap_or(0);
+                                if cli.detached_hold.is_some() && hold > 0 {
+                                    println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                                    std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                                }
+                             },
+                        Err(_) => {
+                            eprintln!("Timeout reached. Killing all processes.");
+                            let hold = cli.detached_hold.unwrap_or(0);
+                            if cli.detached_hold.is_some() && hold > 0 {
+                                println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                                std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                            }
+                            manager_clone.kill_all();
+                            break;
+                        }
+                    }
                 } else {
-                    println!("finished with status: {:?}", status.code());
-                    continue;
+                    println!("Process finished with status: {:?}", status.code());
+                    let hold = cli.detached_hold.unwrap_or(0);
+                    if cli.detached_hold.is_some() && hold > 0 {
+                        println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                        std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                    }
                 }
             }
-            Ok(LoopResult::Continue) => {
-                // Continue to the next iteration of the loop
-                continue;
-            }
+            Ok(LoopResult::Continue) => continue,
             Err(err) => {
                 eprintln!("Error: {:?}", err);
-                std::process::exit(1); // Exit with an error code
+                let hold = cli.detached_hold.unwrap_or(0);
+                if cli.detached_hold.is_some() && hold > 0 {
+                    println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                    std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                }
+                std::process::exit(1);
             }
         }
     }
@@ -1370,7 +1401,6 @@ fn handle_single_target(
     subcommand_provided_explicitly: bool,
 ) -> anyhow::Result<()> {
     if subcommand_provided_explicitly {
-        // Skip prompting if the subcommand is explicit
         println!("Subcommand provided explicitly. Running {}...", target.name);
         cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
         return Ok(());
@@ -1441,3 +1471,211 @@ fn handle_single_target(
 
     Ok(())
 }
+
+// fn cli_loop(
+//     manager: Arc<ProcessManager>,
+//     cli: &Cli,
+//     unique_examples: &[CargoTarget],
+//     builtin_examples: &[&CargoTarget],
+//     builtin_binaries: &[&CargoTarget],
+// ) {
+//     let mut current_offset = 0;
+//     let manager_clone = manager.clone();
+
+//     loop {
+//         match select_and_run_target_loop(
+//             manager_clone.clone(),
+//             cli,
+//             unique_examples,
+//             builtin_examples,
+//             builtin_binaries,
+//             current_offset,
+//         ) {
+//             Ok(LoopResult::Quit) => {
+//                 manager_clone.generate_report(cli.gist);
+//                 println!("quitting.");
+//                 break;
+//             }
+//             Ok(LoopResult::Run(status, new_offset)) => {
+//                 current_offset = new_offset;
+
+//                 if cli.run_at_a_time > 0 {
+//                     let timeout = Duration::from_secs(cli.run_at_a_time as u64);
+//                     let handle = std::thread::spawn(move || status);
+
+//                     match handle.join_timeout(timeout) {
+//                         Ok(_) => println!("Process finished successfully."),
+//                         Err(_) => {
+//                             eprintln!("Timeout reached. Killing all processes.");
+//                             manager_clone.kill_all();
+//                             break;
+//                         }
+//                     }
+//                 } else {
+//                     println!("Process finished with status: {:?}", status.code());
+//                 }
+//             }
+//             Ok(LoopResult::Continue) => continue,
+//             Err(err) => {
+//                 eprintln!("Error: {:?}", err);
+//                 std::process::exit(1);
+//             }
+//         }
+//     }
+// }
+
+// trait JoinTimeout {
+//     fn join_timeout(self, timeout: std::time::Duration) -> Result<(), ()>;
+// }
+
+// impl<T> JoinTimeout for std::thread::JoinHandle<T> {
+//     fn join_timeout(self, timeout: std::time::Duration) -> Result<(), ()> {
+//         let result = std::thread::sleep(timeout);
+//         match self.join() {
+//             Ok(_) => Ok(()),
+//             Err(_) => Err(()),
+//         }
+//     }
+// }
+
+// pub fn run_rust_script_with_ctrlc_handling() {
+//     let explicit = {
+//         let lock = EXPLICIT.lock().unwrap_or_else(|e| {
+//             eprintln!("Failed to acquire lock: {}", e);
+//             std::process::exit(1); // Exit the program if the lock cannot be obtained
+//         });
+//         lock.clone() // Clone the data to move it into the thread
+//     };
+
+//     let explicit_path = Path::new(&explicit); // Construct Path outside the lock
+
+//     if explicit_path.exists() {
+//         match is_active_rust_script(&explicit_path) {
+//             Ok(true) => {}
+//             Ok(false) | Err(_) => {
+//                 // Handle the error locally without propagating it
+//                 eprintln!("Failed to check if the file is a rust-script");
+//                 std::process::exit(1); // Exit with an error code
+//             }
+//         }
+
+//         let extra_args = EXTRA_ARGS.lock().unwrap(); // Locking the Mutex to access the data
+//         let extra_str_slice: Vec<String> = extra_args.iter().cloned().collect();
+
+//         // Run the child process in a separate thread to allow Ctrl+C handling
+//         let handle = std::thread::spawn(move || {
+//             let extra_str_slice_cloned = extra_str_slice.clone();
+//             let child = e_runner::run_rust_script(
+//                 &explicit,
+//                 &extra_str_slice_cloned
+//                     .iter()
+//                     .map(String::as_str)
+//                     .collect::<Vec<_>>(),
+//             )
+//             .unwrap_or_else(|| {
+//                 eprintln!("Failed to run rust-script: {:?}", &explicit);
+//                 std::process::exit(1); // Exit with an error code
+//             });
+//         });
+
+//         // Wait for the thread to complete, but with a timeout
+//         let timeout = std::time::Duration::from_secs(10);
+//         match handle.join_timeout(timeout) {
+//             Ok(_) => {
+//                 println!("Child process finished successfully.");
+//             }
+//             Err(_) => {
+//                 eprintln!("Child process took too long to finish. Exiting...");
+//                 std::process::exit(1); // Exit if the process takes too long
+//             }
+//         }
+//     }
+// }
+
+// fn handle_single_target(
+//     manager: Arc<ProcessManager>,
+//     cli: &Cli,
+//     target: &CargoTarget,
+//     unique_examples: &[CargoTarget],
+//     builtin_examples: &[&CargoTarget],
+//     builtin_binaries: &[&CargoTarget],
+//     subcommand_provided_explicitly: bool,
+// ) -> anyhow::Result<()> {
+//     if subcommand_provided_explicitly {
+//         println!("Subcommand provided explicitly. Running {}...", target.name);
+//         cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
+//         return Ok(());
+//     }
+
+//     if cli.run_at_a_time > 0 {
+//         let timeout = std::time::Duration::from_secs(cli.run_at_a_time as u64);
+//         let handle = std::thread::spawn(move || {
+//             cargo_e::e_runner::run_example(manager.clone(), cli, target)
+//         });
+
+//         match handle.join_timeout(timeout) {
+//             Ok(result) => result?,
+//             Err(_) => {
+//                 eprintln!("Timeout reached for target: {}", target.name);
+//                 manager.kill_all();
+//                 return Err(anyhow::anyhow!("Timeout reached for target: {}", target.name));
+//             }
+//         }
+//     } else {
+//         cargo_e::e_runner::run_example(manager.clone(), cli, target)?;
+//     }
+
+//     Ok(())
+// }
+
+// fn cli_loop(
+//     manager: Arc<ProcessManager>,
+//     cli: &Cli,
+//     unique_examples: &[CargoTarget],
+//     builtin_examples: &[&CargoTarget],
+//     builtin_binaries: &[&CargoTarget],
+// ) {
+//     let mut current_offset = 0;
+//     let manager_clone = manager.clone();
+
+//     loop {
+//         match select_and_run_target_loop(
+//             manager_clone.clone(),
+//             cli,
+//             unique_examples,
+//             builtin_examples,
+//             builtin_binaries,
+//             current_offset,
+//         ) {
+//             Ok(LoopResult::Quit) => {
+//                 manager_clone.generate_report(cli.gist);
+//                 println!("quitting.");
+//                 break;
+//             }
+//             Ok(LoopResult::Run(status, new_offset)) => {
+//                 current_offset = new_offset;
+
+//                 if cli.run_at_a_time > 0 {
+//                     let timeout = Duration::from_secs(cli.run_at_a_time as u64);
+//                     let handle = std::thread::spawn(move || status);
+
+//                     match handle.join_timeout(timeout) {
+//                         Ok(_) => println!("Process finished successfully."),
+//                         Err(_) => {
+//                             eprintln!("Timeout reached. Killing all processes.");
+//                             manager_clone.kill_all();
+//                             break;
+//                         }
+//                     }
+//                 } else {
+//                     println!("Process finished with status: {:?}", status.code());
+//                 }
+//             }
+//             Ok(LoopResult::Continue) => continue,
+//             Err(err) => {
+//                 eprintln!("Error: {:?}", err);
+//                 std::process::exit(1);
+//             }
+//         }
+//     }
+// }

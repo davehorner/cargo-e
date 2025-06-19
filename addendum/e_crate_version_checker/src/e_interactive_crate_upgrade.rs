@@ -111,6 +111,7 @@ pub fn interactive_crate_upgrade(
     }
 
     // Declare latest_version and changelog so they are available in this scope
+    #[allow(unused_assignments)]
     let (mut latest_version, mut changelog): (String, String) = (String::new(), String::new());
 
     #[cfg(all(
