@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.44](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.43...cargo-e-v0.2.44) - 2025-06-25
+
+### Fixed
+
+- *(target)* preserve name "main" for top-level example target
+
 ## [0.2.43](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.42...cargo-e-v0.2.43) - 2025-06-19
 
 ### Added

@@ -109,7 +109,10 @@ async fn main() {
     }
     let args = Args::parse();
     // Log the arguments passed to e_obs
-    println!("DEBUG: e_obs invoked with arguments: {:?}", std::env::args().collect::<Vec<_>>());
+    println!(
+        "DEBUG: e_obs invoked with arguments: {:?}",
+        std::env::args().collect::<Vec<_>>()
+    );
 
     let args = Args::parse();
 

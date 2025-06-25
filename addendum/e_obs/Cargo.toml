@@ -2,7 +2,7 @@
 authors = ["David Horner"]
 edition = "2021"
 name = "e_obs"
-version = "0.1.2"
+version = "0.1.3"
 description = "control OBS via websocket. Open Broadcaster Software control for use with cargo-e"
 license = "MIT"
 repository = "https://github.com/davehorner/cargo-e/tree/develop/addendum/e_obs"

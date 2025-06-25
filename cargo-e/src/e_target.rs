@@ -537,13 +537,35 @@ impl CargoTarget {
                             p
                         }
                     } else if parent_name.eq_ignore_ascii_case("examples") {
-                        // If candidate is in an examples folder, use the candidate's parent folder's name.
-                        candidate
+                        // Special-case: if the candidate is "examples/main.rs" directly under the manifest root,
+                        // keep the name as "main" instead of defaulting to "examples".
+                        // For nested examples like "examples/foo/main.rs", use the folder name ("foo") instead.
+                        let is_directly_under_manifest = self
+                            .manifest_path
                             .parent()
-                            .and_then(|p| p.file_name())
-                            .and_then(|s| s.to_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or(candidate_stem.clone())
+                            .map(|manifest_root| {
+                                let manifest_examples = manifest_root.join("examples");
+                                let manifest_examples = std::fs::canonicalize(&manifest_examples)
+                                    .unwrap_or(manifest_examples);
+                                let parent_dir_canon = std::fs::canonicalize(&parent_dir)
+                                    .unwrap_or(parent_dir.to_path_buf());
+                                manifest_examples == parent_dir_canon
+                            })
+                            .unwrap_or(false);
+                        trace!(
+                            "Candidate is in 'examples' folder: {}, directly under manifest: {}",
+                            parent_dir.display(),
+                            is_directly_under_manifest
+                        );
+                        if is_directly_under_manifest {
+                            candidate_stem.clone()
+                        } else {
+                            parent_dir
+                                .file_name()
+                                .and_then(|s| s.to_str())
+                                .map(|s| s.to_string())
+                                .unwrap_or(candidate_stem.clone())
+                        }
                     } else {
                         parent_name.into()
                     }
@@ -561,9 +583,6 @@ impl CargoTarget {
         }
 
         trace!("Final determined name: {}", name);
-        if name.eq("main") {
-            panic!("Name is main");
-        }
         if is_toml_specified {
             self.toml_specified = true;
         }
