@@ -1326,11 +1326,16 @@ impl CargoCommandBuilder {
             let _ = handle.join();
 
             match rx.recv_timeout(timeout) {
-                Ok(result) => { result?; },
+                Ok(result) => {
+                    result?;
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                     eprintln!("Timeout reached for process with PID: {}", pid);
                     let _ = cargo_process_handle.lock().unwrap().kill();
-                    return Err(anyhow::anyhow!("Timeout reached for process with PID: {}", pid));
+                    return Err(anyhow::anyhow!(
+                        "Timeout reached for process with PID: {}",
+                        pid
+                    ));
                 }
                 Err(e) => {
                     return Err(anyhow::anyhow!("Thread join error: {}", e));
@@ -2106,8 +2111,9 @@ impl CargoCommandBuilder {
                         if let Some(_hold_time) = self.detached_hold {
                             detached_cmd.args(&["--detached-hold", &hold_time.to_string()]);
                         }
-                        if let Some(delay_time) = self. detached_delay {
-                            detached_cmd.args(&["--detached-delay", &delay_time.to_string()]);// &delay_time.to_string()]);
+                        if let Some(delay_time) = self.detached_delay {
+                            detached_cmd.args(&["--detached-delay", &delay_time.to_string()]);
+                            // &delay_time.to_string()]);
                         }
                         detached_cmd.args(&[&program]);
                         detached_cmd.args(&new_args);

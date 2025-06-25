@@ -237,9 +237,17 @@ pub struct Cli {
     #[arg(last = true, help = "Additional arguments passed to the command.")]
     pub extra: Vec<String>,
 
-    #[clap(long, value_name = "SECONDS", help = "Time in seconds to keep detached windows open before killing.")]
+    #[clap(
+        long,
+        value_name = "SECONDS",
+        help = "Time in seconds to keep detached windows open before killing."
+    )]
     pub detached_hold: Option<u32>,
-    #[clap(long, value_name = "SECONDS", help = "Time in seconds for detached windows to delay before executing target")]
+    #[clap(
+        long,
+        value_name = "SECONDS",
+        help = "Time in seconds for detached windows to delay before executing target"
+    )]
     pub detached_delay: Option<u32>,
 }
 

@@ -200,7 +200,10 @@ pub fn get_required_features_from_manifest(
     kind: &TargetKind,
     target_name: &str,
 ) -> Option<String> {
-    trace!("Searching for required features in manifest: {}", manifest_path.display());
+    trace!(
+        "Searching for required features in manifest: {}",
+        manifest_path.display()
+    );
     // Read and parse the manifest file.
     let content = fs::read_to_string(manifest_path).ok()?;
     let value: Value = content.parse().ok()?;
@@ -238,9 +241,16 @@ pub fn get_required_features_from_manifest(
         if let Some(manifest_str) = manifest_path.to_str() {
             if let Ok(members) = collect_workspace_members(manifest_str) {
                 for (member_name, member_manifest_path) in members {
-                    trace!("Checking workspace {}: {}",member_name, member_manifest_path.display());
+                    trace!(
+                        "Checking workspace {}: {}",
+                        member_name,
+                        member_manifest_path.display()
+                    );
                     if member_name == "." {
-                        trace!("Skipping current workspace member: {}", member_manifest_path.display());
+                        trace!(
+                            "Skipping current workspace member: {}",
+                            member_manifest_path.display()
+                        );
                         continue; // manifest as the member; recursive loop.
                     }
                     if let Some(feats) = get_required_features_from_manifest(

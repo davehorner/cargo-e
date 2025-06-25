@@ -1,6 +1,6 @@
-﻿25/06/19|35b4532|0.2.43
-## [0.2.43](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.42...cargo-e-v0.2.43) - 2025-06-19
+25/06/25|6718726|0.2.44
+## [0.2.44](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.43...cargo-e-v0.2.44) - 2025-06-25
 
-### Added
+### Fixed
 
-- *(detached)* add support for detached mode with hold and delay options
+- *(target)* preserve name "main" for top-level example target

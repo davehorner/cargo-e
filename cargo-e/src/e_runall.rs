@@ -241,7 +241,9 @@ pub fn run_all_examples(
                                             let hold = cli.detached_hold.unwrap_or(0);
                                             if cli.detached_hold.is_some() && hold > 0 {
                                                 println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
-                                                std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                                                std::thread::sleep(std::time::Duration::from_secs(
+                                                    hold as u64,
+                                                ));
                                             }
                                             manager.kill_by_pid(pid).ok();
                                             // manager.remove(pid);

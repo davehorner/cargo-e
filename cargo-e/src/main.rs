@@ -1282,13 +1282,14 @@ fn cli_loop(
                     let handle = std::thread::spawn(move || status);
 
                     match handle.join_timeout(timeout) {
-                        Ok(_) => { println!("Process finished successfully.");
-                                                    let hold = cli.detached_hold.unwrap_or(0);
-                                if cli.detached_hold.is_some() && hold > 0 {
-                                    println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
-                                    std::thread::sleep(std::time::Duration::from_secs(hold as u64));
-                                }
-                             },
+                        Ok(_) => {
+                            println!("Process finished successfully.");
+                            let hold = cli.detached_hold.unwrap_or(0);
+                            if cli.detached_hold.is_some() && hold > 0 {
+                                println!("holding for the duration (detached_hold enabled). Sleeping for {} seconds...", hold);
+                                std::thread::sleep(std::time::Duration::from_secs(hold as u64));
+                            }
+                        }
                         Err(_) => {
                             eprintln!("Timeout reached. Killing all processes.");
                             let hold = cli.detached_hold.unwrap_or(0);
