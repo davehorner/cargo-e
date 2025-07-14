@@ -246,12 +246,14 @@ pub fn get_required_features_from_manifest(
                         member_name,
                         member_manifest_path.display()
                     );
-                    if member_name == "." {
+                    // Skip if member manifest is the same as the root manifest (prevents infinite recursion)
+                    let is_same_manifest = member_manifest_path.canonicalize().ok() == manifest_path.canonicalize().ok();
+                    if member_name == "." || is_same_manifest {
                         trace!(
                             "Skipping current workspace member: {}",
                             member_manifest_path.display()
                         );
-                        continue; // manifest as the member; recursive loop.
+                        continue;
                     }
                     if let Some(feats) = get_required_features_from_manifest(
                         &member_manifest_path,

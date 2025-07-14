@@ -2,9 +2,9 @@
 // It manages the state of the application, including the text input and display logic.
 // It has methods for handling user input and rendering the parsed text.
 
+use crate::control::ControlCommand;
 use crate::parser::{parse_text, ParsedText};
 use eframe::egui;
-use eframe::Frame;
 use eframe::Storage;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -18,9 +18,21 @@ use std::time::Instant;
 use winapi::um::winuser::GetForegroundWindow;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::{IsWindow, MessageBeep};
+#[cfg(target_os = "windows")]
+use winapi::um::winuser::{PostMessageW, WM_NULL};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
+pub struct RectAnimation {
+    pub start_rect: (i32, i32, u32, u32),
+    pub end_rect: (i32, i32, u32, u32),
+    pub start_time: std::time::Instant,
+    pub duration: std::time::Duration,
+    pub easing: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct App {
+    #[serde(skip)]
     input_text: String,
     parsed_data: ParsedText,
     #[serde(skip)]
@@ -41,6 +53,24 @@ pub struct App {
     pub decode_debug: bool,
     #[serde(skip)]
     pub follow_running: Option<Arc<AtomicBool>>, // Add this field to the App struct
+    #[serde(skip)]
+    pub doc_buffer: Vec<String>, // For document buffering
+    #[serde(skip)]
+    control_rx: Option<std::sync::mpsc::Receiver<crate::control::ControlCommand>>, // For control commands
+    #[serde(skip)]
+    pub current_title: String, // Live window title
+    #[serde(skip)]
+    pub pending_delay: Option<std::time::Instant>, // For delay command
+    #[serde(skip)]
+    pub rect_animation: Option<RectAnimation>, // For SetRectEased animation
+    #[serde(skip)]
+    pub pending_exit: std::sync::Arc<std::sync::atomic::AtomicBool>, // Signal to close window in update
+    #[serde(skip)]
+    pub in_document: bool, // Track if currently in a document block
+    #[serde(skip)]
+    pub document_args_line: Option<String>, // Track the argument line for document streaming
+    #[serde(skip)]
+    pub current_rect: (i32, i32, u32, u32), // Track current window position and size
 }
 
 impl Default for App {
@@ -55,8 +85,8 @@ impl Default for App {
                 0
             }
         };
-        let input_text = default_card_with_hwnd(hwnd);
-        let parsed_data = parse_text(&input_text, true); // Changed to ParsedText
+        let input_text = String::new();
+        let parsed_data = parse_text(&input_text, true);
         let now = chrono::Local::now();
         Self {
             input_text,
@@ -70,6 +100,156 @@ impl Default for App {
             follow_hwnd: None,
             decode_debug: false,
             follow_running: None,
+            doc_buffer: Vec::new(),
+            control_rx: None,
+            current_title: "e_window".to_string(),
+            pending_delay: None,
+            rect_animation: None,
+            pending_exit: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            in_document: false,
+            document_args_line: None,
+            current_rect: (200, 200, 1024, 768), // Default rect
+        }
+    }
+}
+impl App {
+    // Send a synthetic event to the window to force it to process pending changes (Windows only)
+    #[cfg(target_os = "windows")]
+    fn send_synthetic_event() {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if !hwnd.is_null() {
+                PostMessageW(hwnd, WM_NULL, 0, 0);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn send_synthetic_event() {}
+    pub fn with_control_receiver(
+        mut self,
+        rx: std::sync::mpsc::Receiver<crate::control::ControlCommand>,
+    ) -> Self {
+        self.control_rx = Some(rx);
+        self
+    }
+}
+
+// Handle incoming control commands
+impl App {
+    pub fn handle_control(&mut self, cmd: ControlCommand, ctx: Option<&egui::Context>) {
+        eprintln!("[App] Handling control command: {:?}", cmd);
+        match cmd {
+            ControlCommand::SetRect { x, y, w, h } => {
+                eprintln!("[App] Received SetRect: x={}, y={}, w={}, h={}", x, y, w, h);
+                self.current_rect = (x, y, w, h);
+                if let Some(ctx) = ctx {
+                    self.rect_animation = None;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                        w as f32, h as f32,
+                    )));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                        x as f32, y as f32,
+                    )));
+                    eprintln!("[App] Applied SetRect to viewport");
+                    ctx.request_repaint();
+                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                    Self::send_synthetic_event();
+                }
+            }
+            ControlCommand::SetTitle(title) => {
+                eprintln!("[App] Received SetTitle: {}", title);
+                self.current_title = title.clone();
+                if let Some(ctx) = ctx {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+                    eprintln!("[App] Applied SetTitle to viewport");
+                    ctx.request_repaint();
+                }
+            }
+            ControlCommand::BeginDocument => {
+                eprintln!("[App] Received BeginDocument");
+                self.doc_buffer.clear();
+                self.in_document = true;
+                self.document_args_line = None;
+            }
+            ControlCommand::EndDocument => {
+                eprintln!("[App] Received EndDocument");
+                let new_input = match &self.document_args_line {
+                    Some(args_line) => {
+                        let mut lines = vec![args_line.clone()];
+                        lines.extend(self.doc_buffer.iter().cloned());
+                        lines.join("\n")
+                    }
+                    None => self.doc_buffer.join("\n"),
+                };
+                self.input_text = new_input.clone();
+                self.parsed_data = parse_text(&new_input, self.decode_debug);
+                self.in_document = false;
+                self.doc_buffer.clear();
+            }
+            ControlCommand::Delay(ms) => {
+                eprintln!("[App] Received Delay: {} ms", ms);
+                self.pending_delay =
+                    Some(std::time::Instant::now() + std::time::Duration::from_millis(ms as u64));
+            }
+            ControlCommand::SetRectEased {
+                x,
+                y,
+                w,
+                h,
+                duration_ms,
+                easing,
+            } => {
+                eprintln!("[App] Received SetRectEased: x={}, y={}, w={}, h={}, duration_ms={}, easing={}", x, y, w, h, duration_ms, easing);
+                let now = std::time::Instant::now();
+                let (start_x, start_y, start_w, start_h) = self.current_rect;
+                self.rect_animation = Some(RectAnimation {
+                    start_rect: (start_x, start_y, start_w, start_h),
+                    end_rect: (x, y, w, h),
+                    start_time: now,
+                    duration: std::time::Duration::from_millis(duration_ms as u64),
+                    easing,
+                });
+                if let Some(ctx) = ctx {
+                    ctx.request_repaint();
+                }
+            }
+            ControlCommand::Exit => {
+                eprintln!("[App] Received Exit command. Closing window.");
+                if let Some(ctx) = ctx {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                } else {
+                    eprintln!("[App] No context available to close viewport.");
+                }
+            }
+            ControlCommand::Content(line) => {
+                println!("[App] Received Content: {}", &line);
+                for (i, line) in self.doc_buffer.iter().enumerate() {
+                    println!("doc_buffer[{}]: {}", i, line);
+                }
+                if self.in_document {
+                    // First line after BeginDocument is argument line, skip adding to doc_buffer
+                    if self.document_args_line.is_none() {
+                        self.document_args_line = Some(line.clone());
+                    } else {
+                        self.doc_buffer.push(line);
+                    }
+                } else {
+                    // If this is the first content received, replace the default card
+                    if self.doc_buffer.is_empty() {
+                        self.input_text = line.clone();
+                        self.parsed_data = parse_text(&self.input_text, self.decode_debug);
+                        self.doc_buffer.push(line);
+                    } else {
+                        self.doc_buffer.push(line);
+                        self.input_text = self.doc_buffer.join("\n");
+                        self.parsed_data = parse_text(&self.input_text, self.decode_debug);
+                    }
+                }
+            }
+        }
+        if let Some(ctx) = ctx {
+            ctx.request_repaint();
         }
     }
 }
@@ -87,47 +267,69 @@ impl App {
         follow_hwnd: Option<usize>,
         decode_debug: bool,
     ) -> Self {
-        if let Some(storage) = storage {
-            if let Some(restored) = eframe::get_value::<App>(storage, "app") {
-                return App {
-                    input_text: restored.input_text.clone(),
-                    parsed_data: restored.parsed_data.clone(),
-                    first_frame: true,
-                    initial_window: Some((width, height, x, y, title)),
-                    editor_mode: restored.editor_mode,
-                    start_time: Some(Instant::now()),
-                    start_datetime: chrono::Local::now()
-                        .format("%Y-%m-%d %H:%M:%S%.3f")
-                        .to_string(),
-                    follow_hwnd,
-                    follow_triggered: restored.follow_triggered,
-                    decode_debug,
-                    follow_running: restored.follow_running.clone(),
-                };
+        // Only restore from storage if app is not already initialized
+        let mut app = App::default();
+        let should_restore = app.first_frame && app.initial_window.is_none();
+        if should_restore {
+            if let Some(storage) = storage {
+                if let Some(restored) = eframe::get_value::<App>(storage, "app") {
+                    // Use restored current_rect if available, else fallback to default
+                    let restored_rect = restored.current_rect;
+                    return App {
+                        input_text: String::new(), // Do not restore input_text
+                        parsed_data: restored.parsed_data.clone(),
+                        first_frame: true,
+                        initial_window: Some((width, height, x, y, title.clone())),
+                        editor_mode: false,
+                        start_time: Some(Instant::now()),
+                        start_datetime: chrono::Local::now()
+                            .format("%Y-%m-%d %H:%M:%S%.3f")
+                            .to_string(),
+                        follow_hwnd,
+                        follow_triggered: restored.follow_triggered,
+                        decode_debug,
+                        follow_running: restored.follow_running.clone(),
+                        doc_buffer: Vec::new(),
+                        control_rx: None,
+                        current_title: title.clone(),
+                        pending_delay: None,
+                        rect_animation: None,
+                        pending_exit: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+                            false,
+                        )),
+                        in_document: false,
+                        document_args_line: None,
+                        current_rect: restored_rect,
+                    };
+                }
             }
         }
-        let mut app = App::default();
-        app.initial_window = Some((width, height, x, y, title));
+        app.initial_window = Some((width, height, x, y, title.clone()));
+        app.doc_buffer = app.input_text.lines().map(|s| s.to_string()).collect();
+        app.control_rx = None;
+        app.current_title = title;
+        app.pending_exit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        app.current_rect = (x as i32, y as i32, width as u32, height as u32);
         app
     }
 
     #[allow(dead_code)]
     pub fn with_input_data(mut self, input: String) -> Self {
-        if input.trim().is_empty() {
-            let hwnd = {
-                #[cfg(target_os = "windows")]
-                {
-                    unsafe { GetForegroundWindow() as usize }
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    0
-                }
-            };
-            self.input_text = default_card_with_hwnd(hwnd);
-        } else {
-            self.input_text = input.clone();
-        }
+        // if input.trim().is_empty() {
+        //     let hwnd = {
+        //         #[cfg(target_os = "windows")]
+        //         {
+        //             unsafe { GetForegroundWindow() as usize }
+        //         }
+        //         #[cfg(not(target_os = "windows"))]
+        //         {
+        //             0
+        //         }
+        //     };
+        //     self.input_text = default_card_with_hwnd(hwnd);
+        // } else {
+        self.input_text = input.clone();
+        // }
         self.parsed_data = parse_text(&self.input_text, self.decode_debug); // Changed to ParsedText
         self
     }
@@ -178,9 +380,19 @@ impl Drop for App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.request_repaint_after(std::time::Duration::from_millis(16)); // Reliable periodic refresh (60 FPS)
+                                                                         // Check for pending exit signal
+        if self.pending_exit.load(std::sync::atomic::Ordering::SeqCst) {
+            println!("[App] update: Closing window due to pending_exit signal.");
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            self.pending_exit
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            return;
+        }
         if self.first_frame {
             println!("Initial window setup: {:?}", self.initial_window);
+            // Only set storage on first frame to avoid repeated App drops
             if let Some(storage) = frame.storage_mut() {
                 eframe::set_value(storage, "app", self);
             }
@@ -198,7 +410,6 @@ impl eframe::App for App {
                     w, h, x, y
                 );
 
-                // Get HWND and update title
                 #[cfg(target_os = "windows")]
                 unsafe {
                     let hwnd = GetForegroundWindow();
@@ -210,7 +421,6 @@ impl eframe::App for App {
                         } else {
                             new_title = format!("{new_title} | NO FOLLOW");
                         }
-                        // Add PID to the window title
                         let pid = std::process::id();
                         new_title = format!("{new_title} | PID: {}", pid);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Title(new_title));
@@ -232,19 +442,54 @@ impl eframe::App for App {
             self.first_frame = false;
         }
 
+        // Pause control command processing if a delay or animation is active
+        let mut skip_control = false;
+        // Check for pending delay
+        if let Some(delay_until) = self.pending_delay {
+            if std::time::Instant::now() < delay_until {
+                skip_control = true;
+            } else {
+                self.pending_delay = None;
+            }
+        }
+        // Check for active animation
+        if self.rect_animation.is_some() {
+            skip_control = true;
+        }
+
+        // Queue control commands and only process one per frame when not skipping
+        if let Some(rx) = &mut self.control_rx {
+            // Maintain a queue of pending commands
+            if self.doc_buffer.is_empty() {
+                self.doc_buffer = Vec::new();
+            }
+            // Use a local queue for control commands
+            if self.pending_delay.is_none() && self.rect_animation.is_none() {
+                if let Ok(cmd) = rx.try_recv() {
+                    eprintln!("[App] Received control command: {:?}", cmd);
+                    self.handle_control(cmd, Some(ctx));
+                }
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Make the frame fill all available space
-            egui::Frame::group(ui.style())
-                .fill(ui.visuals().panel_fill)
-                .stroke(egui::Stroke::new(
-                    1.0,
-                    ui.visuals().widgets.noninteractive.bg_stroke.color,
-                ))
+            let mut close_requested = false;
+            if ctx.input(|i| i.key_pressed(egui::Key::Enter))
+                || ctx.input(|i| i.key_pressed(egui::Key::Escape))
+            {
+                close_requested = true;
+            }
+            let total_height = ui.available_height();
+            let (card_height, editor_height) = if self.editor_mode {
+                (total_height * 0.5, total_height * 0.5)
+            } else {
+                (total_height, 0.0)
+            };
+            egui::ScrollArea::vertical()
+                .id_salt("main_scroll")
+                .auto_shrink([false; 2])
                 .show(ui, |ui| {
-                    // If in editor_mode, make the frame fill half the panel; otherwise, fill the whole panel
-                    if !self.editor_mode {
-                        ui.set_min_size(ui.available_size());
-                    }
+                    ui.set_height(card_height);
                     ui.vertical(|ui| {
                         // Title
                         if let Some(title) = &self.parsed_data.title {
@@ -255,12 +500,9 @@ impl eframe::App for App {
                         // Header
                         if let Some(header) = &self.parsed_data.header {
                             if !header.is_empty() {
-                                ui.label(
-                                    egui::RichText::new(header).strong().size(
-                                        ui.style().text_styles[&egui::TextStyle::Heading].size
-                                            * 0.8,
-                                    ), // egui::RichText::new(header).strong()
-                                );
+                                ui.label(egui::RichText::new(header).strong().size(
+                                    ui.style().text_styles[&egui::TextStyle::Heading].size * 0.8,
+                                ));
                             }
                         }
                         // Caption
@@ -311,16 +553,9 @@ impl eframe::App for App {
 
                         // Triples Table
                         if !self.parsed_data.triples.is_empty() {
-                            //ui.label(egui::RichText::new("Fields:").underline());
                             egui::Grid::new("triples_grid")
                                 .striped(true)
                                 .show(ui, |ui| {
-                                    // ui.label(egui::RichText::new("Key").strong());
-                                    // ui.label(egui::RichText::new("Value").strong());
-                                    // ui.label(egui::RichText::new("Type").strong());
-                                    // ui.end_row();
-
-                                    // Start time and timer as first fields
                                     ui.label("Started");
                                     ui.label(&self.start_datetime);
                                     ui.label("datetime");
@@ -363,15 +598,20 @@ impl eframe::App for App {
 
                         ui.add_space(8.0);
                         ui.vertical_centered(|ui| {
-                            if ui.button("OK").clicked() {
+                            if ui.button("OK").clicked() || close_requested {
                                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                             }
                         });
                     });
                 });
 
-            // Editing and parsing area
+            // Editing and parsing area below the card
             if self.editor_mode {
+                ui.separator();
+                ui.vertical_centered(|ui| {
+                    ui.heading("📇 e_window default editor");
+                });
+
                 if ui.button("Parse").clicked() {
                     self.parsed_data = parse_text(&self.input_text, self.decode_debug);
                 }
@@ -379,41 +619,39 @@ impl eframe::App for App {
                     #[cfg(target_os = "windows")]
                     {
                         use std::ffi::OsStr;
-
                         use std::os::windows::ffi::OsStrExt;
-
                         use winapi::um::winuser::{MessageBoxW, MB_OK};
-                        let _ = std::process::Command::new("e_window")
-                            //.creation_flags(0x00000008) // CREATE_NO_WINDOW
+                        // Show the message box with the editor content
+                        let wide_text = OsStr::new(&self.input_text)
+                            .encode_wide()
+                            .chain(std::iter::once(0))
+                            .collect::<Vec<u16>>();
+                        let wide_caption = OsStr::new("e_window Input")
+                            .encode_wide()
+                            .chain(std::iter::once(0))
+                            .collect::<Vec<u16>>();
+                        unsafe {
+                            MessageBoxW(
+                                std::ptr::null_mut(),
+                                wide_text.as_ptr(),
+                                wide_caption.as_ptr(),
+                                MB_OK,
+                            );
+                        }
+                        // Pass the editor content as a positional argument and write to stdin
+                        let mut child = std::process::Command::new("e_window")
+                            .arg(&self.input_text)
                             .stdin(std::process::Stdio::piped())
                             .spawn()
-                            .and_then(|mut child| {
-                                if let Some(stdin) = child.stdin.as_mut() {
-                                    fn to_wide(s: &str) -> Vec<u16> {
-                                        OsStr::new(s)
-                                            .encode_wide()
-                                            .chain(std::iter::once(0))
-                                            .collect()
-                                    }
-
-                                    let wide_text = to_wide(&self.input_text);
-                                    let wide_caption = to_wide("e_window Input");
-                                    unsafe {
-                                        MessageBoxW(
-                                            std::ptr::null_mut(),
-                                            wide_text.as_ptr(),
-                                            wide_caption.as_ptr(),
-                                            MB_OK,
-                                        );
-                                    }
-                                    stdin.write_all(self.input_text.as_bytes())?;
-                                }
-                                Ok(())
-                            });
+                            .expect("Failed to start e_window");
+                        if let Some(stdin) = child.stdin.as_mut() {
+                            let _ = stdin.write_all(self.input_text.as_bytes());
+                        }
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
                         let mut child = std::process::Command::new("e_window")
+                            .arg(&self.input_text)
                             .stdin(std::process::Stdio::piped())
                             .spawn()
                             .expect("Failed to start e_window");
@@ -422,15 +660,12 @@ impl eframe::App for App {
                         }
                     }
                 }
-                ui.separator();
-                ui.vertical_centered(|ui| {
-                    ui.heading("📇 e_window default editor");
-                });
 
-                // Begin scroll area for everything below the editor heading
                 egui::ScrollArea::vertical()
+                    .id_salt("editor_scroll")
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
+                        ui.set_height(editor_height);
                         ui.set_width(ui.available_width());
                         // Show the first line (CLI args) as a code block
                         if let Some(first_line) = self.input_text.lines().next() {
@@ -477,9 +712,35 @@ impl eframe::App for App {
                     });
             }
         });
-    }
-}
 
+        if let Some(anim) = &self.rect_animation {
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(anim.start_time);
+            let t = (elapsed.as_secs_f32() / anim.duration.as_secs_f32())
+                .min(1.0)
+                .max(0.0);
+            let ease_t = match anim.easing.as_str() {
+                "linear" => t,
+                // Add more easing types here
+                _ => t,
+            };
+            let (sx, sy, sw, sh) = anim.start_rect;
+            let (ex, ey, ew, eh) = anim.end_rect;
+            let nx = sx as f32 + (ex as f32 - sx as f32) * ease_t;
+            let ny = sy as f32 + (ey as f32 - sy as f32) * ease_t;
+            let nw = sw as f32 + (ew as f32 - sw as f32) * ease_t;
+            let nh = sh as f32 + (eh as f32 - sh as f32) * ease_t;
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(nw, nh)));
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(nx, ny)));
+            self.current_rect = (nx as i32, ny as i32, nw as u32, nh as u32);
+            ctx.request_repaint();
+            if t >= 1.0 {
+                self.rect_animation = None;
+                Self::send_synthetic_event();
+            }
+        }
+    }
+} // Added missing closing brace for impl eframe::App for App
 fn extract_title_from_first_line(input_text: &str) -> Option<String> {
     let first_line = input_text.lines().next().unwrap_or("");
     let args = shell_words::split(first_line).ok()?;

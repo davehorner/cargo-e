@@ -137,6 +137,61 @@ e_window --w-pool-cnt 4
 
 ---
 
+## July 2025
+
+### Keyboard Shortcuts
+- Pressing Enter or Escape in the main card view closes the window (same as clicking OK).
+
+### Improved Scroll Behavior
+- Scroll areas now use unique IDs to avoid egui warnings and ensure reliable scrolling.
+- Scroll bars are always visible and support drag-to-scroll and arrow key navigation.
+
+### Real-Time Control Example and Supported Commands
+
+`e_window` can process special control commands from stdin to update its window in real time. These commands must start with `!control:` and are parsed as structured instructions.
+
+#### Supported Commands
+
+- `!control:exit`  
+    Closes the window.
+
+- `!control:set_rect x y w h`  
+    Sets the window rectangle to position (`x`, `y`) and size (`w`, `h`).
+
+- `!control:set_rect_eased x y w h duration_ms easing`  
+    Animates the window rectangle to the given position and size over `duration_ms` milliseconds using the specified `easing` function.
+
+- `!control:set_title <title>`  
+    Changes the window title.
+
+- `!control:begin_document`  
+    Marks the start of a document.
+
+- `!control:end_document`  
+    Marks the end of a document.
+
+- `!control:delay <milliseconds>`  
+    Pauses processing for the specified number of milliseconds.
+
+Any other line is treated as content and displayed in the window.
+
+#### Example Usage
+
+```text
+!control:set_rect 10 20 300 400
+!control:set_rect_eased 10 20 300 400 500 ease-in-out
+!control:set_title My Window
+!control:begin_document
+Some regular content line
+!control:end_document
+!control:delay 1000
+!control:exit
+```
+
+These commands can be sent interactively or piped into `e_window` to control its behavior while running.
+
+Take a look at the `animated_control` example for more detail.
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for suggestions, bug fixes, or improvements.
