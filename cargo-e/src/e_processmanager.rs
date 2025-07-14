@@ -198,39 +198,53 @@ impl ProcessManager {
             .map(|entry| (*entry.key(), entry.value().clone()))
             .collect();
         for (pid, handle) in processes {
-            if let Ok(mut h) = handle.try_lock() {
-                if h.removed {
-                    continue;
-                }
-
-                println!("ctrlc> Terminating process with PID: {}", pid);
-                let _ = h.kill();
-                h.removed = true;
-                let diag_lock = match h.diagnostics.try_lock() {
-                    Ok(lock) => lock.clone(),
-                    Err(e) => {
-                        eprintln!("Failed to acquire diagnostics lock for PID {}: {}", pid, e);
-                        Vec::new()
+            let mut got_lock = false;
+            for attempt in 0..6 {
+                match handle.try_lock() {
+                    Ok(mut h) => {
+                        got_lock = true;
+                        if h.removed {
+                            break;
+                        }
+                        println!("ctrlc> Terminating process with PID: {}", pid);
+                        let _ = h.kill();
+                        h.removed = true;
+                        let diag_lock = match h.diagnostics.try_lock() {
+                            Ok(lock) => lock.clone(),
+                            Err(e) => {
+                                eprintln!("Failed to acquire diagnostics lock for PID {}: {}", pid, e);
+                                Vec::new()
+                            }
+                        };
+                        h.result.diagnostics = diag_lock.clone();
+                        if let Some(exit_status) = h.child.try_wait().ok().flatten() {
+                            h.result.exit_status = Some(exit_status);
+                        }
+                        h.result.end_time = Some(SystemTime::now());
+                        if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
+                            h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
+                        }
+                        self.record_result(h.result.clone());
+                        if let Some(manager) = GLOBAL_MANAGER.get() {
+                            manager.e_window_kill_all();
+                        }
+                        break;
                     }
-                };
-                h.result.diagnostics = diag_lock.clone();
-
-                if let Some(exit_status) = h.child.try_wait().ok().flatten() {
-                    h.result.exit_status = Some(exit_status);
+                    Err(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
                 }
-
-                h.result.end_time = Some(SystemTime::now());
-                if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
-                    h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
-                }
-                self.record_result(h.result.clone());
-                if let Some(manager) = GLOBAL_MANAGER.get() {
-                    manager.e_window_kill_all();
-                }
-            } else {
-                eprintln!("Failed to acquire lock for PID {}", pid);
             }
-            //self.processes.remove(&pid);
+            if !got_lock {
+                eprintln!("Failed to acquire lock for PID {} after 6 attempts", pid);
+                #[cfg(target_os = "windows")]
+                {
+                    eprintln!("taskkill /F /PID {}", pid);
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/PID", &pid.to_string()])
+                        .spawn();
+                }
+            }
         }
     }
 
