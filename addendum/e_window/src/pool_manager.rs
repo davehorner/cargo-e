@@ -141,6 +141,7 @@ impl eframe::App for PoolManagerApp {
         for handle in handles {
             let _ = handle.join();
         }
+        std::process::exit(0);
     }
 }
 

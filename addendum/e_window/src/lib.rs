@@ -1,13 +1,12 @@
 //! Library interface for launching the e_window app with custom arguments.
-
 pub mod app;
+pub mod control;
 pub mod parser;
 pub mod pool_manager;
 
 use getargs::{Arg, Options};
 use std::env::current_exe;
 use std::fs;
-use std::io::{self, Read};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -166,23 +165,66 @@ Any other positional arguments are collected as files or piped input."#
             .unwrap_or_else(|| "e_window".to_string());
     }
 
-    // Read input data: from file if specified, else from positional args or stdin
-    let (input_data, editor_mode) = if let Some(file) = input_file {
+    // Set up control channel once, share between stdin thread and app
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel();
+
+    // Read input data: from file if specified, else from positional args, else empty
+    let (input_data, mut editor_mode) = if let Some(file) = input_file {
         (
             fs::read_to_string(file).unwrap_or_else(|_| "".to_string()),
-            true,
+            false,
         )
     } else if !positional_args.is_empty() {
-        (positional_args.join("\n"), true)
-    } else {
-        // Try to read from stdin
-        let mut buffer = String::new();
-        use std::io::IsTerminal;
-        if !io::stdin().is_terminal() && io::stdin().read_to_string(&mut buffer).unwrap_or(0) > 0 {
-            (buffer, false)
+        // If the first positional argument looks like a file and exists, use it as a file
+        let first = &positional_args[0];
+        if fs::metadata(first).is_ok() {
+            (
+                fs::read_to_string(first).unwrap_or_else(|_| "".to_string()),
+                false,
+            )
         } else {
-            (String::new(), true)
+            // Otherwise, treat it as the card content
+            (first.clone(), false)
         }
+    } else {
+        // Buffer initial lines from stdin asynchronously and use them as input_data
+        use std::sync::{Arc, Mutex};
+        let initial_buffer = Arc::new(Mutex::new(Vec::new()));
+        let initial_buffer_clone = initial_buffer.clone();
+        // Start the stdin listener, but also buffer the first lines
+        control::start_stdin_listener_with_buffer(tx.clone(), initial_buffer_clone);
+        // Wait briefly for initial input (event-driven, but with a short timeout)
+        let mut waited = 0;
+        let max_wait = 200; // ms
+        while waited < max_wait {
+            if !initial_buffer.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            waited += 10;
+        }
+        let input_data = initial_buffer.lock().unwrap().join("\n");
+        (input_data, false)
+    };
+
+    // If input_data is empty, use your DEFAULT_CARD
+    let input_data = if input_data.trim().is_empty() {
+        println!("Warning: No input data provided, using default card template.");
+        let hwnd = {
+            #[cfg(target_os = "windows")]
+            {
+                unsafe { winapi::um::winuser::GetForegroundWindow() as usize }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                0
+            }
+        };
+        editor_mode = true; // Set editor mode if using default card
+        app::default_card_with_hwnd(hwnd)
+    } else {
+        input_data
     };
 
     // Parse first line for CLI args, and use the rest as input_data
@@ -251,23 +293,6 @@ Any other positional arguments are collected as files or piped input."#
         // Use the rest of the lines as the actual input
         actual_input = input_lines.collect::<Vec<_>>().join("\n");
     }
-
-    // If actual_input is empty, use your DEFAULT_CARD
-    let actual_input = if actual_input.trim().is_empty() {
-        let hwnd = {
-            #[cfg(target_os = "windows")]
-            {
-                unsafe { winapi::um::winuser::GetForegroundWindow() as usize }
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                0
-            }
-        };
-        app::default_card_with_hwnd(hwnd)
-    } else {
-        actual_input
-    };
 
     // --- Window pool logic ---
     if let Some(pool_size) = w_pool_cnt {
@@ -417,6 +442,7 @@ Any other positional arguments are collected as files or piped input."#
         title = format!("{} (Window #{})", title, ndx);
     }
 
+    // Launch the GUI immediately, passing the shared receiver
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([width as f32, height as f32])
@@ -424,22 +450,42 @@ Any other positional arguments are collected as files or piped input."#
             .with_title(&title),
         ..Default::default()
     };
+    // If actual_input is empty, use your DEFAULT_CARD
+    let actual_input = if actual_input.trim().is_empty() {
+        println!("Warning: No input data provided, using default card template.");
+        let hwnd = {
+            #[cfg(target_os = "windows")]
+            {
+                unsafe { winapi::um::winuser::GetForegroundWindow() as usize }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                0
+            }
+        };
+        editor_mode = true; // Set editor mode if using default card
+        app::default_card_with_hwnd(hwnd)
+    } else {
+        actual_input
+    };
     eframe::run_native(
         &appname,
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
+            let app = app::App::with_initial_window(
+                width as f32,
+                height as f32,
+                x as f32,
+                y as f32,
+                title.clone(),
+                cc.storage,
+                follow_hwnd,
+                decode_debug,
+            )
+            .with_input_data_and_mode(actual_input, editor_mode);
+            // Pass the receiver to the app
             Ok::<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>>(Box::new(
-                app::App::with_initial_window(
-                    width as f32,
-                    height as f32,
-                    x as f32,
-                    y as f32,
-                    title.clone(),
-                    cc.storage,
-                    follow_hwnd,
-                    decode_debug,
-                )
-                .with_input_data_and_mode(actual_input, editor_mode && !has_been_specified),
+                app.with_control_receiver(rx),
             ))
         }),
     )
@@ -494,7 +540,8 @@ fn count_running_windows(_exe: &std::path::Path) -> usize {
     // Collect all process IDs for our exe
     let mut our_pids = Vec::new();
     for (pid, process) in sys.processes() {
-        if process.name().eq_ignore_ascii_case("e_window.exe") {
+        let name = process.name().to_ascii_lowercase();
+        if name == "e_window.exe" || name == "e_window" {
             our_pids.push(pid.as_u32());
         }
     }
