@@ -1847,9 +1847,10 @@ dependencies = [
 
 [[package]]
 name = "e_window"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "chrono",
+ "ctrlc",
  "eframe",
  "egui",
  "getargs",
@@ -1858,8 +1859,11 @@ dependencies = [
  "shell-words",
  "snailquote",
  "sysinfo",
+ "tempfile",
  "which 8.0.0",
  "winapi",
+ "windows 0.61.3",
+ "winit",
 ]
 
 [[package]]

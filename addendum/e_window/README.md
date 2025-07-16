@@ -146,6 +146,18 @@ e_window --w-pool-cnt 4
 - Scroll areas now use unique IDs to avoid egui warnings and ensure reliable scrolling.
 - Scroll bars are always visible and support drag-to-scroll and arrow key navigation.
 
+### e_window_hydra Example
+- Demonstrates advanced Win32 window management and automation for Chrome windows over a grid.
+- Features robust grid mapping, dynamic topmost/z-order control, and automated modal closure via JS injection.
+- Includes cross-platform mouse click simulation to grid cells, with all Win32 API usage encapsulated for maintainability.
+- Useful for automated UI testing, demos, and interactive control of external applications.
+
+### position_grid_demo Example
+- Shows how to use the PositionGrid utility for interactive grid-based input and diagnostics.
+- Visualizes grid cell mapping, DPI scaling, and mouse click simulation within an eframe window.
+- Includes detailed logging and diagnostics for grid geometry, cell selection, and input mapping.
+- Ideal for learning, debugging, and validating grid-based UI logic in Rust/egui applications.
+
 ### Real-Time Control Example and Supported Commands
 
 `e_window` can process special control commands from stdin to update its window in real time. These commands must start with `!control:` and are parsed as structured instructions.

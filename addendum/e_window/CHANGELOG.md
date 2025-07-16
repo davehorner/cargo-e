@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.10...e_window-v0.1.11) - 2025-07-16
+
+### Added
+
+- *(e_window_hydra)* add e_window_hydra demo for grid-aligned Chrome Hydra sketches.  Runs a random example from https://hydra.ojack.xyz/?sketch_id=example
+
 ## [0.1.10](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.9...e_window-v0.1.10) - 2025-07-14
 
 ### Added

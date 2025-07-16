@@ -2,6 +2,7 @@
 mod app;
 mod control;
 mod parser;
+mod position_grid;
 
 fn main() -> eframe::Result<()> {
     e_window::run_window(std::env::args().skip(1))
