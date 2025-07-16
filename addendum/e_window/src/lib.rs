@@ -1,8 +1,11 @@
 //! Library interface for launching the e_window app with custom arguments.
 pub mod app;
 pub mod control;
+pub mod host_window;
 pub mod parser;
 pub mod pool_manager;
+pub mod position_grid;
+pub mod position_grid_manager;
 
 use getargs::{Arg, Options};
 use std::env::current_exe;

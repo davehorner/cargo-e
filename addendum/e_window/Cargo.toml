@@ -3,7 +3,7 @@ edition = "2021"
 name = "e_window"
 description = "A window tool. Think WinAPI ShowMessageBox; but more than that."
 license = "MIT"
-version = "0.1.10"
+version = "0.1.11"
 authors = ["David Horner"]
 publish = true
 
@@ -12,6 +12,7 @@ eframe = { version = "0.32.0", features = ["persistence", "serde", "wayland"] }
 
 [dependencies]
 chrono = "0.4.41"
+ctrlc = "3.4.7"
 egui = { version = "0.32.0", features = ["persistence", "serde", "log"] }
 # epi = "0.17.0"
 getargs = "0.5.0"
@@ -21,6 +22,15 @@ shell-words = "1.1.0"
 snailquote = "0.3.1"
 sysinfo = "0.35"
 which = "8.0.0"
+winit = "0.30.11"
+windows = "0.61.3"
+tempfile = "3.20.0"
+
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winuser"] }
+winapi = { version = "0.3", features = ["winuser","processthreadsapi"] }
 eframe = { version = "0.32.0", features = ["persistence", "serde"] }
+
+[lib]
+name = "e_window"
+path = "src/lib.rs"
+
