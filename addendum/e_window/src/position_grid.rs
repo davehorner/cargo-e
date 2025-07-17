@@ -22,6 +22,61 @@ pub struct PositionGrid {
 }
 
 impl PositionGrid {
+    /// Returns the number of cells in the X direction.
+    pub fn rows(&self) -> usize {
+        self.grid_dims.0
+    }
+
+    /// Returns the number of cells in the Y direction.
+    pub fn cols(&self) -> usize {
+        self.grid_dims.1
+    }
+
+
+    /// Returns the rectangle for the cell at (col, row).
+    pub fn cell_rect(&self, col: usize, row: usize) -> Option<Rect> {
+        if col >= self.cell_count_x() || row >= self.cell_count_y() {
+            return None;
+        }
+        let cell_w = self.char_size.x;
+        let cell_h = self.char_size.y;
+        let x = self.rect.min.x + col as f32 * cell_w;
+        let y = self.rect.min.y + row as f32 * cell_h;
+        Some(Rect::from_min_size(pos2(x, y), vec2(cell_w, cell_h)))
+    }
+    /// Returns the screen coordinates (monitor space) for the cell at (col, row).
+    #[cfg(target_os = "windows")]
+    pub fn cell_rect_screen(&self, col: usize, row: usize) -> Option<Rect> {
+        use winapi::shared::windef::RECT;
+        use winapi::um::winuser::GetWindowRect;
+     let cell_rect = self.cell_rect(col, row)?;
+        let hwnd = self.host_hwnd?;
+        let dpi = Self::get_dpi_for_window(hwnd);
+        let scale = dpi as f32 / 96.0;
+
+        // Get host window position in screen coordinates
+        let (host_x, host_y) = unsafe {
+            let mut rect: RECT = std::mem::zeroed();
+            if GetWindowRect(hwnd as HWND, &mut rect) != 0 {
+                (rect.left as f32, rect.top as f32)
+            } else {
+                (0.0, 0.0)
+            }
+        };
+
+        // Convert cell_rect to screen coordinates
+        let min_screen = pos2(
+            host_x + cell_rect.min.x / scale,
+            host_y + cell_rect.min.y / scale,
+        );
+        let max_screen = pos2(
+            host_x + cell_rect.max.x / scale,
+            host_y + cell_rect.max.y / scale,
+        );
+        Some(Rect::from_min_max(min_screen, max_screen))
+    }
+
+
         pub fn get_dpi_for_window(hwnd: u32) -> u32 {
         #[cfg(target_os = "windows")]
         unsafe {
@@ -106,6 +161,7 @@ impl PositionGrid {
                     unsafe {
                         use winapi::shared::windef::POINT;
                         use winapi::um::winuser::GetCursorPos;
+
                         let mut pt: POINT = std::mem::zeroed();
                         if GetCursorPos(&mut pt) != 0 {
                             println!("[PositionGrid] Mouse pointer is now at: x={}, y={}", pt.x, pt.y);

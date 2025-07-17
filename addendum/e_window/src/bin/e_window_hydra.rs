@@ -160,7 +160,7 @@ setInterval(() => {
         }
         let mut grid_manager = PositionGridManager::new();
         if let Some(hwnd) = hwnd {
-            grid_manager.host_hwnd = Some(hwnd as HWND);
+            grid_manager.host_hwnd = Some(hwnd);
         }
         // Store click_request_rx in struct for main thread polling
         Self {

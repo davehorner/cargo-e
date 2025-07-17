@@ -70,7 +70,11 @@ impl eframe::App for GridDemoApp {
 
             ui.separator();
             ui.label("A grid that fills the window with as many font-sized cells as possible:");
-            let label_height = 32.0; // or use ui.fonts(...) to get actual label height
+            let style = ctx.style();
+            let font_id = style.text_styles.get(&egui::TextStyle::Heading).unwrap();
+            let label_height = ui.fonts(|fonts| fonts.row_height(font_id));
+
+
             let available = ui.available_size();
             let available_for_grid = egui::vec2(available.x, available.y - label_height); // 1px less vertically
             // Pass None to auto-calculate grid size
@@ -80,6 +84,17 @@ impl eframe::App for GridDemoApp {
             fill_grid.rect = fill_rect;
             #[cfg(target_os = "windows")]
             {
+
+                use winapi::um::winuser::IsWindow;
+                ctx.request_repaint();  // done for quick exit when you close the pinned window
+                if let Some(hwnd) = self.pinned_hwnd {
+                    // If pinned_hwnd is not a valid window, exit the app
+                    if unsafe { IsWindow(hwnd) } == 0 {
+                        println!("Pinned HWND is no longer valid. Exiting app.");
+                        std::process::exit(0);
+                    }
+                }
+
                 if ui.button("Pin first Chrome HWND").clicked() {
                     use sysinfo::ProcessesToUpdate;
 
@@ -175,8 +190,9 @@ impl eframe::App for GridDemoApp {
                             let window_y = rect.top as f32;
                             let pos = fill_grid.rect.min;
                             let size = fill_grid.rect.size();
-                            let title_bar_height = 32.0 * dpi;
-                            let border_width = 8.0 * dpi;
+                            // Dynamically get the bottom of the label above the grid
+                            let title_bar_height = label_height + 14.0; // 5px padding for better visibility
+                            let border_width = 5.0 * dpi;
                             let mut x = (window_x + pos.x * dpi) as i32 + border_width as i32;
                             let mut y = (window_y + pos.y * dpi) as i32 + title_bar_height as i32;
                             let mut w = (size.x * dpi) as i32;
@@ -185,6 +201,8 @@ impl eframe::App for GridDemoApp {
                             if y < rect.top { y = rect.top; }
                             if x + w > rect.right { w = rect.right - x; }
                             if y + h > rect.bottom { h = rect.bottom - y; }
+
+
                             // Compare process IDs instead of HWNDs for more reliable focus detection
                             let mut fg_pid: u32 = 0;
                             let fg_hwnd = winapi::um::winuser::GetForegroundWindow();

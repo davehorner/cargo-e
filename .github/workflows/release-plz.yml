@@ -24,7 +24,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install speech-dispatcher development headers
-        run: sudo apt-get update && sudo apt-get install -y libspeechd-dev     
+        run: sudo apt-get update && sudo apt-get install -y libspeechd-dev
+      - name: Install ALSA development libraries
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev  
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
