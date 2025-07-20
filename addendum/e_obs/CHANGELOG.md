@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/davehorner/cargo-e/compare/e_obs-v0.1.4...e_obs-v0.1.5) - 2025-07-20
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.4](https://github.com/davehorner/cargo-e/compare/e_obs-v0.1.3...e_obs-v0.1.4) - 2025-07-14
 
 ### Other

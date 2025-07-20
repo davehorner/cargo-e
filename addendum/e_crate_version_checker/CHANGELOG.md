@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.33](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.32...e_crate_version_checker-v0.1.33) - 2025-07-20
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.32](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.31...e_crate_version_checker-v0.1.32) - 2025-07-14
 
 ### Other

@@ -1,6 +1,6 @@
-﻿25/07/14|d071494|0.2.45
-## [0.2.45](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.44...cargo-e-v0.2.45) - 2025-07-14
+25/07/20|4087494|0.2.46
+## [0.2.46](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.45...cargo-e-v0.2.46) - 2025-07-20
 
-### Fixed
+### Other
 
-- *(cargo-e)* avoid recursion in workspace parsing and improve process termination reliability
+- update Cargo.lock dependencies

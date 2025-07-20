@@ -212,7 +212,10 @@ impl ProcessManager {
                         let diag_lock = match h.diagnostics.try_lock() {
                             Ok(lock) => lock.clone(),
                             Err(e) => {
-                                eprintln!("Failed to acquire diagnostics lock for PID {}: {}", pid, e);
+                                eprintln!(
+                                    "Failed to acquire diagnostics lock for PID {}: {}",
+                                    pid, e
+                                );
                                 Vec::new()
                             }
                         };
@@ -222,7 +225,8 @@ impl ProcessManager {
                         }
                         h.result.end_time = Some(SystemTime::now());
                         if let (Some(start), Some(end)) = (h.result.start_time, h.result.end_time) {
-                            h.result.elapsed_time = Some(end.duration_since(start).unwrap_or_default());
+                            h.result.elapsed_time =
+                                Some(end.duration_since(start).unwrap_or_default());
                         }
                         self.record_result(h.result.clone());
                         if let Some(manager) = GLOBAL_MANAGER.get() {

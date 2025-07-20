@@ -235,7 +235,7 @@ impl eframe::App for HydraDemoApp {
                 if let Some(tx) = &self.chrome_launch_request_tx {
                     // Only send once: if channel is empty and Chrome not launched
                     if self.chrome_spawned.load(std::sync::atomic::Ordering::SeqCst) == false {
-                        if let Some((grid_x, grid_y, grid_w, grid_h)) = self.grid_manager.get_grid_screen_rect() {
+                        if let Some((grid_x, grid_y, grid_w, grid_h)) = unsafe { self.grid_manager.get_grid_screen_rect() } {
                             // Use grid size and position directly for Chrome window
                             let x = grid_x;
                             let y = grid_y;
@@ -269,8 +269,8 @@ impl eframe::App for HydraDemoApp {
             }
 
             // --- TOP DIAGNOSTICS (single line, only once per frame) ---
-            let grid_rect = self.grid_manager.get_grid_screen_rect().unwrap_or((0, 0, 0, 0));
-            let host_rect = self.grid_manager.get_host_screen_rect().unwrap_or((0, 0, 0, 0));
+            let grid_rect = unsafe { self.grid_manager.get_grid_screen_rect().unwrap_or((0, 0, 0, 0)) };
+            let host_rect = unsafe { self.grid_manager.get_host_screen_rect().unwrap_or((0, 0, 0, 0)) };
             ui.label(format!(
                 "Grid: cells={} | grid_rect=({}, {}, {}, {}) | host_rect=({}, {}, {}, {}) | host_hwnd={:?}",
                 self.fill_grid.cell_count(),
@@ -311,8 +311,8 @@ impl eframe::App for HydraDemoApp {
                 // Move Chrome window to grid position only if HWND is valid
                 if let Some(hwnd_val) = self.window_info.lock().unwrap().hwnd {
                     let hwnd = hwnd_val as HWND;
-                    if PositionGridManager::is_window(hwnd) {
-                        let _ = self.grid_manager.move_and_resize(hwnd);
+                    if unsafe { PositionGridManager::is_window(hwnd) } {
+                        let _ = unsafe { self.grid_manager.move_and_resize(hwnd) };
                     } else {
                         println!("[HydraDemo] Target HWND is invalid or closed. Exiting app.");
                         std::process::exit(0);
