@@ -5,20 +5,21 @@
 // - Plays MIDI songs on window events
 // - Includes detailed logging and comments
 
-extern crate e_window;
-extern crate e_midi;
 extern crate dashmap;
+#[cfg(feature = "uses_e_midi")]
+extern crate e_midi;
+extern crate e_window;
 
+use dashmap::DashMap;
 use e_window::position_grid::PositionGrid;
 use e_window::position_grid_manager::PositionGridManager;
 use eframe::egui;
+use once_cell::sync::Lazy;
 use std::io::{self, BufRead};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 use std::thread;
-use dashmap::DashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use once_cell::sync::Lazy;
 
 #[cfg(target_os = "windows")]
 use std::process::Command;
@@ -31,13 +32,14 @@ use e_grid::ipc_protocol::WindowFocusEvent;
 use e_grid::ipc_server::start_server;
 #[cfg(target_os = "windows")]
 use e_grid::GridClient;
+#[cfg(feature = "uses_e_midi")]
 use e_midi::MidiPlayer;
-
 
 #[cfg(target_os = "windows")]
 static PINNED_HWND_MAP: Lazy<DashMap<&'static str, u32>> = Lazy::new(|| DashMap::new());
 #[cfg(target_os = "windows")]
-static CHROME_WINDOW_INFO_MAP: Lazy<DashMap<&'static str, ChromeWindowInfo>> = Lazy::new(|| DashMap::new());
+static CHROME_WINDOW_INFO_MAP: Lazy<DashMap<&'static str, ChromeWindowInfo>> =
+    Lazy::new(|| DashMap::new());
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, Default, Clone)]
@@ -71,7 +73,7 @@ pub struct EGridDemoApp {
     next_song: Arc<AtomicUsize>,
     grid_client: Option<GridClient>,
     host_move_rx: Option<Receiver<(i32, i32, i32, i32)>>,
-    focus_request_rx: Option<Receiver<(u64)>>,
+    focus_request_rx: Option<Receiver<u64>>,
     grid_offset_x: i32,
     grid_offset_y: i32,
     zorder_toggle_tx: Option<std::sync::mpsc::Sender<bool>>,
@@ -124,10 +126,16 @@ emitter.emit('ui: hide info');
             Ok(c) => grid_client = Some(c),
             Err(_) => {
                 println!("Grid server not running, starting server in-process...");
-                thread::spawn(|| { start_server().unwrap(); });
+                thread::spawn(|| {
+                    start_server().unwrap();
+                });
                 for _ in 0..10 {
                     match GridClient::new() {
-                        Ok(c) => { println!("Connected to in-process server!"); grid_client = Some(c); break; },
+                        Ok(c) => {
+                            println!("Connected to in-process server!");
+                            grid_client = Some(c);
+                            break;
+                        }
                         Err(_) => thread::sleep(std::time::Duration::from_millis(300)),
                     }
                 }
@@ -138,7 +146,10 @@ emitter.emit('ui: hide info');
             let chrome_output_tx_clone = chrome_output_tx.clone();
             let script_file_path = script_tempfile.path().to_path_buf();
             thread::spawn(move || {
-                print!("[EGridDemo] Spawning debugchrome with script file: {}", script_file_path.display());
+                print!(
+                    "[EGridDemo] Spawning debugchrome with script file: {}",
+                    script_file_path.display()
+                );
                 let click_request_tx_clone = click_request_tx.clone();
                 let (x, y, w, h) = chrome_launch_request_rx.recv().unwrap_or((0, 0, 800, 600));
                 let hydra_url = format!("debugchrome:https://hydra.ojack.xyz/?sketch_id=example&!id=&!openwindow&!x={}&!y={}&!w={}&!h={}", x, y, w, h);
@@ -164,26 +175,42 @@ emitter.emit('ui: hide info');
                                 for line in reader.lines().flatten() {
                                     println!("[debugchrome stdout] {}", line);
                                     let _ = tx.send(format!("[debugchrome stdout] {}", line));
-                                    let mut info = CHROME_WINDOW_INFO_MAP.get_mut("chrome").map(|mut_ref| mut_ref.clone()).unwrap_or_default();
+                                    let mut info = CHROME_WINDOW_INFO_MAP
+                                        .get_mut("chrome")
+                                        .map(|mut_ref| mut_ref.clone())
+                                        .unwrap_or_default();
                                     static mut CHROME_HWND_VERIFIED: bool = false;
                                     if let Some(hwnd_hex) = line.strip_prefix("HWND: 0x") {
-                                        if let Ok(hwnd_val) = u32::from_str_radix(hwnd_hex.trim(), 16) {
+                                        if let Ok(hwnd_val) =
+                                            u32::from_str_radix(hwnd_hex.trim(), 16)
+                                        {
                                             #[cfg(target_os = "windows")]
                                             unsafe {
                                                 if !CHROME_HWND_VERIFIED {
-                                                    use winapi::um::winuser::GetClassNameW;
-                                                    use winapi::shared::windef::HWND;
                                                     use std::ffi::OsString;
                                                     use std::os::windows::ffi::OsStringExt;
+                                                    use winapi::shared::windef::HWND;
+                                                    use winapi::um::winuser::GetClassNameW;
                                                     let hwnd_win = hwnd_val as HWND;
                                                     let mut class_buf = [0u16; 256];
-                                                    let len = GetClassNameW(hwnd_win, class_buf.as_mut_ptr(), class_buf.len() as i32);
+                                                    let len = GetClassNameW(
+                                                        hwnd_win,
+                                                        class_buf.as_mut_ptr(),
+                                                        class_buf.len() as i32,
+                                                    );
                                                     let class_name = if len > 0 {
-                                                        OsString::from_wide(&class_buf[..len as usize]).to_string_lossy().to_string()
+                                                        OsString::from_wide(
+                                                            &class_buf[..len as usize],
+                                                        )
+                                                        .to_string_lossy()
+                                                        .to_string()
                                                     } else {
                                                         String::new()
                                                     };
-                                                    println!("[DEBUGCHROME] HWND=0x{:X} class_name='{}'", hwnd_val, class_name);
+                                                    println!(
+                                                        "[DEBUGCHROME] HWND=0x{:X} class_name='{}'",
+                                                        hwnd_val, class_name
+                                                    );
                                                     if class_name == "Chrome_WidgetWin_1" {
                                                         println!("[DEBUGCHROME] Verified Chrome HWND, pinning.");
                                                         PINNED_HWND_MAP.insert("pinned", hwnd_val);
@@ -216,12 +243,16 @@ emitter.emit('ui: hide info');
                                     }
                                 }
                             } else {
-                                let _ = tx.send("[EGridDemo] No stdout from debugchrome child process".to_string());
+                                let _ = tx.send(
+                                    "[EGridDemo] No stdout from debugchrome child process"
+                                        .to_string(),
+                                );
                             }
                         });
                     }
                     Err(e) => {
-                        let _ = chrome_output_tx_clone.send(format!("[EGridDemo] Failed to launch debugchrome: {}", e));
+                        let _ = chrome_output_tx_clone
+                            .send(format!("[EGridDemo] Failed to launch debugchrome: {}", e));
                     }
                 }
             });
@@ -304,9 +335,9 @@ emitter.emit('ui: hide info');
                             let pinned_val = *pinned_hwnd;
                             println!("[FOCUS] Setting pinned HWND=0x{:X} topmost due to focus", pinned_val);
                             // Use static methods from PositionGridManager or direct winapi calls
-                            let _ = PositionGridManager::set_topmost(pinned_val as HWND, true);
+                            let _ = unsafe { PositionGridManager::set_topmost(pinned_val as HWND, true) };
                             if let Some(host_hwnd) = grid_manager.host_hwnd {
-                                let _ = PositionGridManager::set_zorder_above(pinned_val as HWND, host_hwnd as HWND);
+                                let _ = unsafe { PositionGridManager::set_zorder_above(pinned_val as HWND, host_hwnd as HWND) };
                             }
                             return;
                     }
@@ -376,54 +407,95 @@ emitter.emit('ui: hide info');
             // Move/resize callbacks
             let midi_sender_start = Arc::clone(&midi_sender);
             let host_move_tx_cb = Arc::new(host_move_tx.clone());
-            println!("[DIAG] host_move_tx_cb in move_callback: ptr={:p}", &host_move_tx_cb);
+            println!(
+                "[DIAG] host_move_tx_cb in move_callback: ptr={:p}",
+                &host_move_tx_cb
+            );
             let programmatic_move_in_progress_cb = Arc::clone(&programmatic_move_in_progress);
             let programmatic_resize_in_progress_cb = Arc::clone(&programmatic_resize_in_progress);
-            client.set_move_resize_start_callback({
-                let host_move_tx_cb = Arc::clone(&host_move_tx_cb);
-                let midi_sender_start = Arc::clone(&midi_sender_start);
-                let programmatic_move_in_progress_cb = Arc::clone(&programmatic_move_in_progress_cb);
-                let programmatic_resize_in_progress_cb = Arc::clone(&programmatic_resize_in_progress_cb);
-                move |event| {
-                    let pinned_hwnd = PINNED_HWND_MAP.get("pinned").map(|v| *v as u64);
-                    let host_hwnd = grid_manager.host_hwnd.map(|v| v as u64);
-                    if Some(event.hwnd) == pinned_hwnd {
-                        println!("[DEBUG] Move/resize START for pinned HWND: {}", event.hwnd);
-                        let _ = midi_sender_start.send(e_midi::MidiCommand::PlaySongResumeAware {
-                            song_index: Some(1), position_ms: None, tracks: None, tempo_bpm: None });
-                    } else if Some(event.hwnd) == host_hwnd {
-                        println!("[DEBUG] Move/resize START for host HWND: {}", event.hwnd);
-                        let _ = midi_sender_start.send(e_midi::MidiCommand::PlaySongResumeAware {
-                            song_index: Some(1), position_ms: None, tracks: None, tempo_bpm: None });
-                        let target_rect = (event.real_x, event.real_y, event.real_width as i32, event.real_height as i32);
-                        let _ = host_move_tx_cb.send(target_rect);
-                    } else {
-                        println!("[IGNORE] Move/resize START for non-pinned/non-host HWND: {}", event.hwnd);
+            client
+                .set_move_resize_start_callback({
+                    let host_move_tx_cb = Arc::clone(&host_move_tx_cb);
+                    let midi_sender_start = Arc::clone(&midi_sender_start);
+                    let programmatic_move_in_progress_cb =
+                        Arc::clone(&programmatic_move_in_progress_cb);
+                    let programmatic_resize_in_progress_cb =
+                        Arc::clone(&programmatic_resize_in_progress_cb);
+                    move |event| {
+                        let pinned_hwnd = PINNED_HWND_MAP.get("pinned").map(|v| *v as u64);
+                        let host_hwnd = grid_manager.host_hwnd.map(|v| v as u64);
+                        if Some(event.hwnd) == pinned_hwnd {
+                            println!("[DEBUG] Move/resize START for pinned HWND: {}", event.hwnd);
+                            let _ =
+                                midi_sender_start.send(e_midi::MidiCommand::PlaySongResumeAware {
+                                    song_index: Some(1),
+                                    position_ms: None,
+                                    tracks: None,
+                                    tempo_bpm: None,
+                                });
+                        } else if Some(event.hwnd) == host_hwnd {
+                            println!("[DEBUG] Move/resize START for host HWND: {}", event.hwnd);
+                            let _ =
+                                midi_sender_start.send(e_midi::MidiCommand::PlaySongResumeAware {
+                                    song_index: Some(1),
+                                    position_ms: None,
+                                    tracks: None,
+                                    tempo_bpm: None,
+                                });
+                            let target_rect = (
+                                event.real_x,
+                                event.real_y,
+                                event.real_width as i32,
+                                event.real_height as i32,
+                            );
+                            let _ = host_move_tx_cb.send(target_rect);
+                        } else {
+                            println!(
+                                "[IGNORE] Move/resize START for non-pinned/non-host HWND: {}",
+                                event.hwnd
+                            );
+                        }
                     }
-                }
-            }).unwrap();
-            client.set_resize_callback({
-                let host_move_tx_cb = Arc::clone(&host_move_tx_cb);
-                let programmatic_move_in_progress_cb = Arc::clone(&programmatic_move_in_progress);
-                let programmatic_resize_in_progress_cb = Arc::clone(&programmatic_resize_in_progress);
-                move |event| {
-                    println!(
-                        "🔥 [DEBUG] Resize callback triggered! HWND: {}, rect=({}, {}, {}, {})",
-                        event.hwnd, event.real_x, event.real_y, event.real_width, event.real_height
-                    );
-                    let pinned_hwnd = PINNED_HWND_MAP.get("pinned").map(|v| *v as u64);
-                    let host_hwnd = grid_manager.host_hwnd.map(|v| v as u64);
-                    if Some(event.hwnd) == pinned_hwnd {
-                        println!("[DEBUG] Resize for pinned HWND: {}", event.hwnd);
-                    } else if Some(event.hwnd) == host_hwnd {
-                        println!("[DEBUG] Resize for host HWND: {}", event.hwnd);
-                        let target_rect = (event.real_x, event.real_y, event.real_width as i32, event.real_height as i32);
-                        let _ = host_move_tx_cb.send(target_rect);
-                    } else {
-                        println!("[IGNORE] Resize for non-pinned/non-host HWND: {}", event.hwnd);
+                })
+                .unwrap();
+            client
+                .set_resize_callback({
+                    let host_move_tx_cb = Arc::clone(&host_move_tx_cb);
+                    let programmatic_move_in_progress_cb =
+                        Arc::clone(&programmatic_move_in_progress);
+                    let programmatic_resize_in_progress_cb =
+                        Arc::clone(&programmatic_resize_in_progress);
+                    move |event| {
+                        println!(
+                            "🔥 [DEBUG] Resize callback triggered! HWND: {}, rect=({}, {}, {}, {})",
+                            event.hwnd,
+                            event.real_x,
+                            event.real_y,
+                            event.real_width,
+                            event.real_height
+                        );
+                        let pinned_hwnd = PINNED_HWND_MAP.get("pinned").map(|v| *v as u64);
+                        let host_hwnd = grid_manager.host_hwnd.map(|v| v as u64);
+                        if Some(event.hwnd) == pinned_hwnd {
+                            println!("[DEBUG] Resize for pinned HWND: {}", event.hwnd);
+                        } else if Some(event.hwnd) == host_hwnd {
+                            println!("[DEBUG] Resize for host HWND: {}", event.hwnd);
+                            let target_rect = (
+                                event.real_x,
+                                event.real_y,
+                                event.real_width as i32,
+                                event.real_height as i32,
+                            );
+                            let _ = host_move_tx_cb.send(target_rect);
+                        } else {
+                            println!(
+                                "[IGNORE] Resize for non-pinned/non-host HWND: {}",
+                                event.hwnd
+                            );
+                        }
                     }
-                }
-            }).unwrap();
+                })
+                .unwrap();
             client.set_move_callback({
                 let programmatic_move_in_progress_cb = Arc::clone(&programmatic_move_in_progress);
                 let programmatic_resize_in_progress_cb = Arc::clone(&programmatic_resize_in_progress);
@@ -473,10 +545,6 @@ emitter.emit('ui: hide info');
                 let programmatic_move_in_progress_cb = Arc::clone(&programmatic_move_in_progress_cb);
                 let programmatic_resize_in_progress_cb = Arc::clone(&programmatic_resize_in_progress_cb);
                 move |event| {
-                    // if programmatic_move_in_progress_cb.load(Ordering::SeqCst) || programmatic_resize_in_progress_cb.load(Ordering::SeqCst) {
-                    //     println!("[SUPPRESS] programmatic_move_in_progress or programmatic_resize_in_progress=true, skipping move/resize STOP callback for HWND: {}", event.hwnd);
-                    //     return;
-                    // }
                     programmatic_move_in_progress_cb.store(false, Ordering::SeqCst);
                     programmatic_resize_in_progress_cb.store(false, Ordering::SeqCst);
                     println!("🔥 [DEBUG] Move/resize STOP callback triggered! HWND: {}", event.hwnd);
@@ -484,7 +552,20 @@ emitter.emit('ui: hide info');
                     let host_hwnd = grid_manager.host_hwnd.map(|v| v as u64);
                     if Some(event.hwnd) == pinned_hwnd {
                         let _ = midi_sender_stop.send(e_midi::MidiCommand::Stop);
-                        let _ = host_move_tx.send((-1, -1, -1, -1)); // Use (-1, -1, -1, -1) as a signal for alignment
+                        // Align host window below pinned window
+                        if let Some(host_hwnd_val) = host_hwnd {
+                            use winapi::shared::windef::HWND;
+                            let hwnd_win = event.hwnd as HWND;
+                            let host_hwnd_win = host_hwnd_val as HWND;
+                            let pinned_rect = unsafe { PositionGridManager::get_window_rect(hwnd_win) };
+                            let width = pinned_rect.2 - pinned_rect.0;
+                            let height = pinned_rect.3 - pinned_rect.1;
+                            // Move host window just below pinned window (y + height)
+                            let new_x = pinned_rect.0;
+                            let new_y = pinned_rect.1 + height + 10; // 10px gap
+                            let moved = unsafe { PositionGridManager::move_window(host_hwnd_win, new_x, new_y, width, height) };
+                            println!("[STOP] Aligned host HWND=0x{:X} below pinned HWND=0x{:X}, moved={}", host_hwnd_val, event.hwnd, moved);
+                        }
                         println!("[STOP] Sent alignment signal to UI thread for pinned HWND");
                     } else if Some(event.hwnd) == host_hwnd {
                         let _ = midi_sender_stop.send(e_midi::MidiCommand::Stop);
@@ -559,26 +640,49 @@ impl eframe::App for EGridDemoApp {
                 }
             }
 
-            // --- Z ORDER CHECKBOX ---
-ctx.memory_mut(|mem| {
-    if mem.data.get_temp::<bool>("pinned_above_host".into()).is_none() {
-        mem.data.insert_temp("pinned_above_host".into(), true);
-    }
-});
-let mut pinned_above_host = ctx.memory(|mem| mem.data.get_temp::<bool>("pinned_above_host".into()).unwrap_or(true));
-if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
-    ctx.memory_mut(|mem| mem.data.insert_temp("pinned_above_host".into(), pinned_above_host));
-    if let Some(hwnd_val) = CHROME_WINDOW_INFO_MAP.get("chrome").and_then(|win| win.hwnd) {
-        let hwnd_win = hwnd_val as HWND;
-        if PositionGridManager::is_window(hwnd_win) {
-            let host_hwnd = self.grid_manager.host_hwnd.map(|v| v as HWND);
-            if let Some(host_hwnd) = host_hwnd {
-                let _ = self.grid_manager.set_pinned_zorder(hwnd_win, pinned_above_host);
-                println!("[EGridDemo] Set pinned HWND=0x{:X} z-order above host: {}", hwnd_val, pinned_above_host);
+            // --- Z ORDER TOGGLING & MANUAL TOGGLE ---
+            ctx.memory_mut(|mem| {
+                if mem.data.get_temp::<bool>("zorder_toggling_enabled".into()).is_none() {
+                    mem.data.insert_temp("zorder_toggling_enabled".into(), false);
+                }
+                if mem.data.get_temp::<bool>("set_focus_on_behind".into()).is_none() {
+                    mem.data.insert_temp("set_focus_on_behind".into(), false);
+                }
+                if mem.data.get_temp::<u8>("zorder_mode".into()).is_none() {
+                    mem.data.insert_temp("zorder_mode".into(), 0u8); // 0 = Above, 1 = Below, 2 = No Pin
+                }
+            });
+            let mut zorder_toggling_enabled = ctx.memory(|mem| mem.data.get_temp::<bool>("zorder_toggling_enabled".into()).unwrap_or(false));
+            let mut set_focus_on_behind = ctx.memory(|mem| mem.data.get_temp::<bool>("set_focus_on_behind".into()).unwrap_or(false));
+            let mut zorder_mode: u8 = ctx.memory(|mem| mem.data.get_temp::<u8>("zorder_mode".into()).unwrap_or(0));
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut zorder_toggling_enabled, "Enable Z-order toggling").changed() {
+                    ctx.memory_mut(|mem| mem.data.insert_temp("zorder_toggling_enabled".into(), zorder_toggling_enabled));
+                }
+                if ui.checkbox(&mut set_focus_on_behind, "Set focus on host when pinned is behind").changed() {
+                    ctx.memory_mut(|mem| mem.data.insert_temp("set_focus_on_behind".into(), set_focus_on_behind));
+                }
+            });
+            let mut manual_toggle_disabled = false;
+            if zorder_toggling_enabled {
+                manual_toggle_disabled = true;
             }
-        }
-    }
-}
+            let zorder_mode_names = ["Pinned Above Host", "Pinned Below Host", "No Pin (Independent)"];
+            let zorder_mode_changed = ui.add_enabled_ui(!manual_toggle_disabled, |ui: &mut egui::Ui| {
+                egui::ComboBox::from_label("Z-order Mode")
+                    .selected_text(zorder_mode_names[zorder_mode as usize])
+                    .show_ui(ui, |ui: &mut egui::Ui| {
+                        for (i, name) in zorder_mode_names.iter().enumerate() {
+                            ui.selectable_value(&mut zorder_mode, i as u8, *name);
+                        }
+                    }).response
+            }).inner.changed();
+            // Always write back the current values to egui memory to keep UI and logic in sync
+            ctx.memory_mut(|mem| {
+                mem.data.insert_temp("zorder_toggling_enabled".into(), zorder_toggling_enabled);
+                mem.data.insert_temp("set_focus_on_behind".into(), set_focus_on_behind);
+                mem.data.insert_temp("zorder_mode".into(), zorder_mode);
+            });
 
             // --- GRID OFFSET SLIDERS & RANDOM DELAY SLIDER ---
             ui.horizontal(|ui| {
@@ -604,7 +708,7 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
             // --- GRID DIAGNOSTICS ---
             let label_height = 32.0;
             // Get host window rect
-            let host_rect = self.grid_manager.get_host_screen_rect().unwrap_or((0, 0, 800, 600));
+            let host_rect = unsafe { self.grid_manager.get_host_screen_rect() }.unwrap_or((0, 0, 800, 600));
             // Apply grid offset from sliders
             let grid_rect = (
                 host_rect.0 + self.grid_offset_x,
@@ -645,62 +749,18 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
             );
             self.fill_grid.draw(ui);
 
-            // --- MOVE PINNED HWND TO GRID ---
+            // --- MOVE/Z-ORDER PINNED HWND ONLY ON EVENTS ---
+            // All programmatic movement of the pinned window is now handled in the event callbacks below.
+            // Here, only handle z-order if not in No Pin mode.
             if let Some(hwnd_val) = CHROME_WINDOW_INFO_MAP.get("chrome").and_then(|win| win.hwnd) {
                 let hwnd_win = hwnd_val as HWND;
-                if PositionGridManager::is_window(hwnd_win) {
-                    // Check if host window is minimized before moving pinned window
-                    let host_hwnd = self.grid_manager.host_hwnd.map(|v| v as HWND);
-                    let mut host_minimized = false;
-                    #[cfg(target_os = "windows")]
-                    if let Some(host_hwnd) = host_hwnd {
-                        use winapi::um::winuser::IsIconic;
-                        unsafe {
-                            host_minimized = IsIconic(host_hwnd) != 0;
-                        }
-                    }
-                    if host_minimized {
-                        println!("[EGridDemo] Host window is minimized, skipping pinned HWND move.");
-                    } else {
-                        self.grid_manager.begin_programmatic_move();
-                        let start_row = 0;
-                        let start_col = 0;
-                        let end_row = self.fill_grid.rows().saturating_sub(1);
-                        let end_col = self.fill_grid.cols().saturating_sub(1);
-                        if let (Some(start_rect), Some(end_rect)) = (
-                            self.fill_grid.cell_rect_screen(start_row, start_col),
-                            self.fill_grid.cell_rect_screen(end_row, end_col)
-                        ) {
-                            let left = start_rect.left().min(end_rect.left()) as i32;
-                            let top = start_rect.top().min(end_rect.top()) as i32;
-                            let right = start_rect.right().max(end_rect.right()) as i32;
-                            let bottom = start_rect.bottom().max(end_rect.bottom()) as i32;
-                            let width = right - left;
-                            let height = bottom - top;
-                            let current_rect = PositionGridManager::get_window_rect(hwnd_win);
-                            if current_rect.0 != left || current_rect.1 != top || (current_rect.2-current_rect.0) != width || (current_rect.3-current_rect.1) != height {
-                                let moved = PositionGridManager::move_window(
-                                    hwnd_win,
-                                    left,
-                                    top,
-                                    width,
-                                    height
-                                );
-                                println!(
-                                    "[EGridDemo] Moved pinned HWND=0x{:X} to cell_rect_screen=({}, {}, {}, {}), result={}",
-                                    hwnd_val,
-                                    left, top, width, height, moved
-                                );
-                            }
-                        }
-                        self.grid_manager.end_programmatic_move();
-                        // --- ASYNC Z-ORDER LOGIC ---
-                        let use_checkbox = ctx.memory(|mem| mem.data.get_temp::<bool>("pinned_above_host".into()).unwrap_or(true));
-                        if use_checkbox {
-                            // Use checkbox value directly
-                            self.zorder_state = true;
-                        } else {
-                            // Use async channel for Z-order alternation
+                if unsafe { PositionGridManager::is_window(hwnd_win) } {
+                    let zorder_toggling_enabled = ctx.memory(|mem| mem.data.get_temp::<bool>("zorder_toggling_enabled".into()).unwrap_or(false));
+                    let set_focus_on_behind = ctx.memory(|mem| mem.data.get_temp::<bool>("set_focus_on_behind".into()).unwrap_or(false));
+                    let zorder_mode: u8 = ctx.memory(|mem| mem.data.get_temp::<u8>("zorder_mode".into()).unwrap_or(0));
+                    if zorder_mode != 2 {
+                        // Only set z-order if not No Pin
+                        if zorder_toggling_enabled {
                             if !self.zorder_thread_running {
                                 if let Some(tx) = &self.zorder_toggle_tx {
                                     let tx_clone = tx.clone();
@@ -720,32 +780,71 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                                     self.zorder_state = !self.zorder_state;
                                 }
                             }
-                        }
-                        // Actually set Z-order: true = pinned above host, false = host above pinned
-                        if let Some(host_hwnd) = self.grid_manager.host_hwnd {
-                            use winapi::um::winuser::SetForegroundWindow;
-                            static mut LAST_ZORDER_PRINTED: Option<bool> = None;
-                            let zorder_state = self.zorder_state;
-                            let should_print = unsafe {
-                                if LAST_ZORDER_PRINTED != Some(zorder_state) {
-                                    LAST_ZORDER_PRINTED = Some(zorder_state);
-                                    true
+                            if let Some(host_hwnd) = self.grid_manager.host_hwnd {
+                                use winapi::um::winuser::SetForegroundWindow;
+                                static mut LAST_ZORDER_PRINTED: Option<Option<bool>> = None;
+                                let should_print = unsafe {
+                                    let last = LAST_ZORDER_PRINTED;
+                                    if last != Some(Some(self.zorder_state)) {
+                                        LAST_ZORDER_PRINTED = Some(Some(self.zorder_state));
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+                                if self.zorder_state {
+                                    let _ = unsafe { PositionGridManager::set_zorder_above(hwnd_win, host_hwnd as HWND) };
+                                    if should_print {
+                                        println!("[EGridDemo] [Toggling] Set pinned HWND=0x{:X} above host HWND=0x{:X}", hwnd_val, host_hwnd);
+                                    }
+                                    unsafe { SetForegroundWindow(hwnd_win); }
                                 } else {
-                                    false
+                                    let _ = unsafe { PositionGridManager::set_zorder_above(host_hwnd as HWND, hwnd_win) };
+                                    if should_print {
+                                        println!("[EGridDemo] [Toggling] Set host HWND=0x{:X} above pinned HWND=0x{:X}", host_hwnd, hwnd_val);
+                                    }
+                                    if set_focus_on_behind {
+                                        unsafe { SetForegroundWindow(host_hwnd as HWND); }
+                                    }
                                 }
-                            };
-                            if zorder_state {
-                                let _ = PositionGridManager::set_zorder_above(hwnd_win, host_hwnd as HWND);
-                                if should_print {
-                                    println!("[EGridDemo] Set pinned HWND=0x{:X} above host HWND=0x{:X}", hwnd_val, host_hwnd);
+                            }
+                        } else {
+                            match zorder_mode {
+                                0 => self.zorder_state = true,  // Above
+                                1 => self.zorder_state = false, // Below
+                                _ => self.zorder_state = true,
+                            }
+                            if let Some(host_hwnd) = self.grid_manager.host_hwnd {
+                                use winapi::um::winuser::SetForegroundWindow;
+                                static mut LAST_ZORDER_PRINTED: Option<Option<u8>> = None;
+                                let should_print = unsafe {
+                                    let last = LAST_ZORDER_PRINTED;
+                                    if last != Some(Some(zorder_mode)) {
+                                        LAST_ZORDER_PRINTED = Some(Some(zorder_mode));
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+                                match zorder_mode {
+                                    0 => { // Pinned Above Host
+                                        let _ = unsafe { PositionGridManager::set_zorder_above(hwnd_win, host_hwnd as HWND) };
+                                        if should_print {
+                                            println!("[EGridDemo] [Dropdown] Set pinned HWND=0x{:X} above host HWND=0x{:X}", hwnd_val, host_hwnd);
+                                        }
+                                        unsafe { SetForegroundWindow(hwnd_win); }
+                                    },
+                                    1 => { // Pinned Below Host
+                                        let _ = unsafe { PositionGridManager::set_zorder_above(host_hwnd as HWND, hwnd_win) };
+                                        if should_print {
+                                            println!("[EGridDemo] [Dropdown] Set host HWND=0x{:X} above pinned HWND=0x{:X}", host_hwnd, hwnd_val);
+                                        }
+                                        if set_focus_on_behind {
+                                            unsafe { SetForegroundWindow(host_hwnd as HWND); }
+                                        }
+                                    },
+                                    _ => {},
                                 }
-                                unsafe { SetForegroundWindow(hwnd_win); }
-                            } else {
-                                let _ = PositionGridManager::set_zorder_above(host_hwnd as HWND, hwnd_win);
-                                if should_print {
-                                    println!("[EGridDemo] Set host HWND=0x{:X} above pinned HWND=0x{:X}", host_hwnd, hwnd_val);
-                                }
-                                unsafe { SetForegroundWindow(host_hwnd as HWND); }
                             }
                         }
                     }
@@ -759,7 +858,7 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                     ui.label(format!("Pinned HWND: 0x{:X}", hwnd_val));
                     // Check if pinned HWND is still valid
                     let hwnd_win = hwnd_val as HWND;
-                    let is_valid = PositionGridManager::is_window(hwnd_win);
+                    let is_valid = unsafe { PositionGridManager::is_window(hwnd_win) };
                     ui.label(format!("Pinned HWND valid: {}", is_valid));
                     if !is_valid {
                         println!("[EGridDemo] Pinned HWND is closed. Exiting app.");
@@ -781,7 +880,7 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                         CHROME_WINDOW_INFO_MAP.insert("chrome", info);
                         self.last_pinned_rect = Some(rect);
                         let hwnd_win = hwnd as HWND;
-                        if PositionGridManager::is_window(hwnd_win) {
+                        if unsafe { PositionGridManager::is_window(hwnd_win) } {
                             // Print window rect before move
                             let mut before_rect = unsafe { std::mem::zeroed() };
                             let got_rect = unsafe { GetWindowRect(hwnd_win, &mut before_rect) };
@@ -793,12 +892,12 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                             println!("[DIAG] Window styles: style=0x{:X}, exstyle=0x{:X}", style, exstyle);
 
                             // Print grid rect and host rect
-                            let grid_rect = self.grid_manager.get_grid_screen_rect();
-                            let host_rect = self.grid_manager.get_host_screen_rect();
+                            let grid_rect = unsafe { self.grid_manager.get_grid_screen_rect() };
+                            let host_rect = unsafe { self.grid_manager.get_host_screen_rect() };
                             println!("[DIAG] grid_rect={:?}, host_rect={:?}", grid_rect, host_rect);
 
                             // Print DPI
-                            let dpi = PositionGridManager::get_dpi_for_window(hwnd_win);
+                            let dpi = unsafe { PositionGridManager::get_dpi_for_window(hwnd_win) };
                             println!("[DIAG] DPI for HWND=0x{:X}: {}", hwnd, dpi);
 
                             // Check if window is maximized
@@ -810,10 +909,10 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                             }
 
                             // Move Chrome window to grid position
-                            let moved = self.grid_manager.move_and_resize(hwnd_win);
+                            let moved = unsafe { self.grid_manager.move_and_resize(hwnd_win) };
                             println!("[DIAG] grid_manager.move_and_resize result for HWND=0x{:X}: {}", hwnd, moved);
                             if !moved {
-                                println!("[DIAG] Failed to move/resize pinned HWND=0x{:X}. Is window valid? {}", hwnd, PositionGridManager::is_window(hwnd_win));
+                                println!("[DIAG] Failed to move/resize pinned HWND=0x{:X}. Is window valid? {}", hwnd, unsafe { PositionGridManager::is_window(hwnd_win) });
                             }
 
                             // Print window rect after move
@@ -822,12 +921,12 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                             println!("[DIAG] After move: HWND=0x{:X}, got_rect={}, rect=({}, {}, {}, {})", hwnd, got_rect2, after_rect.left, after_rect.top, after_rect.right, after_rect.bottom);
 
                             // Set topmost
-                            let topmost_res = PositionGridManager::set_topmost(hwnd_win, true);
+                            let topmost_res = unsafe { PositionGridManager::set_topmost(hwnd_win, true) };
                             println!("[DIAG] grid_manager.set_topmost result for HWND=0x{:X}: {}", hwnd, topmost_res);
 
                             // Set Z-order above host
                             if let Some(host_hwnd) = self.grid_manager.host_hwnd {
-                                let zorder_res = PositionGridManager::set_zorder_above(hwnd_win, host_hwnd as HWND);
+                                let zorder_res = unsafe { PositionGridManager::set_zorder_above(hwnd_win, host_hwnd as HWND) };
                                 println!("[DIAG] grid_manager.set_zorder_above result for HWND=0x{:X} above host HWND=0x{:X}: {}", hwnd, host_hwnd, zorder_res);
                             }
                         } else {
@@ -878,15 +977,15 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                                 let pinned_hwnd = *pinned_hwnd;
                                 let hwnd_win = pinned_hwnd as HWND;
                                 // Get pinned window's current size
-                                let pinned_rect = PositionGridManager::get_window_rect(hwnd_win);
+                                let pinned_rect = unsafe { PositionGridManager::get_window_rect(hwnd_win) };
                                 let width = pinned_rect.2 - pinned_rect.0;
                                 let height = pinned_rect.3 - pinned_rect.1;
                                 // Get the grid cell's top-left in screen coordinates (anchor)
-                                let grid_rect = self.grid_manager.get_grid_screen_rect().unwrap_or((0, 0, 0, 0));
+                                let grid_rect = unsafe { self.grid_manager.get_grid_screen_rect().unwrap_or((0, 0, 0, 0)) };
                                 let grid_anchor_x = grid_rect.0;
                                 let grid_anchor_y = grid_rect.1;
                                 // Move pinned window to grid anchor
-                                let moved = PositionGridManager::move_window(hwnd_win, grid_anchor_x, grid_anchor_y, width, height);
+                                let moved = unsafe { PositionGridManager::move_window(hwnd_win, grid_anchor_x, grid_anchor_y, width, height) };
                                 println!("[MAIN] Anchored pinned HWND=0x{:X} to grid cell top-left=({}, {}), size=({}, {}), result={}", pinned_hwnd, grid_anchor_x, grid_anchor_y, width, height, moved);
                             }
                             self.grid_manager.end_programmatic_move();
@@ -901,15 +1000,15 @@ if ui.checkbox(&mut pinned_above_host, "Pinned window above host").changed() {
                 // Host focus requests (main thread)
                 if let Some(rx) = &mut self.focus_request_rx {
                     for _ in rx.try_iter() {
-                        let host_rect = self.grid_manager.get_host_screen_rect();
-                        let grid_rect = self.grid_manager.get_grid_screen_rect();
+                        let host_rect = unsafe { self.grid_manager.get_host_screen_rect() };
+                        let grid_rect = unsafe { self.grid_manager.get_grid_screen_rect() };
                         println!("[MAIN] Received host focus event. host_rect={:?}, grid_rect={:?}", host_rect, grid_rect);
                         if let Some(pinned_hwnd) = PINNED_HWND_MAP.get("pinned") {
                             let pinned_val = *pinned_hwnd;
                             println!("[MAIN] Setting pinned HWND=0x{:X} topmost due to host focus", pinned_val);
-                            let _ = PositionGridManager::set_topmost(pinned_val as HWND, true);
+                            let _ = unsafe { PositionGridManager::set_topmost(pinned_val as HWND, true) };
                             if let Some(host_hwnd) = self.grid_manager.host_hwnd {
-                                 let _ = PositionGridManager::set_zorder_above(pinned_val as HWND, host_hwnd as HWND);
+                                 let _ = unsafe { PositionGridManager::set_zorder_above(pinned_val as HWND, host_hwnd as HWND) };
                             }
                         }
                     }
@@ -932,7 +1031,12 @@ impl Drop for EGridDemoApp {
                 let hwnd_val = *entry.value();
                 let hwnd = hwnd_val as winapi::shared::windef::HWND;
                 let res = PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                println!("[EGridDemo] Sent WM_CLOSE to pinned HWND key='{}' HWND=0x{:X}, result={}", entry.key(), hwnd_val, res);
+                println!(
+                    "[EGridDemo] Sent WM_CLOSE to pinned HWND key='{}' HWND=0x{:X}, result={}",
+                    entry.key(),
+                    hwnd_val,
+                    res
+                );
             }
         }
         // Stop MIDI playback
@@ -951,7 +1055,6 @@ fn main() {
 // On Drop, stop MIDI and clean up Chrome.
 #[cfg(target_os = "windows")]
 fn main() {
-
     println!("WARNING: This example is being released with known bugs!");
     println!("Do NOT run unless you are OK with losing all your window positions, or having windows close unexpectedly.");
     println!("Windows may be moved or closed without warning. Use at your own risk.");
@@ -998,9 +1101,8 @@ fn main() {
                 let mut hwnd_opt = None;
                 #[cfg(target_os = "windows")]
                 {
-                    use winit::raw_window_handle::RawWindowHandle;
                     use winit::raw_window_handle::HasWindowHandle;
-
+                    use winit::raw_window_handle::RawWindowHandle;
 
                     let raw = cc.window_handle().unwrap().as_raw();
                     if let RawWindowHandle::Win32(handle) = raw {
@@ -1029,5 +1131,3 @@ fn handle_to_hwnd(
     let hwnd = hwnd_isize as *mut core::ffi::c_void;
     windows::Win32::Foundation::HWND(hwnd)
 }
-
-

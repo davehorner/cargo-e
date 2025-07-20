@@ -146,13 +146,21 @@ e_window --w-pool-cnt 4
 - Scroll areas now use unique IDs to avoid egui warnings and ensure reliable scrolling.
 - Scroll bars are always visible and support drag-to-scroll and arrow key navigation.
 
-### e_window_hydra Example
+### e_window_hydra
 - Demonstrates advanced Win32 window management and automation for Chrome windows over a grid.
 - Features robust grid mapping, dynamic topmost/z-order control, and automated modal closure via JS injection.
 - Includes cross-platform mouse click simulation to grid cells, with all Win32 API usage encapsulated for maintainability.
 - Useful for automated UI testing, demos, and interactive control of external applications.
 
-### position_grid_demo Example
+### e_window_uxn 
+- Integrates the [Uxn virtual machine](https://wiki.xxiivv.com/site/uxn.html)
+- Allows you to run Uxn ROMs in a managed window, with dynamic grid-based positioning and real-time title updates.
+- Supports auto-cycling through multiple ROMs, with the window title reflecting the current ROM filename.
+- Shows ROMs from the [raven/roms collection](https://github.com/mkeeter/raven/tree/main/roms) and other select ROMs.
+- All Uxn integration is feature-flagged (`uses_uxn`), so you can build with or without Uxn support.
+
+
+### position_grid_demo
 - Shows how to use the PositionGrid utility for interactive grid-based input and diagnostics.
 - Visualizes grid cell mapping, DPI scaling, and mouse click simulation within an eframe window.
 - Includes detailed logging and diagnostics for grid geometry, cell selection, and input mapping.
@@ -210,6 +218,14 @@ Contributions are welcome! Please open an issue or submit a pull request for sug
 
 ---
 
+
+## Attribution
+
+The files `uxn.rs` and `e_window_uxn.rs` are derived from code in the [raven](https://github.com/mkeeter/raven/) project by Matthew Keeter, released under the Mozilla Public License 2.0.
+
+---
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+

@@ -1,17 +1,15 @@
 //! Example: position_grid_demo.rs
 // Demonstrates usage of the PositionGrid utility in an egui app.
 extern crate e_window;
-use eframe::egui;
 use e_window::position_grid::PositionGrid;
+use eframe::egui;
 
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::GetForegroundWindow;
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::GetWindowThreadProcessId;
+use sysinfo::System;
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::HWND;
 #[cfg(target_os = "windows")]
-use sysinfo::{System, Process};
+use winapi::um::winuser::GetWindowThreadProcessId;
 
 pub struct GridDemoApp {
     #[cfg(target_os = "windows")]
@@ -101,7 +99,7 @@ impl eframe::App for GridDemoApp {
                     println!("Searching for Chrome process...");
                     let mut sys = System::new_all();
                     sys.refresh_processes(ProcessesToUpdate::All, true);
-                    let mut found = false;
+                    let found = false;
                     let procs = sys.processes();
                     println!("{}",format!("Total processes: {}", procs.len()));
                     let mut hwnd_found = None;
@@ -173,7 +171,7 @@ impl eframe::App for GridDemoApp {
                     ui.label(format!("Pinned HWND: 0x{:X}", hwnd as usize));
                     // Move and resize pinned window to overlay the fill grid only when focused
                     unsafe {
-                        use winapi::um::winuser::{SetWindowPos, GetWindowRect, SWP_SHOWWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, HWND_TOPMOST, HWND_TOP, HWND_NOTOPMOST, ShowWindow, SW_RESTORE};
+                        use winapi::um::winuser::{SetWindowPos, SWP_SHOWWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, HWND_TOPMOST, HWND_NOTOPMOST, ShowWindow, SW_RESTORE};
                         use winapi::shared::windef::RECT;
                         // Cache eframe window HWND once
                         let eframe_hwnd = if let Some(hwnd) = self.eframe_hwnd {
@@ -292,6 +290,10 @@ fn main() {
     eframe::run_native(
         "PositionGrid Demo",
         options,
-        Box::new(|_cc| Ok::<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>>(Box::new(GridDemoApp::default()))),
+        Box::new(|_cc| {
+            Ok::<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>>(Box::new(
+                GridDemoApp::default(),
+            ))
+        }),
     );
 }

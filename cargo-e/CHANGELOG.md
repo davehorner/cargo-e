@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.46](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.45...cargo-e-v0.2.46) - 2025-07-20
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.2.45](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.44...cargo-e-v0.2.45) - 2025-07-14
 
 ### Fixed

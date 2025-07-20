@@ -5,6 +5,7 @@ pub mod parser;
 pub mod pool_manager;
 pub mod position_grid;
 pub mod position_grid_manager;
+pub mod uxn;
 
 use getargs::{Arg, Options};
 use std::env::current_exe;
