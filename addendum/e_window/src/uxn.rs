@@ -1,4 +1,105 @@
-//! uxn.rs - Uxn integration for e_window
+    /// Returns a reference to the build_orca_inject_queue function for use in event injection
+    pub fn build_orca_inject_queue_ref() -> Option<fn(&str) -> std::collections::VecDeque<InjectEvent>> {
+        Some(build_orca_inject_queue)
+    }
+/// Build an InjectEvent queue for orca file injection with rectangle and efficient movement
+pub fn build_orca_inject_queue(file_path: &str) -> std::collections::VecDeque<InjectEvent> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::collections::VecDeque;
+    use raven_varvara::Key;
+    
+
+    let mut queue = VecDeque::new();
+    const CTRL_H: Key = Key::Ctrl;
+    const RIGHT: Key = Key::Right;
+    const LEFT: Key = Key::Left;
+    const UP: Key = Key::Up;
+    const DOWN: Key = Key::Down;
+    // Read file into lines
+    let mut lines: Vec<Vec<char>> = Vec::new();
+    let mut max_len = 0;
+    if let Ok(file) = File::open(file_path) {
+        let reader = BufReader::new(file);
+        for line in reader.lines().flatten() {
+            let chars: Vec<char> = line.chars().collect();
+            max_len = max_len.max(chars.len());
+            lines.push(chars);
+        }
+    }
+    let rows = lines.len();
+    let cols = max_len;
+    // Build rectangle with '/' border
+    let mut grid = vec![vec!['/'; cols + 2]; rows + 2];
+    for i in 1..=rows {
+        for j in 1..=cols {
+            grid[i][j] = if j - 1 < lines[i - 1].len() { lines[i - 1][j - 1] } else { ' ' };
+        }
+    }
+    // Start at (1,1)
+    let mut cur_row = 1;
+    let mut cur_col = 1;
+    queue.push_back(InjectEvent::KeyPress(CTRL_H));
+    queue.push_back(InjectEvent::KeyRelease(CTRL_H));
+    // Visit all non '.' cells efficiently (row-major order)
+    for r in 0..rows + 2 {
+        for c in 0..cols + 2 {
+            let ch = grid[r][c];
+            if ch != '.' {
+                // Move to (r,c)
+                let dr = r as isize - cur_row as isize;
+                let dc = c as isize - cur_col as isize;
+                for _ in 0..dr.abs() {
+                    queue.push_back(if dr > 0 {
+                        InjectEvent::KeyPress(DOWN)
+                    } else {
+                        InjectEvent::KeyPress(UP)
+                    });
+                    queue.push_back(if dr > 0 {
+                        InjectEvent::KeyRelease(DOWN)
+                    } else {
+                        InjectEvent::KeyRelease(UP)
+                    });
+                }
+                for _ in 0..dc.abs() {
+                    queue.push_back(if dc > 0 {
+                        InjectEvent::KeyPress(RIGHT)
+                    } else {
+                        InjectEvent::KeyPress(LEFT)
+                    });
+                    queue.push_back(if dc > 0 {
+                        InjectEvent::KeyRelease(RIGHT)
+                    } else {
+                        InjectEvent::KeyRelease(LEFT)
+                    });
+                }
+                cur_row = r;
+                cur_col = c;
+                // Print char
+                queue.push_back(InjectEvent::Char(ch as u8));
+                // If this is a border '/' (not top/bottom), write hex x,y to the right
+                if ch == '/' && r != 0 && r != rows + 1 {
+                    // x = c, y = r
+                    let hex = format!("{:02X}{:02X}", c, r);
+                    for b in hex.bytes() {
+                        queue.push_back(InjectEvent::Char(b));
+                    }
+                }
+            }
+        }
+    }
+    queue
+}
+
+
+ use rand::prelude::IndexedRandom;
+#[derive(Debug, Clone)]
+pub enum InjectEvent {
+    Char(u8),
+    KeyPress(Key),
+    KeyRelease(Key),
+}
+// uxn.rs - Uxn integration for e_window
 
 #[cfg(feature = "uses_uxn")]
 pub mod uxn {
@@ -127,8 +228,8 @@ pub enum Event {
 }
 
 pub struct UxnApp<'a> {
-    vm: Uxn<'a>,
-    dev: Varvara,
+    pub vm: Uxn<'a>,
+    pub dev: Varvara,
     scale: f32,
     size: (u16, u16),
     next_frame: f64,
@@ -148,11 +249,21 @@ pub struct UxnApp<'a> {
     auto_rom_labels: Vec<String>,
     /// Callback for when the ROM changes (filename or label)
     on_rom_change: Option<Box<dyn Fn(&str) + Send + Sync>>,
+    /// Callback for first update/frame (for deferred actions)
+    on_first_update: Option<Box<dyn FnOnce(&mut UxnApp<'a>) + Send + 'a>>,
+    first_update_done: bool,
     /// The current ROM label or filename (if available)
     current_rom_label: Option<String>,
+    /// Queue for deferred input events (for orca injection)
+    input_queue: std::collections::VecDeque<InjectEvent>,
 }
 
 impl<'a> UxnApp<'a> {
+    /// Set a callback to be called on the first update/frame (for deferred actions)
+    pub fn set_on_first_update(&mut self, f: Box<dyn FnOnce(&mut UxnApp<'a>) + Send + 'a>) {
+        self.on_first_update = Some(f);
+        self.first_update_done = false;
+    }
     /// Set the current ROM label or filename (for title/callback)
     pub fn set_rom_label<S: Into<String>>(&mut self, label: S) {
         self.current_rom_label = Some(label.into());
@@ -221,6 +332,9 @@ impl<'a> UxnApp<'a> {
             on_rom_change: None,
             current_rom_label,
             auto_rom_labels,
+            on_first_update: None,
+            first_update_done: false,
+            input_queue: std::collections::VecDeque::new(),
         }
     }
     /// Set a callback to be called when the ROM changes (filename or label)
@@ -248,10 +362,78 @@ impl<'a> UxnApp<'a> {
         }
         Ok(())
     }
+
+    /// Queue a sequence of input events to be sent per frame
+    pub fn queue_input<I: IntoIterator<Item = InjectEvent>>(&mut self, input: I) {
+        self.input_queue.extend(input);
+    }
 }
 
 impl eframe::App for UxnApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // --- First update callback for deferred actions (e.g., orca file injection) ---
+        if !self.first_update_done {
+            if let Some(cb) = self.on_first_update.take() {
+                cb(self);
+            }
+            self.first_update_done = true;
+        }
+        // --- Ctrl+C and Ctrl+R event handling ---
+        let orca_dir = r"C:\w\music\Orca-c\examples\basics";
+        let files: Vec<std::path::PathBuf> = std::fs::read_dir(orca_dir)
+            .map(|read_dir| {
+                read_dir
+                    .filter_map(|entry| {
+                        entry.ok().and_then(|e| {
+                            let path = e.path();
+                            if path.extension().and_then(|ext| ext.to_str()) == Some("orca") {
+                                Some(path)
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|_| Vec::new());
+        static mut LAST_CTRL_R: Option<std::time::Instant> = None;
+        let mut exit_requested = false;
+        for event in ctx.input(|i| i.events.clone()) {
+            match event {
+                egui::Event::Key { key, pressed, .. } => {
+                    if key == egui::Key::C && ctx.input(|i| i.modifiers.ctrl) && pressed {
+                        exit_requested = true;
+                    }
+                    if key == egui::Key::R && ctx.input(|i| i.modifiers.ctrl) && pressed {
+                        let now = std::time::Instant::now();
+                        let last = unsafe { LAST_CTRL_R };
+                        let allow = match last {
+                            Some(t) => now.duration_since(t).as_millis() > 500,
+                            None => true,
+                        };
+                        if allow {
+                            unsafe { LAST_CTRL_R = Some(now); }
+                            if let Some(random_file) = files.choose(&mut rand::thread_rng()) {
+                                let queue = build_orca_inject_queue(random_file.to_str().unwrap());
+                                self.queue_input(queue);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if exit_requested {
+            std::process::exit(0);
+        }
+        // --- Per-frame input injection ---
+        if let Some(event) = self.input_queue.pop_front() {
+            match event {
+                InjectEvent::Char(c) => self.dev.char(&mut self.vm, c),
+                InjectEvent::KeyPress(k) => self.dev.pressed(&mut self.vm, k, false),
+                InjectEvent::KeyRelease(k) => self.dev.released(&mut self.vm, k),
+            }
+        }
         // --- AUTO ROM CYCLING: Switch between ROMs every 10 seconds if enabled ---
         if self.auto_rom_select && !self.auto_roms.is_empty() {
             let dt = ctx.input(|i| i.stable_dt) as f64;
@@ -470,7 +652,7 @@ impl eframe::App for UxnApp<'_> {
                     ));
                 }
             });
-        out.check().expect("failed to print output?");
+        out.check().ok();
     }
 }
 

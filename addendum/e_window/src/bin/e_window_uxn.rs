@@ -1,16 +1,139 @@
-//! e_window_uxn.rs - Uxn GUI runner for e_window, with ROM selection and download
+/// Build an InjectEvent queue for orca file injection with rectangle and efficient movement
+fn build_orca_inject_queue(file_path: &str) -> std::collections::VecDeque<e_window::uxn::InjectEvent> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::collections::VecDeque;
+    use raven_varvara::Key;
+    let mut queue = VecDeque::new();
+    const CTRL_H: Key = Key::Ctrl;
+    const RIGHT: Key = Key::Right;
+    const LEFT: Key = Key::Left;
+    const UP: Key = Key::Up;
+    const DOWN: Key = Key::Down;
+    // Read file into lines
+    let mut lines: Vec<Vec<char>> = Vec::new();
+    let mut max_len = 0;
+    if let Ok(file) = File::open(file_path) {
+        let reader = BufReader::new(file);
+        for line in reader.lines().flatten() {
+            let chars: Vec<char> = line.chars().collect();
+            max_len = max_len.max(chars.len());
+            lines.push(chars);
+        }
+    }
+    let rows = lines.len();
+    let cols = max_len;
+    // Build rectangle with '/' border
+    let mut grid = vec![vec![' '; cols + 2]; rows + 2];
+    // Fill top and bottom borders
+    for c in 0..cols + 2 {
+        grid[0][c] = '/';
+        grid[rows + 1][c] = '/';
+    }
+    // Fill left and right borders with '/' (actual border logic handled in event queue below)
+    // Fill file contents
+    for (i, line) in lines.iter().enumerate() {
+        for (j, &ch) in line.iter().enumerate() {
+            grid[i + 1][j + 1] = ch;
+        }
+    }
+    // Start at (1,1)
+    let mut cur_row = 1;
+    let mut cur_col = 1;
+    queue.push_back(e_window::uxn::InjectEvent::KeyPress(CTRL_H));
+    queue.push_back(e_window::uxn::InjectEvent::KeyRelease(CTRL_H));
+    // Visit all non '.' cells efficiently
+    let mut visited = vec![vec![false; cols + 2]; rows + 2];
+    for r in 0..rows + 2 {
+        for c in 0..cols + 2 {
+            if grid[r][c] != '.' && !visited[r][c] {
+                // Move to (r,c)
+                let dr = r as isize - cur_row as isize;
+                let dc = c as isize - cur_col as isize;
+                for _ in 0..dr.abs() {
+                    queue.push_back(if dr > 0 {
+                        e_window::uxn::InjectEvent::KeyPress(DOWN)
+                    } else {
+                        e_window::uxn::InjectEvent::KeyPress(UP)
+                    });
+                    queue.push_back(if dr > 0 {
+                        e_window::uxn::InjectEvent::KeyRelease(DOWN)
+                    } else {
+                        e_window::uxn::InjectEvent::KeyRelease(UP)
+                    });
+                }
+                for _ in 0..dc.abs() {
+                    queue.push_back(if dc > 0 {
+                        e_window::uxn::InjectEvent::KeyPress(RIGHT)
+                    } else {
+                        e_window::uxn::InjectEvent::KeyPress(LEFT)
+                    });
+                    queue.push_back(if dc > 0 {
+                        e_window::uxn::InjectEvent::KeyRelease(RIGHT)
+                    } else {
+                        e_window::uxn::InjectEvent::KeyRelease(LEFT)
+                    });
+                }
+                cur_row = r;
+                cur_col = c;
+                // Print char
+                if r == 0 || r == rows + 1 {
+                    // Top or bottom border: just '/'
+                    if grid[r][c] == '/' {
+                        queue.push_back(e_window::uxn::InjectEvent::Char('/' as u8));
+                    } else {
+                        queue.push_back(e_window::uxn::InjectEvent::Char(grid[r][c] as u8));
+                    }
+                } else if c == 0 {
+                    // Left border: '/' then row and col as two hex digits each
+                    queue.push_back(e_window::uxn::InjectEvent::Char('/' as u8));
+                                            queue.push_back(e_window::uxn::InjectEvent::KeyPress(RIGHT));
+                    let hex = format!("{:01X}{:01X}", r, c);
+                    for b in hex.bytes() {
+                        queue.push_back(e_window::uxn::InjectEvent::Char(b));
 
+                        queue.push_back(e_window::uxn::InjectEvent::KeyRelease(RIGHT));
+                    }
+                } else if c == cols + 1 {
+                    // Right border: '/' then row and col as two hex digits each
+                    queue.push_back(e_window::uxn::InjectEvent::Char('/' as u8));
+                                            queue.push_back(e_window::uxn::InjectEvent::KeyPress(RIGHT));
+                    let hex = format!("{:01X}{:01X}", r, c);
+                    for b in hex.bytes() {
+                        queue.push_back(e_window::uxn::InjectEvent::Char(b));
+                        queue.push_back(e_window::uxn::InjectEvent::KeyRelease(RIGHT));
+                    }
+                    // After right border, return to start of next row
+                    for _ in 0..(cols + 1) {
+                        queue.push_back(e_window::uxn::InjectEvent::KeyPress(LEFT));
+                        queue.push_back(e_window::uxn::InjectEvent::KeyRelease(LEFT));
+                    }
+                    queue.push_back(e_window::uxn::InjectEvent::KeyPress(DOWN));
+                } else {
+                    // File contents
+                    queue.push_back(e_window::uxn::InjectEvent::Char(grid[r][c] as u8));
+                }
+                visited[r][c] = true;
+            }
+        }
+    }
+    queue
+}
+// e_window_uxn.rs - Uxn GUI runner for e_window, with ROM selection and download
+
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-
+use e_window::uxn::InjectEvent;
+use raven_varvara::Key;
 use e_window::uxn::{UxnApp, UxnModule};
 use eframe::egui;
 use eframe::NativeOptions;
 use reqwest::blocking::Client;
 use reqwest::Url;
 use std::sync::mpsc;
-
+use rand::prelude::IndexedRandom;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let mut rom_path: Option<PathBuf> = None;
@@ -92,6 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // If no ROM is selected, fetch ROM list and prompt user
     let mut auto_rom_select = false;
+    let mut selected_rom_label: Option<String> = None;
     if rom_path.is_none() {
         let mut roms = static_rom_names.clone();
         let github_roms = fetch_rom_list()?;
@@ -102,6 +226,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             auto_rom_select = true;
         } else {
             let idx = roms.iter().position(|r| r == &selected).unwrap_or(0);
+            selected_rom_label = Some(roms[idx].clone());
             if idx < static_rom_paths.len() {
                 rom_path = Some(static_rom_paths[idx].clone());
                 title = format!("e_window_uxn - {}", roms[idx]);
@@ -114,6 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if let Some(path) = &rom_path {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            selected_rom_label = Some(name.to_string());
             title = format!("e_window_uxn - {}", name);
         }
     }
@@ -159,9 +285,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (event_tx, event_rx) = mpsc::channel();
 
     // Prepare VM and Varvara for UxnApp
-    let vm = Arc::clone(&uxn_mod.uxn);
-    let vm = vm.lock().unwrap();
-    let mut dev = uxn_mod.varvara.take().expect("Varvara device missing");
+
+let vm = Arc::clone(&uxn_mod.uxn);
+let mut vm = vm.lock().unwrap();
+let mut dev = uxn_mod.varvara.take().expect("Varvara device missing");
+
+// Use selected_rom_label for matching, not temp file name
+println!("[DEBUG] selected_rom_label: {:?}", selected_rom_label);
+if let Some(label) = &selected_rom_label {
+    if label.contains("orca.rom") {
+        println!("[DEBUG] ROM matched orca.rom by label: {}", label);
+        let dir_path = r"C:\w\music\Orca-c\examples\basics";
+        let entries = fs::read_dir(dir_path)
+            .map_err(|e| format!("Failed to read directory: {}", e))
+            .and_then(|read_dir| {
+            let files: Vec<_> = read_dir
+                .filter_map(|entry| {
+                entry.ok().and_then(|e| {
+                    let path = e.path();
+                    if path.extension().and_then(|ext| ext.to_str()) == Some("orca") {
+                    Some(path)
+                    } else {
+                    None
+                    }
+                })
+                })
+                .collect();
+            if files.is_empty() {
+                Err("No .orca files found".to_string())
+            } else {
+                Ok(files)
+            }
+            });
+
+        match entries {
+            Ok(files) => {
+            let mut rng = rand::thread_rng();
+            if let Some(random_file) = files.choose(&mut rng) {
+                println!("[DEBUG] Detected orca.rom, sending {:?} to console...", random_file);
+                match send_orca_file_to_console(&mut dev, &mut vm, random_file.to_str().unwrap()) {
+                Ok(_) => println!("[DEBUG] {:?} sent to console successfully.", random_file),
+                Err(e) => eprintln!("Failed to send file: {}", e),
+                }
+            }
+            }
+            Err(e) => {
+            eprintln!("[DEBUG] Could not select random .orca file: {}", e);
+            }
+        }
+    } else {
+        println!("[DEBUG] ROM label did not match orca.rom: {}", label);
+    }
+} else {
+    println!("[DEBUG] selected_rom_label is None");
+}
+#[cfg(windows)]
+fn beep() {
+    unsafe { winapi::um::winuser::MessageBeep(0xFFFFFFFF); }
+}
+
+#[cfg(not(windows))]
+fn beep() {
+    print!("\x07");
+}
+// Register listeners for console output
+dev.console.register_stdout_listener(|byte| {
+    beep();
+    if byte == 0x07 {
+        println!("[CONSOLE BEEP] BEL (0x07) received!");
+    } else {
+        match std::str::from_utf8(&[byte]) {
+            Ok(s) => print!("{}", s),
+            Err(_) => print!("?"), // Replacement character for invalid UTF-8
+        }
+        std::io::Write::flush(&mut std::io::stdout()).ok();
+    }
+});
+dev.console.register_stderr_listener(|byte| {
+    println!("Console stderr: {}", byte);
+});
+
     let size = dev.output(&vm).size;
     drop(vm); // Release lock
 
@@ -198,11 +401,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &title,
         options,
         Box::new(move |cc| {
-            // Create UxnApp using the encapsulated logic
             let ctx = &cc.egui_ctx;
             let vm = Arc::clone(&uxn_mod.uxn);
             let mut vm = vm.lock().unwrap();
-            // Create a new RAM buffer for the replacement Uxn instance
             static mut RAM: [u8; 65536] = [0; 65536];
             let ram: &'static mut [u8; 65536] = unsafe { &mut RAM };
             let new_uxn = raven_uxn::Uxn::new(ram, raven_uxn::Backend::Interpreter);
@@ -222,7 +423,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 app_auto_rom_select,
             );
-            // Patch: If auto_rom_select, update window title on ROM change
             if app_auto_rom_select {
                 let ctx = cc.egui_ctx.clone();
                 app.set_on_rom_change(move |rom_name| {
@@ -232,6 +432,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )));
                 });
             }
+
+            // --- Orca file injection after UI is ready ---
+            let mut pending_orca_inject = false;
+            let orca_dir = r"C:\w\music\Orca-c\examples\basics";
+            let orca_path = format!("{}/k.orca", orca_dir);
+            if let Some(label) = &selected_rom_label {
+                if label.contains("orca.rom") {
+                    pending_orca_inject = true;
+                }
+            }
+            if pending_orca_inject {
+                let orca_path = orca_path.clone();
+                app.set_on_first_update(Box::new(move |app_ref: &mut UxnApp| {
+                    let queue = build_orca_inject_queue(&orca_path);
+                    app_ref.queue_input(queue);
+                }));
+            }
+
             Ok(Box::new(app) as Box<dyn eframe::App>)
         }),
     )?;
@@ -308,4 +526,43 @@ fn download_rom(rom_name: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Send an orca file to the VM console, simulating character entry with right/left/down arrows
+fn send_orca_file_to_console(dev: &mut raven_varvara::Varvara, vm: &mut raven_uxn::Uxn, file_path: &str) -> Result<(), String> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    // Key codes (may need adjustment for your VM)
+    // const CTRL_H: u8 = 0x08; // Ctrl+H (backspace, often used for home)
+    const RIGHT_ARROW: u8 = 0x1B; // Example: ESC for right arrow (replace with actual code)
+    const LEFT_ARROW: u8 = 0x1A; // Example: SUB for left arrow (replace with actual code)
+    const DOWN_ARROW: u8 = 0x0A; // LF for down arrow (replace with actual code)
+
+    // Send Ctrl+H to start
+    // dev.console(vm, CTRL_H);
+    // println!("[DEBUG] Sent Ctrl+H to console");
+
+    let file = File::open(file_path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+
+    for (line_idx, line_res) in reader.lines().enumerate() {
+        let line = line_res.map_err(|e| e.to_string())?;
+        let mut arrow_count = 0;
+        for (col_idx, ch) in line.chars().enumerate() {
+            let byte = ch as u8;
+            dev.console(vm, byte);
+            // println!("[DEBUG] Line {}, Col {}: Sent char '{}' (0x{:02X})", line_idx, col_idx, ch, byte);
+            dev.console(vm, RIGHT_ARROW);
+            // println!("[DEBUG] Sent RIGHT_ARROW after char");
+            arrow_count += 1;
+        }
+        // After line, send LEFT_ARROW 'arrow_count' times to return to column 0
+        for i in 0..arrow_count {
+            dev.console(vm, LEFT_ARROW);
+            // println!("[DEBUG] Sent LEFT_ARROW to return to column 0 ({} of {})", i+1, arrow_count);
+        }
+        // Send DOWN_ARROW to move to next line
+        dev.console(vm, DOWN_ARROW);
+        // println!("[DEBUG] Sent DOWN_ARROW to move to next line");
+    }
+    Ok(())
+}
 // ...removed UxnEguiApp, now using UxnApp from uxn.rs...
