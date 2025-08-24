@@ -4,6 +4,12 @@ use clap::Parser;
 #[command(author, version, about = "cargo-e is for Example.", long_about = None)]
 #[command(disable_version_flag = true)]
 pub struct Cli {
+    /// Run targets from the workspace root instead of the current working directory.
+    #[arg(
+        long = "cwd-wsr",
+        help = "Run targets from the workspace root (Cargo.toml parent) instead of the current working directory."
+    )]
+    pub cwd_wsr: bool,
     /// Run all examples for a given number of seconds.
 
     /// Path to read/write the stdout of the executed command.

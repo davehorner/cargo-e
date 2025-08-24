@@ -1,13 +1,12 @@
 //! Diagnostic dispatcher setup for cargo-e
 // Provides functions to create configured stdout and stderr EventDispatchers for diagnostics
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
 use std::time::SystemTime;
-use which::which;
 
 use crate::e_cargocommand_ext::CargoDiagnostic;
 use crate::e_command_builder::resolve_file_path; //{resolve_file_path, TerminalError};
@@ -140,6 +139,8 @@ pub fn create_stderr_dispatcher(
     dispatcher.add_callback(
         r"^thread '([^']+)' panicked at (.+):(\d+):(\d+):$",
         Box::new(|line, captures, multiline_flag, stats, prior_response| {
+            use std::path::Path;
+            use which::which;
             multiline_flag.store(false, Ordering::Relaxed);
 
             if let Some(caps) = captures {

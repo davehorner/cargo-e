@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.46...cargo-e-v0.3.0) - 2025-08-24
+
+### Added
+
+- *(cli)* [**breaking**] add --cwd-wsr option to run targets from workspace root
+
 ## [0.2.46](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.45...cargo-e-v0.2.46) - 2025-07-20
 
 ### Other

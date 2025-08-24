@@ -114,6 +114,7 @@ pub fn run_all_examples(
                     cli.default_binary_is_runner,
                     cli.quiet || cli.json_all_targets,
                     cli.detached,
+                    cli.cwd_wsr,
                 )
                 .with_target(&target)
                 .with_cli(&cli)

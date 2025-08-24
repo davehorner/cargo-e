@@ -199,7 +199,7 @@ impl ProcessManager {
             .collect();
         for (pid, handle) in processes {
             let mut got_lock = false;
-            for attempt in 0..6 {
+            for _attempt in 0..6 {
                 match handle.try_lock() {
                     Ok(mut h) => {
                         got_lock = true;

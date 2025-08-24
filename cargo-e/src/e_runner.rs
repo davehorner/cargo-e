@@ -456,6 +456,7 @@ pub fn run_example(
         cli.default_binary_is_runner,
         cli.quiet || cli.json_all_targets,
         cli.detached,
+        cli.cwd_wsr,
     )
     .with_target(target)
     .with_required_features(&target.manifest_path, target)
@@ -465,19 +466,19 @@ pub fn run_example(
     let mut cmd = builder.clone().build_command();
 
     // Before spawning, determine the directory to run from.
-    // If a custom execution directory was set (e.g. for Tauri targets), that is used.
-    // Otherwise, if the target is extended, run from its parent directory.
-    // Set the execution directory if specified, or use the target's manifest parent if extended.
-    let mut exec_dir: Option<&Path> = None;
+    // By default, run from the current working directory (cwd).
+    // If --cwd-wsr is specified, run from the workspace root (manifest's parent directory).
+    let mut exec_dir: Option<std::path::PathBuf> = None;
     if let Some(ref dir) = builder.execution_dir {
         cmd.current_dir(dir);
-        exec_dir = Some(dir.as_path());
-    } else if target.extended {
+        exec_dir = Some(dir.as_path().to_path_buf());
+    } else if cli.cwd_wsr {
+        // Assume cli has a field `cwd_wsr: bool` set by --cwd-wsr
         if let Some(dir) = target.manifest_path.parent() {
             cmd.current_dir(dir);
-            exec_dir = Some(dir);
+            exec_dir = Some(dir.to_path_buf());
         }
-    }
+    } // else: do not set current_dir, so it runs from process cwd
 
     // Print the full command for debugging.
     let full_command = format!(

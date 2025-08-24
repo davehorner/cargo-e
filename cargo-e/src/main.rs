@@ -565,6 +565,7 @@ pub fn main() -> anyhow::Result<()> {
                         cli.default_binary_is_runner,
                         cli.quiet || cli.json_all_targets,
                         cli.detached,
+                        cli.cwd_wsr,
                     )
                     .with_target(&t)
                     .with_cli(&cli)

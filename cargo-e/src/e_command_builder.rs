@@ -59,6 +59,7 @@ pub struct CargoCommandBuilder {
     pub time_limit: Option<u32>,
     pub detached_hold: Option<u32>,
     pub detached_delay: Option<u32>,
+    pub cwd_wsr: bool,
 }
 
 impl std::fmt::Display for CargoCommandBuilder {
@@ -90,6 +91,7 @@ impl Default for CargoCommandBuilder {
             false,
             false,
             false,
+            false,
         )
     }
 }
@@ -104,6 +106,7 @@ impl CargoCommandBuilder {
         default_binary_is_runner: bool,
         be_silent: bool,
         detached: bool,
+        cwd_wsr: bool,
     ) -> Self {
         ThreadLocalContext::set_context(target_name, manifest.to_str().unwrap_or_default());
         let (sender, _receiver) = channel::<TerminalError>();
@@ -132,6 +135,7 @@ impl CargoCommandBuilder {
             time_limit: None,
             detached_hold: None,
             detached_delay: None,
+            cwd_wsr,
         };
         builder.set_default_dispatchers();
         builder
@@ -1513,7 +1517,9 @@ impl CargoCommandBuilder {
             | TargetKind::ExtendedExample => {
                 self.args.push(self.subcommand.clone());
                 // Set execution_dir to the parent of the manifest path
-                self.execution_dir = target.manifest_path.parent().map(|p| p.to_path_buf());
+                if self.cwd_wsr {
+                    self.execution_dir = target.manifest_path.parent().map(|p| p.to_path_buf());
+                }
                 //self.args.push("--message-format=json".into());
                 self.args.push("--example".into());
                 self.args.push(target.name.clone());
@@ -1533,7 +1539,9 @@ impl CargoCommandBuilder {
             | TargetKind::Binary
             | TargetKind::ExtendedBinary => {
                 // Set execution_dir to the parent of the manifest path
-                self.execution_dir = target.manifest_path.parent().map(|p| p.to_path_buf());
+                if self.cwd_wsr {
+                    self.execution_dir = target.manifest_path.parent().map(|p| p.to_path_buf());
+                }
                 self.args.push(self.subcommand.clone());
                 self.args.push("--bin".into());
                 self.args.push(target.name.clone());
@@ -2371,6 +2379,7 @@ mod tests {
             &target_name,
             &manifest_path,
             "run",
+            false,
             false,
             false,
             false,
