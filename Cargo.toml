@@ -5,6 +5,8 @@ members = [
   "addendum/e_crate_version_checker",
   "addendum/e_ai_summarize",
   "addendum/e_window",
+  "addendum/e_window_api",
+  "addendum/e_window_types",
   "addendum/e_obs",
 ]
 exclude = ["addenda"]

@@ -1,4 +1,8 @@
 //! Library interface for launching the e_window app with custom arguments.
+
+// Re-export shared types from e_window_types for convenience
+pub use e_window_types::{MessageBoxType, MessageBoxIcon, MessageBoxResult};
+
 pub mod app;
 pub mod control;
 pub mod parser;
@@ -26,13 +30,15 @@ where
         .collect::<Vec<_>>();
     let mut opts = Options::new(args.iter().map(String::as_str));
 
-    // Defaults
+    // Defaults - use auto-centering for position
     let mut title = "E Window".to_string();
     let mut appname = String::new();
-    let mut width = 800u32;
-    let mut height = 600u32;
-    let mut x = 100i32;
-    let mut y = 100i32;
+    let mut width = 0u32;  // Will be set by content or app defaults
+    let mut height = 0u32; // Will be set by content or app defaults
+    
+    // Start with no explicit position - will be auto-centered unless CLI args specify otherwise
+    let mut x = 0i32;
+    let mut y = 0i32;
     let mut input_file: Option<String> = None;
     let mut follow_hwnd: Option<usize> = None;
     let mut positional_args = Vec::new();
@@ -47,49 +53,57 @@ where
 
     // Decode debug flag
     let mut decode_debug = false;
-    let mut has_been_specified = false;
+    // Storage restoration flag
+    let mut _restore_storage = false;
+    let mut _has_been_specified = false;
+    // Add a variable to store the MessageBoxType
+    let mut box_type = MessageBoxType::Ok;
+    // Variable to store text argument
+    let mut _text = String::new();
+
     while let Some(arg) = opts.next_arg().expect("argument parsing error") {
         match arg {
             Arg::Long("title") => {
                 if let Ok(val) = opts.value() {
                     title = val.to_string();
-                    has_been_specified = true;
+                    _has_been_specified = true;
+                    eprintln!("[DEBUG] Processed --title '{}', has_been_specified set to true", val);
                 }
             }
             Arg::Long("width") => {
                 if let Ok(val) = opts.value() {
                     width = val.parse().unwrap_or(width);
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("height") => {
                 if let Ok(val) = opts.value() {
                     height = val.parse().unwrap_or(height);
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("x") => {
                 if let Ok(val) = opts.value() {
                     x = val.parse().unwrap_or(x);
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("y") => {
                 if let Ok(val) = opts.value() {
                     y = val.parse().unwrap_or(y);
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("appname") => {
                 if let Ok(val) = opts.value() {
                     appname = val.to_string();
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Short('i') | Arg::Long("input-file") => {
                 if let Ok(val) = opts.value() {
                     input_file = Some(val.to_string());
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("follow-hwnd") => {
@@ -100,55 +114,80 @@ where
                     } else {
                         val.parse().ok()
                     };
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("w-pool-cnt") => {
                 if let Ok(val) = opts.value() {
                     w_pool_cnt = val.parse().ok();
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("w-pool-ndx") => {
                 if let Ok(val) = opts.value() {
                     w_pool_ndx = val.parse().ok();
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("w-pool-rate") => {
                 if let Ok(val) = opts.value() {
                     w_pool_rate = val.parse().ok();
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("parent-pid") => {
                 if let Ok(val) = opts.value() {
                     parent_pid = val.parse().ok();
-                    has_been_specified = true;
+                    _has_been_specified = true;
                 }
             }
             Arg::Long("decode-debug") => {
                 decode_debug = true;
-                has_been_specified = true;
+                _has_been_specified = true;
+            }
+            Arg::Long("restore-storage") => {
+                _restore_storage = true;
+                _has_been_specified = true;
+            }
+            Arg::Long("type") => {
+                if let Ok(val) = opts.value() {
+                    box_type = MessageBoxType::from_str(&val).unwrap_or(MessageBoxType::Ok);
+                    eprintln!("[DEBUG] Parsed --type: {:?}", box_type);
+                }
+            }
+            Arg::Long("body") => {
+                if let Ok(val) = opts.value() {
+                    _text = val.to_string();
+                    _has_been_specified = true;
+                    eprintln!("[DEBUG] Processed --body '{}', has_been_specified set to true", val);
+                }
             }
             Arg::Short('h') | Arg::Long("help") => {
                 eprintln!(
                     r#"Usage: e_window [OPTIONS] [FILES...]
     --appname <NAME>     Set app name (default: executable name)
     --title <TITLE>      Set window title (default: "E Window")
-    --width <WIDTH>      Set window width (default: 800)
-    --height <HEIGHT>    Set window height (default: 600)
-    --x <X>              Set window X position (default: 100)
-    --y <Y>              Set window Y position (default: 100)
+    --width <WIDTH>      Set window width (default: content-sized)
+    --height <HEIGHT>    Set window height (default: content-sized)
+    --x <X>              Set window X position (default: auto-centered)
+    --y <Y>              Set window Y position (default: auto-centered)
     -i, --input-file <FILE>  Read input data from file
     --follow-hwnd <HWND> Follow HWND (default: None)
     --w-pool-cnt <N>     Keep at least N windows open at all times
     --w-pool-ndx <N>     (internal) Index of this window instance
     --w-pool-rate <MS>   Minimum milliseconds between opening new windows (default: 1000)
+    --type <TYPE>        Message box type (Ok, OkCancel, YesNo, YesNoDefNo, YesNoCancel, YesNoCancelDefNo, RetryCancel, TextInput, FileSelection)
+    --body <TEXT>        Message body text
     --decode-debug       Enable debug decoding mode
     -h, --help           Show this help and exit
+    --version            Show version and exit
 Any other positional arguments are collected as files or piped input."#
                 );
+                return Ok(());
+            }
+            Arg::Long("version") => {
+                println!("e_window {}", env!("CARGO_PKG_VERSION"));
+                println!("Built on {}", env!("BUILD_TIMESTAMP"));
                 return Ok(());
             }
             Arg::Positional(val) => {
@@ -159,6 +198,12 @@ Any other positional arguments are collected as files or piped input."#
             }
         }
     }
+
+    eprintln!("[DEBUG] Final MessageBoxType: {:?}", box_type);
+
+    // Debug: Print the parsed window config from command line arguments
+    eprintln!("[DEBUG] After CLI parsing: title='{}', size={}x{}, pos={}x{}", 
+             title, width, height, x, y);
 
     // Default appname to executable name (without extension) if not set
     if appname.is_empty() {
@@ -211,8 +256,20 @@ Any other positional arguments are collected as files or piped input."#
         (input_data, false)
     };
 
-    // If input_data is empty, use your DEFAULT_CARD
-    let input_data = if input_data.trim().is_empty() {
+    // If input_data is empty, use your DEFAULT_CARD only if no meaningful CLI args were provided
+    eprintln!("[DEBUG] input_data content: '{}'", input_data.replace('\n', "\\n"));
+    eprintln!("[DEBUG] input_data.trim().is_empty(): {}", input_data.trim().is_empty());
+    
+    // Check if we received meaningful CLI arguments (indicating API call)
+    // This needs to be calculated before any content parsing that might change values
+    let received_explicit_cli_args = _has_been_specified;
+    let received_explicit_position_args = x != 0 || y != 0;
+    eprintln!("[DEBUG] received_explicit_cli_args: {}", received_explicit_cli_args);
+    eprintln!("[DEBUG] received_explicit_position_args: {}", received_explicit_position_args);
+    
+    let input_data = if input_data.trim().is_empty() && !received_explicit_cli_args {
+        eprintln!("[DEBUG] Using default card: input_data.trim().is_empty()={}, !received_explicit_cli_args={}", 
+                 input_data.trim().is_empty(), !received_explicit_cli_args);
         println!("Warning: No input data provided, using default card template.");
         let hwnd = {
             #[cfg(target_os = "windows")]
@@ -226,11 +283,34 @@ Any other positional arguments are collected as files or piped input."#
         };
         editor_mode = true; // Set editor mode if using default card
         app::default_card_with_hwnd(hwnd)
+    } else if input_data.trim().is_empty() && !_text.is_empty() {
+        // We have message box body text, create clean message box content
+        eprintln!("[DEBUG] Creating message box content: type={:?}, body='{}'", box_type, _text);
+        
+        let mut content = format!("type | {:?} | string\n", box_type);
+        
+        // Add input_type for input-based message boxes
+        match box_type {
+            MessageBoxType::TextInput => {
+                content.push_str("input_type | text | string\n");
+            },
+            MessageBoxType::FileSelection => {
+                content.push_str("input_type | file | string\n");
+            },
+            _ => {}
+        }
+        
+        content.push_str(&format!("\n{}", _text));
+        content
     } else {
+        eprintln!("[DEBUG] NOT using default card: input_data.trim().is_empty()={}, !received_explicit_cli_args={}", 
+                 input_data.trim().is_empty(), !received_explicit_cli_args);
         input_data
     };
 
     // Parse first line for CLI args, and use the rest as input_data
+    eprintln!("[DEBUG] Before content parsing: title='{}', size={}x{}, pos={}x{}", 
+             title, width, height, x, y);
     let mut input_lines = input_data.lines();
     let mut actual_input = String::new();
     if let Some(first_line) = input_lines.next() {
@@ -284,7 +364,19 @@ Any other positional arguments are collected as files or piped input."#
                             "Warning: --decode-debug is deprecated, use --decode-debug instead."
                         );
                         decode_debug = true;
-                        has_been_specified = true;
+                        _has_been_specified = true;
+                    }
+                    Arg::Long("type") => {
+                        if let Ok(val) = opts.value() {
+                            box_type = MessageBoxType::from_str(&val).unwrap_or(MessageBoxType::Ok);
+                            eprintln!("[DEBUG] Parsed --type from first line: {:?}", box_type);
+                        }
+                    }
+                    Arg::Long("body") => {
+                        if let Ok(val) = opts.value() {
+                            _text = val.to_string();
+                            eprintln!("[DEBUG] Parsed --body from first line: '{}'", val);
+                        }
                     }
                     _ => {
                         // Ignore other flags for now
@@ -297,19 +389,46 @@ Any other positional arguments are collected as files or piped input."#
         actual_input = input_lines.collect::<Vec<_>>().join("\n");
     }
 
+    // Debug: Print the window config after content parsing (where the problem occurs)
+    eprintln!("[DEBUG] After content parsing: title='{}', size={}x{}, pos={}x{}", 
+             title, width, height, x, y);
+
+    // If no explicit position args were provided, let the app handle auto-centering after layout
+    if !received_explicit_position_args {
+        eprintln!("[DEBUG] Auto-centering: received_explicit_position_args=false, will auto-center after layout");
+        // Set a special flag value to indicate auto-centering is desired
+        // The app will detect this and center the window after determining content size
+        x = -1;  // Special flag value for auto-center-x
+        y = -1;  // Special flag value for auto-center-y
+        eprintln!("[DEBUG] Set auto-center flags: pos=({}, {})", x, y);
+    } else {
+        eprintln!("[DEBUG] Auto-centering: received_explicit_position_args=true, skipping centering");
+    }
+
     // --- Window pool logic ---
     if let Some(pool_size) = w_pool_cnt {
         // Monitor parent PID if this is a pool child
         if let (Some(pid), Some(_ndx)) = (parent_pid, w_pool_ndx) {
+            // In a loop, check if the parent PID is still running
+            let parent_alive = Arc::new(std::sync::Mutex::new(true));
+            let parent_alive_clone = parent_alive.clone();
             std::thread::spawn(move || {
-                use sysinfo::System;
-                let mut sys = System::new_all();
-                loop {
-                    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-                    if sys.process(sysinfo::Pid::from_u32(pid)).is_none() {
+                // Briefly wait for the parent PID to be set
+                std::thread::sleep(Duration::from_millis(100));
+                while *parent_alive_clone.lock().unwrap() {
+                    // Check if the parent process is still running
+                    let is_running = {
+                        let mut sys = sysinfo::System::new_all();
+                        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                        sys.process(sysinfo::Pid::from(pid as usize)).is_some()
+                    };
+                    if !is_running {
+                        eprintln!("[DEBUG] Detected parent process (PID {}) has exited.", pid);
+                        // If the parent has exited, terminate this child window
                         std::process::exit(0);
                     }
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    // Sleep briefly before checking again
+                    std::thread::sleep(Duration::from_millis(500));
                 }
             });
         }
@@ -446,11 +565,30 @@ Any other positional arguments are collected as files or piped input."#
     }
 
     // Launch the GUI immediately, passing the shared receiver
+    let mut viewport_builder = egui::ViewportBuilder::default().with_title(&title);
+    
+    // For message boxes, calculate sizes dynamically based on font metrics
+    if !_text.is_empty() {
+        // We need to defer sizing to the first frame when egui context is available
+        // For now, use minimal sizing and let the app adjust after font metrics are available
+        viewport_builder = viewport_builder
+            .with_inner_size([250.0, 100.0]) // Minimal initial size
+            .with_position(egui::pos2(f32::INFINITY, f32::INFINITY)); // This centers the window
+    } else {
+        // Only set size if explicitly provided (not 0)
+        if width > 0 && height > 0 {
+            viewport_builder = viewport_builder.with_inner_size([width as f32, height as f32]);
+        }
+        
+        // Only set position if explicitly provided (not -1 for auto-center)  
+        if x != -1 && y != -1 {
+            viewport_builder = viewport_builder.with_position([x as f32, y as f32]);
+        }
+    }
+    
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([width as f32, height as f32])
-            .with_position([x as f32, y as f32])
-            .with_title(&title),
+        viewport: viewport_builder,
+        persist_window: false, // Don't restore previous window state for message boxes
         ..Default::default()
     };
     // If actual_input is empty, use your DEFAULT_CARD
@@ -475,6 +613,8 @@ Any other positional arguments are collected as files or piped input."#
         &appname,
         options,
         Box::new(move |cc| {
+            eprintln!("[DEBUG] Creating app with values: width={}, height={}, x={}, y={}, title='{}'", 
+                     width, height, x, y, title);
             let app = app::App::with_initial_window(
                 width as f32,
                 height as f32,
@@ -484,6 +624,7 @@ Any other positional arguments are collected as files or piped input."#
                 cc.storage,
                 follow_hwnd,
                 decode_debug,
+                format!("{:?}", box_type), // Convert MessageBoxType to String
             )
             .with_input_data_and_mode(actual_input, editor_mode);
             // Pass the receiver to the app

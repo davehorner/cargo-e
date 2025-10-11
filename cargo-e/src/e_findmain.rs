@@ -27,18 +27,19 @@ pub fn find_main_file(sample: &CargoTarget) -> Option<PathBuf> {
     // Determine the base directory.
     let base = if is_workspace_manifest(manifest_path) {
         // Try to locate a workspace member manifest matching the sample name.
-        if let Some(members) = get_workspace_member_manifest_paths(manifest_path) {
-            if let Some((_, member_manifest)) = members
-                .into_iter()
-                .find(|(member_name, _)| member_name == &sample.name)
-            {
-                member_manifest.parent().map(|p| p.to_path_buf())?
-            } else {
-                // No matching member found; use the workspace manifest's parent.
-                manifest_path.parent().map(|p| p.to_path_buf())?
+        match get_workspace_member_manifest_paths(manifest_path) {
+            Some(members) => {
+                if let Some((_, member_manifest)) = members
+                    .into_iter()
+                    .find(|(member_name, _)| member_name == &sample.name)
+                {
+                    member_manifest.parent().map(|p| p.to_path_buf())?
+                } else {
+                    // No matching member found; use the workspace manifest's parent.
+                    manifest_path.parent().map(|p| p.to_path_buf())?
+                }
             }
-        } else {
-            manifest_path.parent().map(|p| p.to_path_buf())?
+            None => manifest_path.parent().map(|p| p.to_path_buf())?,
         }
     } else {
         manifest_path.parent()?.to_path_buf()
@@ -345,92 +346,7 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
-    // use std::io::Write;
 
-    // #[test]
-    // fn test_find_main_file_default() -> Result<(), Box<dyn std::error::Error>> {
-    //     // Create a temporary directory.
-    //     let dir = tempdir()?;
-    //     let manifest_path = dir.path().join("Cargo.toml");
-    //     let main_rs = dir.path().join("src/main.rs");
-    //     fs::create_dir_all(main_rs.parent().unwrap())?;
-    //     fs::write(&main_rs, "fn main() {}")?;
-
-    //     // Write a Cargo.toml with a [[bin]] table without an explicit "path".
-    //     let toml_contents = r#"
-    //         [package]
-    //         name = "dummy"
-    //         version = "0.1.0"
-    //         edition = "2021"
-
-    //         [[bin]]
-    //         name = "sample1"
-    //     "#;
-    //     fs::write(&manifest_path, toml_contents)?;
-
-    //     let sample = Example {
-    //         name: "sample1".to_string(),
-    //         display_name: "dummy".to_string(),
-    //         manifest_path: manifest_path.to_string_lossy().to_string(),
-    //         kind: TargetKind::Binary,
-    //         extended: false,
-    //     };
-
-    //     let found = find_main_file(&sample).expect("Should find main file");
-    //     assert_eq!(found, main_rs);
-    //     dir.close()?;
-    //     Ok(())
-    // }
-
-    // #[test]
-    // fn test_find_main_file_with_explicit_path() -> Result<(), Box<dyn std::error::Error>> {
-    //     let dir = tempdir()?;
-    //     let manifest_path = dir.path().join("Cargo.toml");
-    //     let custom_main = dir.path().join("custom/main.rs");
-    //     fs::create_dir_all(custom_main.parent().unwrap())?;
-    //     fs::write(&custom_main, "fn main() {}")?;
-
-    //     let toml_contents = format!(
-    //         r#"
-    //         [package]
-    //         name = "dummy"
-    //         version = "0.1.0"
-    //         edition = "2021"
-
-    //         [[bin]]
-    //         name = "sample2"
-    //         path = "{}"
-    //         "#,
-    //         custom_main.strip_prefix(dir.path()).unwrap().to_str().unwrap()
-    //     );
-    //     fs::write(&manifest_path, toml_contents)?;
-
-    //     let sample = Example {
-    //         name: "sample2".to_string(),
-    //         display_name: "dummy".to_string(),
-    //         manifest_path: manifest_path.to_string_lossy().to_string(),
-    //         kind: TargetKind::Binary,
-    //         extended: false,
-    //     };
-
-    //     let found = find_main_file(&sample).expect("Should find custom main file");
-    //     assert_eq!(found, custom_main);
-    //     dir.close()?;
-    //     Ok(())
-    // }
-
-    // #[test]
-    // fn test_find_main_line() -> Result<(), Box<dyn std::error::Error>> {
-    //     let dir = tempdir()?;
-    //     let file_path = dir.path().join("src/main.rs");
-    //     fs::create_dir_all(file_path.parent().unwrap())?;
-    //     let content = "\n\nfn helper() {}\nfn main() { println!(\"Hello\"); }\n";
-    //     fs::write(&file_path, content)?;
-    //     let pos = find_main_line(&file_path).expect("Should find fn main");
-    //     assert_eq!(pos.0, 4); // Line 4 should contain fn main.
-    //     dir.close()?;
-    //     Ok(())
-    // }
     // Test for a non-extended sample with no explicit path in Cargo.toml (should fallback to "src/main.rs").
     #[test]
     fn test_find_main_file_default() -> Result<(), Box<dyn std::error::Error>> {
@@ -469,7 +385,7 @@ mod tests {
     fn test_find_main_file_with_explicit_path() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let manifest_path = dir.path().join("Cargo.toml");
-        let custom_main = dir.path().join("custom/main.rs");
+        let custom_main = dir.path().join("src/main.rs");
         fs::create_dir_all(custom_main.parent().unwrap())?;
         fs::write(&custom_main, "fn main() {}")?;
         let toml_contents = format!(

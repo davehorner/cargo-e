@@ -91,9 +91,40 @@ You can launch `e_window` directly or use it as a library in your own project.
 - `--y <Y>`: Set window Y position
 - `--follow-hwnd <HWND>`: (Windows only) Follow another window and beep when it closes
 - `-i, --input-file <FILE>`: Read input data from file
+- `--type <TYPE>`: Display as a message box with specified button type
 - Any other positional arguments are treated as input text
 
 You can also specify options as the **first line** of piped or file input.
+
+### Message Box Types
+
+The `--type` argument enables message box mode with different button configurations:
+
+- `ok` - Single OK button
+- `okcancel` - OK and Cancel buttons
+- `yesno` - Yes and No buttons  
+- `yesnodefno` - Yes and No buttons (No is default)
+- `yesnocancel` - Yes, No, and Cancel buttons
+- `yesnokansdefno` - Yes, No, and Cancel buttons (No is default)
+- `retrycancel` - Retry and Cancel buttons
+- `textinput` - Text input dialog with OK/Cancel
+- `fileselection` - File selection dialog
+
+#### Message Box Examples
+
+```sh
+# Simple information dialog
+echo "Operation completed successfully!" | e_window --type ok
+
+# Confirmation dialog
+echo "Are you sure you want to delete this file?" | e_window --type yesno
+
+# Text input
+echo "Enter your name:" | e_window --type textinput
+
+# File selection
+echo "Select a configuration file:" | e_window --type fileselection
+```
 
 #### Example
 
@@ -106,6 +137,115 @@ Or with piped input:
 ```sh
 echo "--title Demo Window --width 900" | e_window
 ```
+
+---
+
+## Document Format Protocol
+
+`e_window` uses a specific document format protocol for displaying structured content. Understanding this format is essential for creating properly formatted input that displays correctly.
+
+### Document Structure
+
+A valid e_window document follows this structure:
+
+```
+--title "Window Title" --width 800 --height 600 --x 100 --y 100
+field1 | value1 | type1
+field2 | value2 | type2
+
+Card Title
+Header Text
+Caption Text
+Body line 1
+Body line 2
+...
+```
+
+### Format Breakdown
+
+1. **CLI Arguments Line** (optional): Window configuration parameters
+   - `--title "text"` - Window title
+   - `--width N` - Window width in pixels
+   - `--height N` - Window height in pixels  
+   - `--x N` - Window X position
+   - `--y N` - Window Y position
+   - `--follow-hwnd 0xHEX` - Follow parent window
+
+2. **Fields Section** (optional): Key-value pairs in `key | value | type` format
+   - Displayed as a structured table in the UI
+   - Common types: `string`, `number`, `boolean`, `date`
+
+3. **Blank Line Separator** (crucial!): Required between configuration/fields and content
+
+4. **Content Section**: Structured content after the blank line
+   - **Line 1**: Card title (can be empty)
+   - **Line 2**: Header text (can be empty)  
+   - **Line 3**: Caption text (can be empty)
+   - **Lines 4+**: Body content (multiple lines supported)
+
+### Document Examples
+
+#### Simple Document
+```
+--title "Hello World" --width 400 --height 300
+
+Welcome
+Getting Started
+Ready to go!
+This is a simple example of e_window content.
+```
+
+#### Complex Document with Fields
+```
+--title "Project Status" --width 600 --height 400
+project | e_window | string
+version | 1.0.1 | string
+status | active | string
+progress | 75% | percentage
+
+Project Dashboard
+Development Progress Report
+Last Updated: 2025-10-11
+We have made significant progress on the e_window project.
+
+Key accomplishments:
+- Implemented structured document protocol
+- Added real-time control commands
+- Created comprehensive examples
+- Fixed positioning and auto-centering
+
+Next steps:
+- Add more animation options
+- Improve error handling
+- Write comprehensive documentation
+```
+
+#### Using with Command Line
+```bash
+# Simple text display
+echo "Hello World" | e_window
+
+# With window configuration
+echo "--title 'Demo' --width 500
+name | John Doe | string
+status | active | string
+
+User Profile
+Account Information
+Status: Online
+Welcome to your dashboard!" | e_window
+
+# From file
+cat document.txt | e_window
+```
+
+### Protocol Notes
+
+- The **blank line separator** is mandatory when you have both configuration/fields AND content
+- Empty lines in content are preserved and displayed
+- Field types affect how values are displayed (e.g., numbers may be right-aligned)
+- CLI arguments in the first line override command-line parameters
+- If no content section exists, only the fields table is displayed
 
 
 ---
