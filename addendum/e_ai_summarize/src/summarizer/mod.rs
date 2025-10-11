@@ -81,7 +81,7 @@ impl ChatSession {
                 .exec_chat(&self.model, self.chat_req.clone(), None)
                 .await?;
             let resp = chat_res
-                .content_text_as_str()
+                .first_text()
                 .unwrap_or("NO ANSWER")
                 .to_string();
             println!("{}", resp);

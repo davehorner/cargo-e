@@ -291,8 +291,8 @@ impl PositionGrid {
     /// Create and allocate a new PositionGrid at the current cursor position.
     pub fn allocate(ui: &mut Ui, color: Color32) -> (Self, Response) {
         let font_id = TextStyle::Heading.resolve(ui.style());
-        let galley = ui
-            .fonts(|fonts| fonts.layout_no_wrap("M".to_string(), font_id.clone(), Color32::WHITE));
+        let painter = ui.painter();
+        let galley = painter.layout_no_wrap("M".to_string(), font_id.clone(), Color32::WHITE);
         let char_size = galley.size();
         let grid_size = vec2(char_size.x * 2.0, char_size.y * 2.0);
         let (rect, response) = ui.allocate_exact_size(grid_size, egui::Sense::hover());
@@ -344,8 +344,8 @@ impl PositionGrid {
         grid_dims: Option<(usize, usize)>,
     ) -> (Self, egui::Vec2) {
         let font_id = style.resolve(ui.style());
-        let galley = ui
-            .fonts(|fonts| fonts.layout_no_wrap("M".to_string(), font_id.clone(), Color32::WHITE));
+        let painter = ui.painter();
+        let galley = painter.layout_no_wrap("M".to_string(), font_id.clone(), Color32::WHITE);
         let char_size = galley.size();
         let available = ui.available_size();
         let label_height = 32.0;

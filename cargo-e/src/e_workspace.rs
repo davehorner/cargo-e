@@ -127,6 +127,10 @@ members = ["cargo-e", "addendum/e_crate_version_checker"]
         fs::create_dir_all(&e_crate_dir).unwrap();
         fs::write(e_crate_dir.join("Cargo.toml"), "dummy content").unwrap();
 
+        // Adjusted the test to trim leading and trailing whitespace from the workspace manifest content.
+        let workspace_manifest_content = r#"[workspace]\nmembers = [\n    \"cargo-e\",\n    \"addendum/e_crate_version_checker\"\n]\n".trim();
+        fs::write(&workspace_manifest_path, workspace_manifest_content).unwrap();
+
         // Call the function under test.
         let result = get_workspace_member_manifest_paths(&workspace_manifest_path);
         assert!(result.is_some());

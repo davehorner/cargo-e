@@ -1,0 +1,12 @@
+[tasks.install_dependencies]
+description = "Install e_window and e_window_types crates"
+command = "cargo"
+args = ["install", "--path", "../e_window"]
+
+[tasks.install_dependencies_types]
+description = "Install e_window_types crate"
+command = "cargo"
+args = ["install", "--path", "../e_window_types"]
+
+[env]
+RUST_BACKTRACE = "1"

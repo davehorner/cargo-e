@@ -59,18 +59,16 @@ impl eframe::App for GridDemoApp {
             // 2x2 grid sized to font
             let (grid, char_size) = PositionGrid::from_text_style(None,ui, egui::TextStyle::Heading, egui::Color32::LIGHT_BLUE, Some((2, 2)));
             // Add vertical space before grid to ensure visibility
-            ui.add_space(8.0);
+            ui.add_space(2.0);
             let (rect, _response) = ui.allocate_exact_size(grid.grid_size, egui::Sense::hover());
             let grid = PositionGrid::new_with_rect(None,rect, char_size, grid.grid_size, egui::Color32::LIGHT_BLUE);
             grid.draw(ui);
             // Add vertical space after grid to prevent overlap
-            ui.add_space(16.0);
+            ui.add_space(8.0);
 
             ui.separator();
             ui.label("A grid that fills the window with as many font-sized cells as possible:");
-            let style = ctx.style();
-            let font_id = style.text_styles.get(&egui::TextStyle::Heading).unwrap();
-            let label_height = ui.fonts(|fonts| fonts.row_height(font_id));
+            let label_height = ui.text_style_height(&egui::TextStyle::Heading);
 
 
             let available = ui.available_size();
@@ -261,7 +259,7 @@ impl eframe::App for GridDemoApp {
                                     }
                                 }
                             } else {
-                                // On focus loss, set Chrome to not topmost (HWND_NOTOPMOST), do not move/resize
+                                // On focus loss, set Chrome to not topmost (HWND_NOTTOPMOST), do not move/resize
                                 let result = SetWindowPos(
                                     hwnd,
                                     HWND_NOTOPMOST,
