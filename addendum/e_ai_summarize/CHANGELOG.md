@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.21...e_ai_summarize-v0.1.22) - 2025-10-11
+
+### Added
+
+- *(e_window)* Implement message box functionality and auto-centering
+
 ## [0.1.21](https://github.com/davehorner/cargo-e/compare/e_ai_summarize-v0.1.20...e_ai_summarize-v0.1.21) - 2025-07-20
 
 ### Other

@@ -1,6 +1,6 @@
 [package]
 name = "cargo-e"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 rust-version = "1.85.1"
 description = "e is for Example. A command-line tool for running and exploring source, examples, and binaries from Rust projects. It will run the first example, if no options are given."
@@ -92,46 +92,46 @@ name = "cargo-e"
 path = "src/main.rs"
 
 [dependencies]
-e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.33", optional = true }
-e_ai_summarize = { path = "../addendum/e_ai_summarize", version = "0.1.21", optional = true }
-anyhow = "1.0.97"
-clap = { version = "4.5.31", features = ["derive"] }
+e_crate_version_checker = { path = "../addendum/e_crate_version_checker", version = "0.1.34", optional = true }
+e_ai_summarize = { path = "../addendum/e_ai_summarize", version = "0.1.22", optional = true }
+anyhow = "1.0.98"
+clap = { version = "4.5.32", features = ["derive"] }
 crossterm = { version = "0.29.0", optional = true }
-ctrlc = "3.4.5"
+ctrlc = "3.5.0"
 futures = "0.3.31"
 paste = { version = "1.0.15", optional = true }
 tts = { version = "0.26.3", optional = true }
 ratatui = { version = "0.29.0", optional = true }
 threadpool = { version = "1.8.1", optional = true }
-toml = "0.8.20"
+toml = "0.9.8"
 tracing = "0.1.41"
 semver = { version = "1.0.26", optional = true }
-reqwest = { version = "0.12.15", optional = true, features = [
+reqwest = { version = "0.12.23", optional = true, features = [
     "blocking",
     "json",
 ] }
 serde = { version = "1.0", optional = true, features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
-env_logger = "0.11.7"
-log = "0.4.26"
-once_cell = "1.21.1"
-tokio = "1.44.1"
-rustyline = "16.0.0"
+env_logger = "0.11.8"
+log = "0.4.28"
+once_cell = "1.21.3"
+tokio = "1.44.2"
+rustyline = "17.0.2"
 which = "8.0.0"
-cargo_metadata = "0.20.0"
+cargo_metadata = "0.23.0"
 regex = "1.11.1"
 open = "5.3.2"
-sysinfo = "0.35.0"
-chrono = "0.4.40"
+sysinfo = "0.37.2"
+chrono = "0.4.42"
 nu-ansi-term = "0.50.1"
 walkdir = "2.5.0"
 
 # Optional plugin dependencies
 rhai = { version = "1.21.0", optional = true }
-mlua = { version = "0.10", features = ["lua54", "vendored"], optional = true }
-wasmtime = { version = "32.0.0", optional = true }
-wasmtime-wasi = { version = "32.0.0", features = ["preview1"], optional = true }
-wasmparser = { version = "0.230.0", optional = true }
+mlua = { version = "0.11", features = ["lua54", "vendored"], optional = true }
+wasmtime = { version = "37.0.2", optional = true }
+wasmtime-wasi = { version = "37.0.2", optional = true }
+wasmparser = { version = "0.240.0", optional = true }
 glob = "0.3.2"
 git2 = "0.20.1"
 comfy-table = "7.1.4"
@@ -147,23 +147,24 @@ nix = { version = "0.30.1", features = ["process", "signal"] }
 libc = "0.2.172"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61.1", features = [
+windows = { version = "0.62.2", features = [
     "Win32",
     "Win32_System_Console",
     "Win32_Foundation",
     "Win32_System_SystemServices",
+    "Win32_System_Threading",
     "Win32_Security",
     "Win32_Security_Authorization",
 ] }
 
 [dev-dependencies]
 assert_cmd = "2.0.16"
-genai = "0.3.0"
+genai = "0.4.1"
 predicate = "0.1.0"
 predicates = "3.1.3"
 regex = "1.11.1"
 tempfile = "3.18.0"
-tokio = "1.44.1"
+tokio = "1.44.2"
 tracing-subscriber = "0.3.19"
 version-sync = "0.9.5"
 parse-changelog = "0.6"

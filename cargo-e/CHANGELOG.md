@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.3.0...cargo-e-v0.3.1) - 2025-10-11
+
+### Added
+
+- *(e_window)* Implement message box functionality and auto-centering
+
 ## [0.3.0](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.2.46...cargo-e-v0.3.0) - 2025-08-24
 
 ### Added
