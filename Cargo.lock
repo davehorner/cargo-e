@@ -2136,6 +2136,7 @@ dependencies = [
  "dashmap",
  "e_grid 0.2.1",
  "e_midi",
+ "e_window_native",
  "e_window_types 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "eframe",
  "egui",
@@ -2172,6 +2173,7 @@ name = "e_window_api"
 version = "0.1.2"
 dependencies = [
  "core-graphics 0.25.0",
+ "e_window_native",
  "e_window_types 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "eframe",
  "ordered-float 5.1.0",
@@ -2180,6 +2182,15 @@ dependencies = [
  "tokio",
  "unicode-width 0.2.0",
  "which 8.0.0",
+ "winapi",
+ "x11",
+]
+
+[[package]]
+name = "e_window_native"
+version = "0.1.0"
+dependencies = [
+ "core-graphics 0.25.0",
  "winapi",
  "x11",
 ]

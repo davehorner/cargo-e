@@ -649,7 +649,7 @@ impl eframe::App for App {
                 eprintln!("[DEBUG] Applying auto-centering with content size: {}x{}", actual_size.x, actual_size.y);
 
                 // Cross-platform screen size detection
-                let (screen_width, screen_height, method_used) = get_cross_platform_screen_size();
+                let (screen_width, screen_height, method_used) = e_window_native::get_cross_platform_screen_size();
 
                 // Check if the window should be resized to fit content instead of using default size
                 // This handles the case where egui applies a default size (like 1024x768) instead of content size
@@ -666,15 +666,15 @@ impl eframe::App for App {
 
                     // Resize window to fit content
                     ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(target_width, target_height)));
-                    (target_width, target_height)
+                    (target_width as u32, target_height as u32)
                 } else {
-                    (actual_size.x, actual_size.y)
+                    (actual_size.x as u32, actual_size.y as u32)
                 };
 
                 // Calculate center position based on final window size
                 if screen_width > final_width && screen_height > final_height {
-                    let center_x = (screen_width - final_width) / 2.0;
-                    let center_y = (screen_height - final_height) / 2.0;
+                    let center_x = (screen_width as f32 - final_width as f32) / 2.0;
+                    let center_y = (screen_height as f32 - final_height as f32) / 2.0;
 
                     eprintln!("[DEBUG] Auto-centering ({}): screen={}x{}, window={}x{}, center=({}, {})", 
                              method_used, screen_width, screen_height, final_width, final_height, center_x, center_y);
@@ -712,9 +712,9 @@ impl eframe::App for App {
             // and we're still at origin position AND auto-centering is enabled
             if self.should_auto_center && old_size != new_size && current_pos.x as i32 == 0 && current_pos.y as i32 == 0 {
                 // Use cross-platform screen detection
-                let (screen_width, screen_height, method_used) = get_cross_platform_screen_size();
-                let new_center_x = ((screen_width - new_size.0 as f32) / 2.0) as i32;
-                let new_center_y = ((screen_height - new_size.1 as f32) / 2.0) as i32;
+                let (screen_width, screen_height, method_used) = e_window_native::get_cross_platform_screen_size();
+                let new_center_x = ((screen_width as f32 - new_size.0 as f32) / 2.0).round() as i32;
+                let new_center_y = ((screen_height as f32 - new_size.1 as f32) / 2.0).round() as i32;
 
                 eprintln!("[App] Auto-centering ({}): old_size={}x{}, new_size={}x{}, screen={}x{}, new_center=({}, {})", 
                          method_used, old_size.0, old_size.1, new_size.0, new_size.1, screen_width, screen_height, new_center_x, new_center_y);
@@ -1541,60 +1541,4 @@ anchor: Click me! | e_window --title "you clicked!" --width 800 --height 600 --x
 
 pub fn default_card_with_hwnd(hwnd: usize) -> String {
     DEFAULT_CARD_TEMPLATE.replace("{PARENT_HWND}", &format!("0x{:X}", hwnd))
-}
-
-/// Cross-platform screen size detection
-fn get_cross_platform_screen_size() -> (f32, f32, &'static str) {
-    #[cfg(target_os = "windows")]
-    {
-        use winapi::um::winuser::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
-
-        let width = unsafe { GetSystemMetrics(SM_CXSCREEN) } as f32;
-        let height = unsafe { GetSystemMetrics(SM_CYSCREEN) } as f32;
-
-        eprintln!("[DEBUG] Windows GetSystemMetrics screen size: {}x{}", width, height);
-        (width, height, "windows_getsystemmetrics")
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // macOS screen detection using Core Graphics
-        use core_graphics::display::CGMainDisplay;
-
-        let display = CGMainDisplay();
-        let width = display.pixels_wide() as f32;
-        let height = display.pixels_high() as f32;
-
-        eprintln!("[DEBUG] macOS Core Graphics screen size: {}x{}", width, height);
-        (width, height, "macos_coregraphics")
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux screen detection using X11
-        use x11::xlib::*;
-        use std::ptr;
-
-        unsafe {
-            let display = XOpenDisplay(ptr::null());
-            if !display.is_null() {
-                let screen = XDefaultScreen(display);
-                let width = XDisplayWidth(display, screen) as f32;
-                let height = XDisplayHeight(display, screen) as f32;
-                XCloseDisplay(display);
-
-                eprintln!("[DEBUG] Linux X11 screen size: {}x{}", width, height);
-                (width, height, "linux_x11")
-            } else {
-                eprintln!("[DEBUG] Failed to open X11 display, using fallback");
-                (1920.0, 1080.0, "linux_fallback")
-            }
-        }
-    }
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        eprintln!("[DEBUG] Unsupported platform, using fallback screen size");
-        (1920.0, 1080.0, "platform_fallback")
-    }
 }
