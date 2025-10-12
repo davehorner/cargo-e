@@ -1,6 +1,6 @@
 // Test that mimics the original realtime_control.rs approach exactly
 
-use e_window_api::{EWindow, WindowConfig, ControlCommand};
+use e_window_api::{ControlCommand, EWindow, WindowConfig};
 use tokio::time::{sleep, Duration};
 
 const DEFAULT_CARD_TEMPLATE: &str = r#"--title "Demo: API Test" --width 400 --height 300 --x 200 --y 200
@@ -33,10 +33,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[DEBUG] Sending initial card template...");
     window.send_document(DEFAULT_CARD_TEMPLATE).await?;
     println!("[DEBUG] Initial card template sent");
-    
+
     // Wait a bit
     sleep(Duration::from_secs(5)).await;
-    
+
     // Now send some control commands like the original
     println!("[DEBUG] Sending control commands...");
     let commands = vec![
@@ -44,13 +44,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ControlCommand::SetTitle("Updated Title".to_string()),
         ControlCommand::Delay(3000),
     ];
-    
+
     window.send_commands(commands).await?;
     println!("[DEBUG] Control commands sent");
-    
+
     // Wait and finish
     sleep(Duration::from_secs(5)).await;
     println!("Test completed!");
-    
+
     Ok(())
 }

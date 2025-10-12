@@ -1,5 +1,5 @@
 // Test positioning fix - simple test with explicit positioning
-use e_window_api::{EWindow, WindowConfig, Card};
+use e_window_api::{Card, EWindow, WindowConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,11 +25,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .body_line("If it's auto-centered, there's still an issue.");
 
     window.show_card(card).await?;
-    
+
     // Give time to see the position
     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-    
+
     window.close().await?;
-    
+
     Ok(())
 }

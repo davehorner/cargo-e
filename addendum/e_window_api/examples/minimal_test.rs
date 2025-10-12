@@ -1,6 +1,6 @@
 // Minimal test to debug why show_card works in notify_async but not other examples
 
-use e_window_api::{EWindow, WindowConfig, Card};
+use e_window_api::{Card, EWindow, WindowConfig};
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
@@ -14,8 +14,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_x = (screen_width.saturating_sub(window_width + 20)) / 2;
     let window_y = (screen_height.saturating_sub(window_height + 20)) / 2;
 
-    println!("[DEBUG] Window config: position=({}, {}), size=({}, {})", 
-             window_x, window_y, window_width, window_height);
+    println!(
+        "[DEBUG] Window config: position=({}, {}), size=({}, {})",
+        window_x, window_y, window_width, window_height
+    );
 
     let config = WindowConfig::new()
         .title("Minimal Test")
@@ -46,13 +48,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[DEBUG] Sending card to window...");
     window.show_card(card).await?;
     println!("[DEBUG] Card sent successfully");
-    
+
     println!("[DEBUG] Waiting 10 seconds...");
     sleep(Duration::from_secs(10)).await;
-    
+
     println!("[DEBUG] Closing window...");
     // Window should close automatically when dropped
-    
+
     println!("Test completed!");
     Ok(())
 }

@@ -1,6 +1,6 @@
 // Debug version of realtime_control_api to see what's happening
 
-use e_window_api::{EWindow, WindowConfig, Card, AnimationEasing, ControlCommand, get_screen_size};
+use e_window_api::{get_screen_size, AnimationEasing, Card, ControlCommand, EWindow, WindowConfig};
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
@@ -51,7 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test simple control commands
     println!("[DEBUG] Sending title change command...");
-    window.send_command(ControlCommand::SetTitle("Title Changed!".to_string())).await?;
+    window
+        .send_command(ControlCommand::SetTitle("Title Changed!".to_string()))
+        .await?;
     println!("[DEBUG] Title change sent, waiting 2 seconds...");
     sleep(Duration::from_secs(2)).await;
 
@@ -92,13 +94,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("[DEBUG] Sending BeginDocument command...");
     window.send_command(ControlCommand::BeginDocument).await?;
-    
+
     println!("[DEBUG] Sending document content manually...");
     window.send_document(&third_card.to_document()).await?;
-    
+
     println!("[DEBUG] Sending EndDocument command...");
     window.send_command(ControlCommand::EndDocument).await?;
-    
+
     println!("[DEBUG] Manual document sent, waiting 3 seconds...");
     sleep(Duration::from_secs(3)).await;
 

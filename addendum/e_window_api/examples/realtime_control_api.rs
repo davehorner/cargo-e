@@ -1,7 +1,7 @@
 // Example: Realtime control using the e_window_api
 // This is the high-level API version of the realtime_control.rs example
 
-use e_window_api::{EWindow, WindowConfig, Card, AnimationEasing, ControlCommand, get_screen_size};
+use e_window_api::{get_screen_size, AnimationEasing, Card, ControlCommand, EWindow, WindowConfig};
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let margin = 50;
     let window_width = 400u32;
     let window_height = 300u32;
-    
+
     // Calculate corner positions with margin
     let top_left_x = margin as i32;
     let top_left_y = margin as i32;
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== INITIAL CARD START ===");
     println!("{}", initial_card.to_document());
     println!("=== INITIAL CARD END ===");
-    
+
     window.show_card(initial_card).await?;
     println!("Initial card sent, waiting 5 seconds...");
     sleep(Duration::from_secs(5)).await;
@@ -85,33 +85,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let commands = vec![
         ControlCommand::Delay(7000), // 7 seconds delay before next command (increased from 3.5)
         ControlCommand::SetTitle("Realtime Control Demo".to_string()),
-        ControlCommand::SetRectEased { 
-            x: center_x, y: center_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear  // Slower animation
+        ControlCommand::SetRectEased {
+            x: center_x,
+            y: center_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear, // Slower animation
         },
         ControlCommand::Delay(5000), // 5 seconds (increased from 3)
         // Top-left demo
-        ControlCommand::SetRectEased { 
-            x: top_left_x, y: top_left_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear  // Slower animation
+        ControlCommand::SetRectEased {
+            x: top_left_x,
+            y: top_left_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear, // Slower animation
         },
         ControlCommand::Delay(7000), // 7 seconds (increased from 3)
     ];
-    
+
     window.send_commands(commands).await?;
 
     // Top-left demo: move FIRST, then send document (like original)
     let top_left_move_commands = vec![
         // Top-left demo - move to top-left position FIRST
-        ControlCommand::SetRectEased { 
-            x: top_left_x, y: top_left_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear  // Slower animation
+        ControlCommand::SetRectEased {
+            x: top_left_x,
+            y: top_left_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear, // Slower animation
         },
         ControlCommand::Delay(3000), // Wait for animation (like original)
         ControlCommand::BeginDocument,
     ];
     window.send_commands(top_left_move_commands).await?;
-    
+
     let top_left_card = Card::new()
         .window_title("Top Left")
         .size(window_width, window_height)
@@ -124,20 +136,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .body_line(&format!("Position: ({}, {})", top_left_x, top_left_y))
         .body_line(&format!("Screen: {}x{}", screen_width, screen_height))
         .body_line("Body for Top Left");
-    
+
     println!("[DEBUG] Top-left card content:");
     println!("=== TOP-LEFT CARD START ===");
     println!("{}", top_left_card.to_document());
     println!("=== TOP-LEFT CARD END ===");
-    
+
     window.send_document(&top_left_card.to_document()).await?;
-    
+
     let top_left_end_commands = vec![
         ControlCommand::EndDocument,
         ControlCommand::Delay(3000), // Wait like original
     ];
     window.send_commands(top_left_end_commands).await?;
-    
+
     // Top-right demo: document FIRST, then move (like original pattern for top-right)
     let more_commands = vec![
         // Top-right demo - send document first
@@ -156,32 +168,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .body_line(&format!("Position: ({}, {})", top_right_x, top_right_y))
         .body_line(&format!("Screen: {}x{}", screen_width, screen_height))
         .body_line("Body for Top Right");
-    
+
     println!("[DEBUG] Top-right card content:");
     println!("=== TOP-RIGHT CARD START ===");
     println!("{}", top_right_card.to_document());
     println!("=== TOP-RIGHT CARD END ===");
-    
+
     window.send_document(&top_right_card.to_document()).await?;
-    
+
     let top_right_end_commands = vec![
         ControlCommand::EndDocument,
         ControlCommand::Delay(1000), // Short delay like original
         // Top-right demo - move to top-right position AFTER document
-        ControlCommand::SetRectEased { 
-            x: top_right_x, y: top_right_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear 
+        ControlCommand::SetRectEased {
+            x: top_right_x,
+            y: top_right_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear,
         },
         ControlCommand::Delay(3000), // Wait for animation to complete
     ];
     window.send_commands(top_right_end_commands).await?;
-    
+
     let final_commands = vec![
         // Bottom-right demo - send document first
         ControlCommand::BeginDocument,
     ];
     window.send_commands(final_commands).await?;
-    
+
     // Bottom-right card - use manual document protocol
     let bottom_right_card = Card::new()
         .window_title("Bottom Right")
@@ -190,35 +206,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .caption("Bottom-right corner animation")
         .body_line("Window animates to the bottom-right corner")
         .body_line("Illustrates resizing and placement")
-        .body_line(&format!("Position: ({}, {})", bottom_right_x, bottom_right_y))
+        .body_line(&format!(
+            "Position: ({}, {})",
+            bottom_right_x, bottom_right_y
+        ))
         .body_line(&format!("Screen: {}x{}", screen_width, screen_height))
         .body_line("Body for Bottom Right");
-    
+
     println!("[DEBUG] Bottom-right card content:");
     println!("=== BOTTOM-RIGHT CARD START ===");
     println!("{}", bottom_right_card.to_document());
     println!("=== BOTTOM-RIGHT CARD END ===");
-    
-    window.send_document(&bottom_right_card.to_document()).await?;
-    
+
+    window
+        .send_document(&bottom_right_card.to_document())
+        .await?;
+
     let bottom_right_end_commands = vec![
         ControlCommand::EndDocument,
         ControlCommand::Delay(1000), // Wait before moving
         // Bottom-right demo - move to bottom-right position
-        ControlCommand::SetRectEased { 
-            x: bottom_right_x, y: bottom_right_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear 
+        ControlCommand::SetRectEased {
+            x: bottom_right_x,
+            y: bottom_right_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear,
         },
         ControlCommand::Delay(3000), // Wait for animation to complete
     ];
     window.send_commands(bottom_right_end_commands).await?;
-    
+
     let bottom_commands = vec![
         // Bottom-left demo - send document first
         ControlCommand::BeginDocument,
     ];
     window.send_commands(bottom_commands).await?;
-    
+
     // Bottom-left card - use manual document protocol
     let bottom_left_card = Card::new()
         .window_title("Bottom Left")
@@ -230,32 +255,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .body_line(&format!("Position: ({}, {})", bottom_left_x, bottom_left_y))
         .body_line(&format!("Screen: {}x{}", screen_width, screen_height))
         .body_line("Body for Bottom Left");
-    
+
     println!("[DEBUG] Bottom-left card content:");
     println!("=== BOTTOM-LEFT CARD START ===");
     println!("{}", bottom_left_card.to_document());
     println!("=== BOTTOM-LEFT CARD END ===");
-    
-    window.send_document(&bottom_left_card.to_document()).await?;
-    
+
+    window
+        .send_document(&bottom_left_card.to_document())
+        .await?;
+
     let bottom_left_end_commands = vec![
         ControlCommand::EndDocument,
         ControlCommand::Delay(1000), // Wait before moving
         // Bottom-left demo - move to bottom-left position
-        ControlCommand::SetRectEased { 
-            x: bottom_left_x, y: bottom_left_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear 
+        ControlCommand::SetRectEased {
+            x: bottom_left_x,
+            y: bottom_left_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear,
         },
         ControlCommand::Delay(3000), // Wait for animation to complete
     ];
     window.send_commands(bottom_left_end_commands).await?;
-    
+
     let left_commands = vec![
         // Center demo - send document first
         ControlCommand::BeginDocument,
     ];
     window.send_commands(left_commands).await?;
-    
+
     // Center card - use manual document protocol
     let center_card = Card::new()
         .window_title("Center")
@@ -267,26 +298,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .body_line(&format!("Position: ({}, {})", center_x, center_y))
         .body_line(&format!("Screen: {}x{}", screen_width, screen_height))
         .body_line("Body for Center");
-    
+
     println!("[DEBUG] Center card content:");
     println!("=== CENTER CARD START ===");
     println!("{}", center_card.to_document());
     println!("=== CENTER CARD END ===");
-    
+
     window.send_document(&center_card.to_document()).await?;
-    
+
     let center_end_commands = vec![
         ControlCommand::EndDocument,
         ControlCommand::Delay(1000), // Wait before moving
         // Center demo - move back to center position
-        ControlCommand::SetRectEased { 
-            x: center_x, y: center_y, width: window_width, height: window_height, 
-            duration_ms: 2000, easing: AnimationEasing::Linear 
+        ControlCommand::SetRectEased {
+            x: center_x,
+            y: center_y,
+            width: window_width,
+            height: window_height,
+            duration_ms: 2000,
+            easing: AnimationEasing::Linear,
         },
         ControlCommand::Delay(3000), // Wait for animation to complete
     ];
     window.send_commands(center_end_commands).await?;
-    
+
     // Final commands to wait and close
     let final_final_commands = vec![
         ControlCommand::Delay(7000), // Wait at center

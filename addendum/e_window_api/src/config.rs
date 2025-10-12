@@ -6,7 +6,7 @@ pub struct WindowConfig {
     pub height: u32,
     pub x: i32,
     pub y: i32,
-    pub auto_center: bool,  // New field to enable auto-centering
+    pub auto_center: bool, // New field to enable auto-centering
     pub input_file: Option<String>,
     pub follow_hwnd: Option<usize>,
     pub parent_pid: Option<u32>,
@@ -15,18 +15,18 @@ pub struct WindowConfig {
     pub pool_rate: Option<u64>,
     pub decode_debug: bool,
     pub additional_args: Vec<String>,
-    pub initial_input: Option<String>,  // Initial input data to prevent default card usage
+    pub initial_input: Option<String>, // Initial input data to prevent default card usage
 }
 
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
             title: "E Window".to_string(),
-            width: 0,  // Let egui determine size based on content
-            height: 0, // Let egui determine size based on content
-            x: 0,      // Will be auto-centered unless specified
-            y: 0,      // Will be auto-centered unless specified
-            auto_center: true,  // Enable auto-centering by default
+            width: 0,          // Let egui determine size based on content
+            height: 0,         // Let egui determine size based on content
+            x: 0,              // Will be auto-centered unless specified
+            y: 0,              // Will be auto-centered unless specified
+            auto_center: true, // Enable auto-centering by default
             input_file: None,
             follow_hwnd: None,
             parent_pid: None,
@@ -35,7 +35,7 @@ impl Default for WindowConfig {
             pool_rate: None,
             decode_debug: false,
             additional_args: Vec::new(),
-            initial_input: None,  // No initial input by default
+            initial_input: None, // No initial input by default
         }
     }
 }
@@ -63,7 +63,7 @@ impl WindowConfig {
     pub fn position(mut self, x: i32, y: i32) -> Self {
         self.x = x;
         self.y = y;
-        self.auto_center = false;  // Disable auto-centering when position is explicitly set
+        self.auto_center = false; // Disable auto-centering when position is explicitly set
         self
     }
 

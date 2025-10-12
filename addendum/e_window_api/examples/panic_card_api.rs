@@ -1,7 +1,7 @@
 // Example: Panic card simulation using the e_window_api
 // This is the high-level API version of the panic_card_sim.rs example
 
-use e_window_api::{EWindow, WindowConfig, Card};
+use e_window_api::{Card, EWindow, WindowConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     window.show_card(panic_card).await?;
 
     println!("Panic card displayed. Window will remain open until closed by user.");
-    
+
     // Wait for the window to be closed by the user
     let exit_status = window.wait().await?;
     println!("Window closed with exit status: {:?}", exit_status);

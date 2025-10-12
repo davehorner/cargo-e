@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.35](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.34...e_crate_version_checker-v0.1.35) - 2025-10-12
+
+### Added
+
+- *(e_window)* Implement message box functionality and auto-centering
+
 ## [0.1.34](https://github.com/davehorner/cargo-e/compare/e_crate_version_checker-v0.1.33...e_crate_version_checker-v0.1.34) - 2025-10-11
 
 ### Added

@@ -1,7 +1,7 @@
 // Example: Simple usage demonstration
 // Shows the most basic usage of the e_window_api
 
-use e_window_api::{EWindow, WindowConfig, Card};
+use e_window_api::{Card, EWindow, WindowConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

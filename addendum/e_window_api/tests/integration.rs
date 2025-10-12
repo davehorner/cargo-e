@@ -1,4 +1,4 @@
-use e_window_api::{Card, WindowConfig, ControlCommand, AnimationEasing};
+use e_window_api::{AnimationEasing, Card, ControlCommand, WindowConfig};
 
 #[test]
 fn test_window_config_creation() {
@@ -24,7 +24,7 @@ fn test_window_config_to_args() {
         .position(50, 50);
 
     let args = config.to_args();
-    
+
     // Check that required args are present
     assert!(args.contains(&"--title".to_string()));
     assert!(args.contains(&"Test".to_string()));
@@ -74,15 +74,15 @@ fn test_card_to_document() {
         .body_line("World");
 
     let doc = card.to_document();
-    
+
     // Should contain window config
     assert!(doc.contains("--title \"Test\""));
     assert!(doc.contains("--width 400"));
     assert!(doc.contains("--height 300"));
-    
+
     // Should contain fields
     assert!(doc.contains("name | test | string"));
-    
+
     // Should contain content
     assert!(doc.contains("Hello"));
     assert!(doc.contains("World"));
@@ -93,14 +93,29 @@ fn test_control_command_formatting() {
     let cmd = ControlCommand::SetTitle("New Title".to_string());
     assert_eq!(cmd.to_control_string(), "!control: set_title New Title");
 
-    let cmd = ControlCommand::SetRect { x: 100, y: 200, width: 300, height: 400 };
-    assert_eq!(cmd.to_control_string(), "!control: set_rect 100 200 300 400");
-
-    let cmd = ControlCommand::SetRectEased { 
-        x: 0, y: 0, width: 800, height: 600, 
-        duration_ms: 1000, easing: AnimationEasing::Linear 
+    let cmd = ControlCommand::SetRect {
+        x: 100,
+        y: 200,
+        width: 300,
+        height: 400,
     };
-    assert_eq!(cmd.to_control_string(), "!control: set_rect_eased 0 0 800 600 1000 linear");
+    assert_eq!(
+        cmd.to_control_string(),
+        "!control: set_rect 100 200 300 400"
+    );
+
+    let cmd = ControlCommand::SetRectEased {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+        duration_ms: 1000,
+        easing: AnimationEasing::Linear,
+    };
+    assert_eq!(
+        cmd.to_control_string(),
+        "!control: set_rect_eased 0 0 800 600 1000 linear"
+    );
 
     let cmd = ControlCommand::Delay(500);
     assert_eq!(cmd.to_control_string(), "!control: delay 500");
@@ -118,7 +133,10 @@ fn test_animation_easing_display() {
     assert_eq!(format!("{}", AnimationEasing::Bounce), "bounce");
     assert_eq!(format!("{}", AnimationEasing::Elastic), "elastic");
     assert_eq!(format!("{}", AnimationEasing::Back), "back");
-    assert_eq!(format!("{}", AnimationEasing::Custom("custom".to_string())), "custom");
+    assert_eq!(
+        format!("{}", AnimationEasing::Custom("custom".to_string())),
+        "custom"
+    );
 }
 
 #[test]
@@ -126,20 +144,24 @@ fn test_card_anchors() {
     let card = Card::new()
         .card_title("Test with Anchors")
         .body_line("This demonstrates anchor functionality")
-        .anchor("Click me!", "e_window --title \"Clicked!\" --width 400 --height 300")
+        .anchor(
+            "Click me!",
+            "e_window --title \"Clicked!\" --width 400 --height 300",
+        )
         .anchor("Open URL", "https://www.example.com")
         .anchor_text("Text only anchor");
 
     let document = card.to_document();
-    
+
     // Verify anchors are in the document
-    assert!(document.contains("anchor: Click me! | e_window --title \"Clicked!\" --width 400 --height 300"));
+    assert!(document
+        .contains("anchor: Click me! | e_window --title \"Clicked!\" --width 400 --height 300"));
     assert!(document.contains("anchor: Open URL | https://www.example.com"));
     assert!(document.contains("anchor: Text only anchor"));
     assert!(!document.contains("anchor: Text only anchor |")); // No href for text-only
 }
 
-#[test] 
+#[test]
 fn test_card_with_anchors_and_fields() {
     let card = Card::new()
         .window_title("Anchor Test Window")
@@ -152,7 +174,7 @@ fn test_card_with_anchors_and_fields() {
         .body_line("More content after anchor");
 
     let document = card.to_document();
-    
+
     // Verify structure
     assert!(document.contains("--title \"Anchor Test Window\""));
     assert!(document.contains("status | active"));

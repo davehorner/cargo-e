@@ -1,9 +1,9 @@
-use e_window_api::{EWindow, WindowConfig, Card};
+use e_window_api::{Card, EWindow, WindowConfig};
 use tokio::time::{sleep, Duration};
 
 /// Demonstrates automatic expiration field injection for auto-close functionality
-/// 
-/// This example shows how the API can automatically add expiration fields when 
+///
+/// This example shows how the API can automatically add expiration fields when
 /// auto-close is needed, without requiring manual field management.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Demo 1: Simple auto-close with automatic expiration field
     println!("\n=== Demo 1: Automatic Expiration Field ===");
-    
+
     let config = WindowConfig::new()
         .title("Auto-Close with Auto-Expiration")
         .size(600, 400)
@@ -35,14 +35,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     window.show_card_with_auto_close(card, 12).await?;
 
     println!("Window with automatic expiration field launched");
-    
+
     // Wait for it to auto-close
     sleep(Duration::from_secs(12)).await;
     window.close().await?;
 
     // Demo 2: Launch and auto-close in one call
     println!("\n=== Demo 2: One-Shot Auto-Close ===");
-    
+
     let config2 = WindowConfig::new()
         .title("One-Shot Auto-Close")
         .size(500, 300)
@@ -65,10 +65,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Demo 3: Multiple auto-close windows with different timers
     println!("\n=== Demo 3: Multiple Auto-Close Windows ===");
-    
+
     let mut windows = Vec::new();
     let timers = vec![5, 7, 10];
-    
+
     for (i, &timer) in timers.iter().enumerate() {
         let config = WindowConfig::new()
             .title(&format!("Auto-Close #{}", i + 1))
@@ -90,9 +90,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         window.show_card_with_auto_close(card, timer).await?;
         windows.push((window, timer));
-        
+
         println!("Launched window {} with {}-second timer", i + 1, timer);
-        
+
         // Small delay between launches
         sleep(Duration::from_millis(500)).await;
     }
@@ -112,6 +112,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ launch_with_auto_close() one-shot method");
     println!("✅ Multiple windows with different auto-close timers");
     println!("✅ Improved countdown visibility (orange instead of yellow)");
-    
+
     Ok(())
 }

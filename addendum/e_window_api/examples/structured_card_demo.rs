@@ -3,7 +3,7 @@ use e_window_api::Card;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Structured Card API Demo ===");
-    
+
     // Create a card using the new structured API
     let card = Card::new()
         .window_title("Structured Card Demo")
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Generated document:");
     println!("{}", card.to_document());
-    
+
     // Show the card
     card.show().await?;
 

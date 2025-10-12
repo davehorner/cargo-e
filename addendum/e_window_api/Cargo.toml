@@ -1,6 +1,6 @@
 [package]
 name = "e_window_api"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A Rust API wrapper for e_window providing high-level abstraction"
 license = "MIT"

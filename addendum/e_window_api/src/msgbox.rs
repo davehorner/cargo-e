@@ -1,65 +1,68 @@
 //! Synchronous message box API similar to WinAPI ShowMessageBox
-//! 
+//!
 //! This module provides simple, blocking functions for displaying dialogs,
 //! notifications, and getting user input without requiring async/await.
 
-use crate::{WindowConfig, Card, EWindow};
+use crate::{Card, EWindow, WindowConfig};
 use std::time::Duration;
 
 // Re-export the shared msgbox types from e_window_types for convenience
-pub use e_window_types::{MessageBoxType, MessageBoxIcon, MessageBoxResult, MessageBoxConfig, MessageBoxResponse};
+pub use e_window_types::{
+    MessageBoxConfig, MessageBoxIcon, MessageBoxResponse, MessageBoxResult, MessageBoxType,
+};
 
 /// Simple message box - blocks until user interaction or timeout
-/// 
+///
 /// # Arguments
 /// * `title` - Window title
 /// * `message` - Main message text
 /// * `box_type` - Type of buttons to show
 /// * `icon` - Icon to display
 /// * `timeout_secs` - Optional timeout in seconds (None = no timeout)
-/// 
+///
 /// # Examples
 /// ```rust,no_run
 /// use e_window_api::msgbox::{message_box, MessageBoxType, MessageBoxIcon, MessageBoxResult};
-/// 
+///
 /// let result = message_box(
-///     "Confirmation", 
+///     "Confirmation",
 ///     "Are you sure you want to continue?",
 ///     MessageBoxType::YesNo,
 ///     MessageBoxIcon::Question,
 ///     Some(30)
 /// ).unwrap();
-/// 
+///
 /// match result {
 ///     MessageBoxResult::Yes => println!("User chose Yes"),
-///     MessageBoxResult::No => println!("User chose No"), 
+///     MessageBoxResult::No => println!("User chose No"),
 ///     MessageBoxResult::Timeout => println!("User didn't respond in time"),
 ///     _ => {}
 /// }
 /// ```
 pub fn message_box(
     title: &str,
-    message: &str, 
+    message: &str,
     box_type: MessageBoxType,
     icon: MessageBoxIcon,
-    timeout_secs: Option<u32>
+    timeout_secs: Option<u32>,
 ) -> crate::Result<MessageBoxResult> {
     println!("[DEBUG] message_box (sync) called: title='{}', message='{}', type={:?}, icon={:?}, timeout={:?}", 
              title, message, box_type, icon, timeout_secs);
-    
+
     // Check if we're already in a tokio runtime context
     if tokio::runtime::Handle::try_current().is_ok() {
         println!("[DEBUG] Detected existing tokio runtime, using block_in_place");
         // We're in an async context, use spawn_blocking to run in a thread pool
         let title = title.to_string();
         let message = message.to_string();
-        
+
         tokio::task::block_in_place(move || {
             println!("[DEBUG] Inside block_in_place, creating new runtime");
             // Create a new runtime in this thread
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e)))?;
-            
+            let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e))
+            })?;
+
             println!("[DEBUG] New runtime created, calling async version");
             rt.block_on(async {
                 message_box_async(&title, &message, box_type, icon, timeout_secs).await
@@ -68,13 +71,12 @@ pub fn message_box(
     } else {
         println!("[DEBUG] No existing tokio runtime detected, creating new one");
         // We're not in an async context, create our own runtime
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e)))?;
-        
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e))
+        })?;
+
         println!("[DEBUG] Runtime created, calling async version");
-        rt.block_on(async {
-            message_box_async(title, message, box_type, icon, timeout_secs).await
-        })
+        rt.block_on(async { message_box_async(title, message, box_type, icon, timeout_secs).await })
     }
 }
 
@@ -84,11 +86,11 @@ pub async fn message_box_async(
     message: &str,
     box_type: MessageBoxType,
     icon: MessageBoxIcon,
-    timeout_secs: Option<u32>
+    timeout_secs: Option<u32>,
 ) -> crate::Result<MessageBoxResult> {
     println!("[DEBUG] message_box_async called: title='{}', message='{}', type={:?}, icon={:?}, timeout={:?}", 
              title, message, box_type, icon, timeout_secs);
-    
+
     let icon_str = match icon {
         MessageBoxIcon::None => {
             // Use type-specific emoji if no icon specified
@@ -101,9 +103,9 @@ pub async fn message_box_async(
                 MessageBoxType::TextInput => "📝",
                 MessageBoxType::FileSelection => "📁",
             }
-        },
+        }
         MessageBoxIcon::Information => "ℹ️",
-        MessageBoxIcon::Warning => "⚠️", 
+        MessageBoxIcon::Warning => "⚠️",
         MessageBoxIcon::Error => "❌",
         MessageBoxIcon::Question => "❓",
     };
@@ -121,16 +123,24 @@ pub async fn message_box_async(
     // Note: Timeout is handled at the API level via tokio::time::timeout
     // Future enhancement: could add --timeout support to e_window
 
-    println!("[DEBUG] Launching e_window with --type {:?} --body '{}'...", box_type, body_message);
+    println!(
+        "[DEBUG] Launching e_window with --type {:?} --body '{}'...",
+        box_type, body_message
+    );
     let mut window = EWindow::launch(config).await?;
     println!("[DEBUG] e_window launched successfully");
 
     // Wait for user input or timeout
     let result = if let Some(timeout) = timeout_secs {
         println!("[DEBUG] Starting timeout wait for {} seconds...", timeout);
-        
+
         // Wait for either a result or timeout
-        match tokio::time::timeout(Duration::from_secs(timeout as u64), window.wait_for_result((timeout as u64 + 2) * 1000)).await {
+        match tokio::time::timeout(
+            Duration::from_secs(timeout as u64),
+            window.wait_for_result((timeout as u64 + 2) * 1000),
+        )
+        .await
+        {
             Ok(Ok(result_str)) => {
                 println!("[DEBUG] Received result before timeout: {}", result_str);
                 parse_result_string(&result_str)
@@ -146,9 +156,10 @@ pub async fn message_box_async(
         }
     } else {
         println!("[DEBUG] Starting indefinite wait...");
-        
+
         // Wait indefinitely for user input
-        match window.wait_for_result(30000).await { // 30 second max wait
+        match window.wait_for_result(30000).await {
+            // 30 second max wait
             Ok(result_str) => {
                 println!("[DEBUG] Received result: {}", result_str);
                 parse_result_string(&result_str)
@@ -174,14 +185,14 @@ pub async fn message_box_async(
     println!("[DEBUG] Closing window...");
     window.close().await?;
     println!("[DEBUG] Window closed successfully");
-    
+
     println!("[DEBUG] message_box_async returning: {:?}", result);
     Ok(result)
 }
 
 /// Simple notification - shows message and auto-closes
-/// 
-/// # Arguments 
+///
+/// # Arguments
 /// * `title` - Window title
 /// * `message` - Message text
 /// * `icon` - Icon to display
@@ -190,31 +201,29 @@ pub fn notify(
     title: &str,
     message: &str,
     icon: MessageBoxIcon,
-    duration_secs: Option<u32>
+    duration_secs: Option<u32>,
 ) -> crate::Result<()> {
     // Check if we're already in a tokio runtime context
     if tokio::runtime::Handle::try_current().is_ok() {
         // We're in an async context, use spawn_blocking to run in a thread pool
         let title = title.to_string();
         let message = message.to_string();
-        
+
         tokio::task::block_in_place(move || {
             // Create a new runtime in this thread
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e)))?;
-            
-            rt.block_on(async {
-                notify_async(&title, &message, icon, duration_secs).await
-            })
+            let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e))
+            })?;
+
+            rt.block_on(async { notify_async(&title, &message, icon, duration_secs).await })
         })
     } else {
         // We're not in an async context, create our own runtime
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e)))?;
-        
-        rt.block_on(async {
-            notify_async(title, message, icon, duration_secs).await
-        })
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e))
+        })?;
+
+        rt.block_on(async { notify_async(title, message, icon, duration_secs).await })
     }
 }
 
@@ -223,17 +232,19 @@ pub async fn notify_async(
     title: &str,
     message: &str,
     icon: MessageBoxIcon,
-    duration_secs: Option<u32>
+    duration_secs: Option<u32>,
 ) -> crate::Result<()> {
-    println!("[DEBUG] notify_async called: title='{}', message='{}', icon={:?}, duration={:?}", 
-             title, message, icon, duration_secs);
-    
+    println!(
+        "[DEBUG] notify_async called: title='{}', message='{}', icon={:?}, duration={:?}",
+        title, message, icon, duration_secs
+    );
+
     let duration = duration_secs.unwrap_or(3);
     let icon_str = match icon {
         MessageBoxIcon::None => "",
         MessageBoxIcon::Information => "ℹ️",
         MessageBoxIcon::Warning => "⚠️",
-        MessageBoxIcon::Error => "❌", 
+        MessageBoxIcon::Error => "❌",
         MessageBoxIcon::Question => "❓",
     };
 
@@ -252,7 +263,7 @@ pub async fn notify_async(
 
     // Create config with initial input to prevent default card template usage
     let mut config = WindowConfig::default().title(title);
-    
+
     // Generate card document and prepend --type argument for optimal sizing
     let card_document = card.to_document();
     let enhanced_document = format!("--type Ok\n{}", card_document);
@@ -264,12 +275,15 @@ pub async fn notify_async(
     println!("[DEBUG] Notification card sent successfully");
 
     // No need to reposition - e_window handles auto-centering based on content size
-    
+
     // Auto-close after duration
-    println!("[DEBUG] Starting notification auto-close timer for {} seconds...", duration);
+    println!(
+        "[DEBUG] Starting notification auto-close timer for {} seconds...",
+        duration
+    );
     tokio::time::sleep(Duration::from_secs(duration as u64)).await;
     println!("[DEBUG] Auto-close timer completed");
-    
+
     println!("[DEBUG] Closing notification window...");
     // Use a safer close that doesn't error if the window is already closed
     match window.close().await {
@@ -279,7 +293,7 @@ pub async fn notify_async(
         }
         Err(e) => return Err(e),
     }
-    
+
     Ok(())
 }
 
@@ -300,35 +314,47 @@ pub fn error(title: &str, message: &str) -> crate::Result<()> {
 
 /// Simple yes/no question
 pub fn ask_yes_no(title: &str, question: &str) -> crate::Result<bool> {
-    let result = message_box(title, question, MessageBoxType::YesNo, MessageBoxIcon::Question, None)?;
+    let result = message_box(
+        title,
+        question,
+        MessageBoxType::YesNo,
+        MessageBoxIcon::Question,
+        None,
+    )?;
     Ok(result == MessageBoxResult::Yes)
 }
 
 /// Simple OK/Cancel confirmation
 pub fn confirm(title: &str, message: &str) -> crate::Result<bool> {
-    let result = message_box(title, message, MessageBoxType::OkCancel, MessageBoxIcon::Question, None)?;
+    let result = message_box(
+        title,
+        message,
+        MessageBoxType::OkCancel,
+        MessageBoxIcon::Question,
+        None,
+    )?;
     Ok(result == MessageBoxResult::Ok)
 }
 
 /// Enhanced message box with full configuration options
-/// 
+///
 /// # Arguments
 /// * `config` - Complete configuration for the message box
-/// 
+///
 /// # Examples
 /// ```rust,no_run
 /// use e_window_api::msgbox::{message_box_ex, MessageBoxConfig, MessageBoxType, MessageBoxIcon, MessageBoxResult};
-/// 
+///
 /// let config = MessageBoxConfig::new("Custom Dialog", "Choose your option")
 ///     .with_type(MessageBoxType::YesNo)
 ///     .with_icon(MessageBoxIcon::Question)
 ///     .with_timeout(30)
 ///     .with_default_button(MessageBoxResult::No); // Enter key defaults to No instead of Yes
-/// 
+///
 /// let response = message_box_ex(config).unwrap();
 /// match response.result {
 ///     MessageBoxResult::Yes => println!("User chose Yes"),
-///     MessageBoxResult::No => println!("User chose No"), 
+///     MessageBoxResult::No => println!("User chose No"),
 ///     MessageBoxResult::Timeout => println!("User didn't respond in time"),
 ///     _ => {}
 /// }
@@ -338,18 +364,16 @@ pub fn message_box_ex(config: MessageBoxConfig) -> crate::Result<MessageBoxRespo
     if tokio::runtime::Handle::try_current().is_ok() {
         let config = config.clone();
         tokio::task::block_in_place(move || {
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e)))?;
-            rt.block_on(async {
-                message_box_ex_async(config).await
-            })
+            let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e))
+            })?;
+            rt.block_on(async { message_box_ex_async(config).await })
         })
     } else {
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e)))?;
-        rt.block_on(async {
-            message_box_ex_async(config).await
-        })
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            crate::EWindowError::ConfigError(format!("Failed to create runtime: {}", e))
+        })?;
+        rt.block_on(async { message_box_ex_async(config).await })
     }
 }
 
@@ -357,18 +381,26 @@ pub fn message_box_ex(config: MessageBoxConfig) -> crate::Result<MessageBoxRespo
 pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<MessageBoxResponse> {
     println!("[DEBUG] message_box_ex_async called: title='{}', message='{}', type={:?}, icon={:?}, timeout={:?}", 
              config.title, config.message, config.box_type, config.icon, config.timeout_secs);
-    
+
     let icon_str = match config.icon {
         MessageBoxIcon::None => "",
         MessageBoxIcon::Information => "ℹ️",
-        MessageBoxIcon::Warning => "⚠️", 
+        MessageBoxIcon::Warning => "⚠️",
         MessageBoxIcon::Error => "❌",
         MessageBoxIcon::Question => "❓",
     };
 
     let (buttons_text, buttons_help, has_input) = match config.box_type {
-        MessageBoxType::Ok => ("Press [Enter] or [Space] to continue", "Available: OK", false),
-        MessageBoxType::OkCancel => ("Press [Enter] for OK, [Esc] for Cancel", "Available: OK, Cancel", false),
+        MessageBoxType::Ok => (
+            "Press [Enter] or [Space] to continue",
+            "Available: OK",
+            false,
+        ),
+        MessageBoxType::OkCancel => (
+            "Press [Enter] for OK, [Esc] for Cancel",
+            "Available: OK, Cancel",
+            false,
+        ),
         MessageBoxType::YesNo => {
             let default_text = if config.default_button == Some(MessageBoxResult::No) {
                 "Press [Y] for Yes, [Enter/N] for No"
@@ -376,26 +408,50 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
                 "Press [Enter/Y] for Yes, [N] for No"
             };
             (default_text, "Available: Yes, No", false)
-        },
+        }
         MessageBoxType::YesNoDefNo => {
             // Default No variants
-            ("Press [Y] for Yes, [Enter/N] for No (default)", "Available: Yes, No (Default)", false)
-        },
+            (
+                "Press [Y] for Yes, [Enter/N] for No (default)",
+                "Available: Yes, No (Default)",
+                false,
+            )
+        }
         MessageBoxType::YesNoCancel => {
             let default_text = match config.default_button {
-                Some(MessageBoxResult::No) => "Press [Y] for Yes, [Enter/N] for No, [Esc] for Cancel",
-                Some(MessageBoxResult::Cancel) => "Press [Y] for Yes, [N] for No, [Enter/Esc] for Cancel",
-                _ => "Press [Enter/Y] for Yes, [N] for No, [Esc] for Cancel"
+                Some(MessageBoxResult::No) => {
+                    "Press [Y] for Yes, [Enter/N] for No, [Esc] for Cancel"
+                }
+                Some(MessageBoxResult::Cancel) => {
+                    "Press [Y] for Yes, [N] for No, [Enter/Esc] for Cancel"
+                }
+                _ => "Press [Enter/Y] for Yes, [N] for No, [Esc] for Cancel",
             };
             (default_text, "Available: Yes, No, Cancel", false)
-        },
+        }
         MessageBoxType::YesNoCancelDefNo => {
             // Default No with Cancel variant
-            ("Press [Y] for Yes, [Enter/N] for No (default), [Esc] for Cancel", "Available: Yes, No (Default), Cancel", false)
-        },
-        MessageBoxType::RetryCancel => ("Press [R] for Retry, [Esc] for Cancel", "Available: Retry, Cancel", false),
-        MessageBoxType::TextInput => ("Type your input and press [Enter] to confirm, [Esc] to cancel", "Text Input Dialog", true),
-        MessageBoxType::FileSelection => ("Select file path and press [Enter] to confirm, [Esc] to cancel", "File Selection Dialog", true),
+            (
+                "Press [Y] for Yes, [Enter/N] for No (default), [Esc] for Cancel",
+                "Available: Yes, No (Default), Cancel",
+                false,
+            )
+        }
+        MessageBoxType::RetryCancel => (
+            "Press [R] for Retry, [Esc] for Cancel",
+            "Available: Retry, Cancel",
+            false,
+        ),
+        MessageBoxType::TextInput => (
+            "Type your input and press [Enter] to confirm, [Esc] to cancel",
+            "Text Input Dialog",
+            true,
+        ),
+        MessageBoxType::FileSelection => (
+            "Select file path and press [Enter] to confirm, [Esc] to cancel",
+            "File Selection Dialog",
+            true,
+        ),
     };
 
     // Create message card
@@ -414,7 +470,7 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
                 if let Some(initial) = &config.initial_text {
                     card = card.body_line(&format!("Initial text: {}", initial));
                 }
-            },
+            }
             MessageBoxType::FileSelection => {
                 let initial_path = config.initial_directory.as_deref().unwrap_or(".");
                 card = card
@@ -428,7 +484,7 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
                 if let Some(dir) = &config.initial_directory {
                     card = card.body_line(&format!("Initial directory: {}", dir));
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -453,7 +509,7 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
 
     // Create window config with initial input to prevent default card template usage
     let mut window_config = WindowConfig::default().title(&config.title);
-    
+
     // Generate card document and prepend --type argument for optimal sizing
     let card_document = card.to_document();
     let enhanced_document = format!("--type {:?}\n{}", config.box_type, card_document);
@@ -474,7 +530,7 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
         println!("[DEBUG] Starting indefinite wait (3 second simulation)...");
         // TODO: In a real implementation, we'd wait for actual user input
         tokio::time::sleep(Duration::from_secs(3)).await;
-        
+
         let result = if let Some(default) = config.default_button {
             // Use the specified default button
             default
@@ -496,15 +552,19 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
         let response = match config.box_type {
             MessageBoxType::TextInput => {
                 // In a real implementation, we'd get this from the actual input field
-                let text = config.initial_text.unwrap_or_else(|| "Sample text input".to_string());
+                let text = config
+                    .initial_text
+                    .unwrap_or_else(|| "Sample text input".to_string());
                 MessageBoxResponse::with_text(MessageBoxResult::TextInput, text)
-            },
+            }
             MessageBoxType::FileSelection => {
                 // In a real implementation, we'd get this from the file dialog
-                let path = config.initial_directory.unwrap_or_else(|| "C:\\sample\\file.txt".to_string());
+                let path = config
+                    .initial_directory
+                    .unwrap_or_else(|| "C:\\sample\\file.txt".to_string());
                 MessageBoxResponse::with_text(MessageBoxResult::FileSelected, path)
-            },
-            _ => MessageBoxResponse::new(result)
+            }
+            _ => MessageBoxResponse::new(result),
         };
 
         println!("[DEBUG] Default wait completed, returning {:?}", response);
@@ -515,29 +575,34 @@ pub async fn message_box_ex_async(config: MessageBoxConfig) -> crate::Result<Mes
     println!("[DEBUG] Closing window...");
     window.close().await?;
     println!("[DEBUG] Window closed successfully");
-    
+
     println!("[DEBUG] message_box_ex_async returning: {:?}", response);
     Ok(response)
 }
 
 /// Text input dialog - prompts user for text input
-/// 
+///
 /// # Arguments
 /// * `title` - Dialog title
 /// * `prompt` - Prompt message
 /// * `initial_text` - Initial text in input field
 /// * `timeout_secs` - Optional timeout in seconds
-/// 
+///
 /// # Returns
 /// * `Ok(Some(text))` - User entered text and confirmed
 /// * `Ok(None)` - User cancelled or dialog timed out
 /// * `Err(...)` - Error occurred
-pub fn input_text(title: &str, prompt: &str, initial_text: &str, timeout_secs: Option<u32>) -> crate::Result<Option<String>> {
+pub fn input_text(
+    title: &str,
+    prompt: &str,
+    initial_text: &str,
+    timeout_secs: Option<u32>,
+) -> crate::Result<Option<String>> {
     let config = MessageBoxConfig::new(title, prompt)
         .with_type(MessageBoxType::TextInput)
         .with_icon(MessageBoxIcon::Question)
         .with_initial_text(initial_text);
-    
+
     let config = if let Some(timeout) = timeout_secs {
         config.with_timeout(timeout)
     } else {
@@ -553,24 +618,29 @@ pub fn input_text(title: &str, prompt: &str, initial_text: &str, timeout_secs: O
 }
 
 /// File selection dialog - prompts user to select a file
-/// 
+///
 /// # Arguments
 /// * `title` - Dialog title
 /// * `initial_dir` - Initial directory to browse
 /// * `file_filter` - File filter (e.g., "*.txt;*.log")
 /// * `timeout_secs` - Optional timeout in seconds
-/// 
+///
 /// # Returns
 /// * `Ok(Some(path))` - User selected a file
 /// * `Ok(None)` - User cancelled or dialog timed out
 /// * `Err(...)` - Error occurred
-pub fn select_file(title: &str, initial_dir: &str, file_filter: &str, timeout_secs: Option<u32>) -> crate::Result<Option<String>> {
+pub fn select_file(
+    title: &str,
+    initial_dir: &str,
+    file_filter: &str,
+    timeout_secs: Option<u32>,
+) -> crate::Result<Option<String>> {
     let config = MessageBoxConfig::new(title, "Select a file:")
         .with_type(MessageBoxType::FileSelection)
         .with_icon(MessageBoxIcon::Question)
         .with_initial_directory(initial_dir)
         .with_file_filter(file_filter);
-    
+
     let config = if let Some(timeout) = timeout_secs {
         config.with_timeout(timeout)
     } else {
@@ -586,18 +656,23 @@ pub fn select_file(title: &str, initial_dir: &str, file_filter: &str, timeout_se
 }
 
 /// Enhanced Yes/No dialog with customizable default button
-/// 
+///
 /// # Arguments
 /// * `title` - Dialog title
 /// * `question` - Question to ask
 /// * `default_yes` - If true, Enter defaults to Yes; if false, Enter defaults to No
 /// * `timeout_secs` - Optional timeout in seconds
-/// 
+///
 /// # Returns
 /// * `Ok(Some(true))` - User chose Yes
 /// * `Ok(Some(false))` - User chose No
 /// * `Ok(None)` - Dialog timed out
-pub fn ask_yes_no_ex(title: &str, question: &str, default_yes: bool, timeout_secs: Option<u32>) -> crate::Result<Option<bool>> {
+pub fn ask_yes_no_ex(
+    title: &str,
+    question: &str,
+    default_yes: bool,
+    timeout_secs: Option<u32>,
+) -> crate::Result<Option<bool>> {
     let default_button = if default_yes {
         Some(MessageBoxResult::Yes)
     } else {
@@ -608,7 +683,7 @@ pub fn ask_yes_no_ex(title: &str, question: &str, default_yes: bool, timeout_sec
         .with_type(MessageBoxType::YesNo)
         .with_icon(MessageBoxIcon::Question)
         .with_default_button(default_button.unwrap());
-    
+
     let config = if let Some(timeout) = timeout_secs {
         config.with_timeout(timeout)
     } else {
@@ -679,7 +754,10 @@ fn parse_result_string(result_str: &str) -> MessageBoxResult {
             MessageBoxResult::FileSelected
         }
         _ => {
-            println!("[DEBUG] Unrecognized result string: '{}', defaulting to Cancel", result_str);
+            println!(
+                "[DEBUG] Unrecognized result string: '{}', defaulting to Cancel",
+                result_str
+            );
             MessageBoxResult::Cancel // Default fallback
         }
     }

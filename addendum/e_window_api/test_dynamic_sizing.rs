@@ -1,4 +1,4 @@
-use e_window_api::msgbox::{MessageBoxType, MessageBoxIcon, message_box_async};
+use e_window_api::msgbox::{message_box_async, MessageBoxIcon, MessageBoxType};
 use std::env;
 use std::str::FromStr;
 
@@ -6,13 +6,15 @@ use std::str::FromStr;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
 
-    let message_box_type = args.iter()
+    let message_box_type = args
+        .iter()
         .position(|arg| arg == "--type")
         .and_then(|pos| args.get(pos + 1))
         .map(|t| MessageBoxType::from_str(t).unwrap_or(MessageBoxType::Ok))
         .unwrap_or(MessageBoxType::Ok);
 
-    let title = args.iter()
+    let title = args
+        .iter()
         .position(|arg| arg == "--title")
         .and_then(|pos| args.get(pos + 1))
         .map(|s| s.to_string())
@@ -32,8 +34,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &text,
         message_box_type,
         MessageBoxIcon::Information,
-        None
-    ).await?;
+        None,
+    )
+    .await?;
 
     println!("Result: {:?}", result);
 

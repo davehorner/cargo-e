@@ -1,6 +1,6 @@
 // Test to compare show_card vs manual document sending
 
-use e_window_api::{EWindow, WindowConfig, Card, ControlCommand};
+use e_window_api::{Card, ControlCommand, EWindow, WindowConfig};
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
@@ -26,12 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .caption("show_card() method verification")
         .body_line("Should display immediately")
         .body_line("Testing show_card method");
-    
+
     println!("[DEBUG] Card 1 document content:");
     println!("=== CARD 1 CONTENT START ===");
     println!("{}", card1.to_document());
     println!("=== CARD 1 CONTENT END ===");
-    
+
     println!("[DEBUG] Calling show_card()...");
     window.show_card(card1).await?;
     println!("[DEBUG] show_card() completed successfully");
@@ -40,13 +40,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 2: manual document protocol
     println!("\n=== Test 2: Using manual document protocol ===");
-    
+
     // Send BeginDocument
     println!("[DEBUG] Sending BeginDocument...");
     let begin_commands = vec![ControlCommand::BeginDocument];
     window.send_commands(begin_commands).await?;
     println!("[DEBUG] BeginDocument sent");
-    
+
     // Send card content
     let card2 = Card::new()
         .window_title("Test Card 2")
@@ -55,22 +55,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .caption("Manual protocol verification")
         .body_line("BeginDocument -> send_document -> EndDocument")
         .body_line("Testing manual method");
-    
+
     println!("[DEBUG] Card 2 document content:");
     println!("=== CARD 2 CONTENT START ===");
     println!("{}", card2.to_document());
     println!("=== CARD 2 CONTENT END ===");
-    
+
     println!("[DEBUG] Sending document content...");
     window.send_document(&card2.to_document()).await?;
     println!("[DEBUG] Document content sent");
-    
+
     // Send EndDocument
     println!("[DEBUG] Sending EndDocument...");
     let end_commands = vec![ControlCommand::EndDocument];
     window.send_commands(end_commands).await?;
     println!("[DEBUG] EndDocument sent");
-    
+
     println!("Manual protocol completed, waiting 5 seconds...");
     sleep(Duration::from_secs(5)).await;
 
@@ -83,12 +83,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .caption("Final show_card() verification")
         .body_line("Final test")
         .body_line("Should work normally");
-    
+
     println!("[DEBUG] Card 3 document content:");
     println!("=== CARD 3 CONTENT START ===");
     println!("{}", card3.to_document());
     println!("=== CARD 3 CONTENT END ===");
-    
+
     println!("[DEBUG] Calling final show_card()...");
     window.show_card(card3).await?;
     println!("[DEBUG] Final show_card() completed successfully");

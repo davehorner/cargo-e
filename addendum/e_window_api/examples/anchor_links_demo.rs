@@ -1,7 +1,7 @@
-use e_window_api::{EWindow, WindowConfig, Card};
+use e_window_api::{Card, EWindow, WindowConfig};
 
 /// Demonstrates anchor link functionality in e_window_api
-/// 
+///
 /// This example shows how to create cards with clickable anchor links
 /// that can:
 /// - Launch other e_window instances
@@ -31,7 +31,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .body_line("")
         .body_line("📋 Available anchor types:")
         .body_line("")
-        .anchor("🪟 Launch another e_window", "e_window --title \"Spawned Window!\" --width 400 --height 300 --x 100 --y 100")
+        .anchor(
+            "🪟 Launch another e_window",
+            "e_window --title \"Spawned Window!\" --width 400 --height 300 --x 100 --y 100",
+        )
         .body_line("")
         .anchor("🌐 Open Google in browser", "https://www.google.com")
         .body_line("")

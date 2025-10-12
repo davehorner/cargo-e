@@ -2,7 +2,7 @@ use e_window_api::Card;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Simple Structured Content Demo ===");
-    
+
     // Example 1: Basic structured content
     let card1 = Card::new()
         .window_title("Example 1: Basic Structure")

@@ -1,5 +1,5 @@
 //! # e_window_api
-//! 
+//!
 //! A high-level Rust API for controlling e_window instances.
 //! This crate provides a convenient interface for launching e_window processes,
 //! sending control commands, and managing window content dynamically.
@@ -37,16 +37,18 @@
 //! }
 //! ```
 
-pub mod window;
-pub mod config;
 pub mod card;
+pub mod config;
 pub mod control;
 pub mod error;
 pub mod msgbox;
+pub mod window;
 
-pub use window::{EWindow, get_screen_size};
+pub use card::{Anchor, Card};
 pub use config::WindowConfig;
-pub use card::{Card, Anchor};
-pub use control::{ControlCommand, AnimationEasing};
+pub use control::{AnimationEasing, ControlCommand};
 pub use error::{EWindowError, Result};
-pub use msgbox::{MessageBoxType, MessageBoxIcon, MessageBoxResult, message_box, notify, notify_async};
+pub use msgbox::{
+    message_box, notify, notify_async, MessageBoxIcon, MessageBoxResult, MessageBoxType,
+};
+pub use window::{get_screen_size, EWindow};

@@ -1,5 +1,5 @@
+use crate::{EWindow, Result, WindowConfig};
 use std::collections::HashMap;
-use crate::{EWindow, WindowConfig, Result};
 
 /// Represents an anchor link in a card
 #[derive(Debug, Clone)]
@@ -16,7 +16,7 @@ impl Anchor {
             href: Some(href.into()),
         }
     }
-    
+
     /// Create a new text-only anchor (no clickable action)
     pub fn text_only<T: Into<String>>(text: T) -> Self {
         Self {
@@ -35,10 +35,10 @@ pub struct Card {
     pub height: Option<u32>,
     pub x: Option<i32>,
     pub y: Option<i32>,
-    
+
     /// Key-value fields to display
     pub fields: HashMap<String, CardField>,
-    
+
     /// Content structure (after the blank line separator)
     /// First line after blank line - the card title
     pub title: Option<String>,
@@ -48,14 +48,14 @@ pub struct Card {
     pub caption: Option<String>,
     /// Remaining lines - the body content
     pub body: Vec<String>,
-    
+
     /// Clickable anchor links
     pub anchors: Vec<Anchor>,
-    
+
     /// Legacy content field - deprecated, use structured fields above
     #[deprecated(note = "Use title, header, caption, and body fields instead")]
     pub content: String,
-    
+
     /// Additional content lines - deprecated
     #[deprecated(note = "Use body field instead")]
     pub additional_content: Vec<String>,
@@ -101,7 +101,7 @@ impl Card {
         self.window_title = Some(title.into());
         self
     }
-    
+
     /// Set the window title for this card (deprecated - use window_title instead)
     #[deprecated(note = "Use window_title() instead to avoid confusion with content title")]
     pub fn title<S: Into<String>>(mut self, title: S) -> Self {
@@ -124,42 +124,42 @@ impl Card {
     }
 
     /// Add a field to the card
-    pub fn field<K, V>(mut self, key: K, value: V) -> Self 
-    where 
+    pub fn field<K, V>(mut self, key: K, value: V) -> Self
+    where
         K: Into<String>,
         V: Into<String>,
     {
         self.fields.insert(
-            key.into(), 
+            key.into(),
             CardField {
                 value: value.into(),
                 field_type: "string".to_string(),
-            }
+            },
         );
         self
     }
 
     /// Add a typed field to the card
-    pub fn typed_field<K, V, T>(mut self, key: K, value: V, field_type: T) -> Self 
-    where 
+    pub fn typed_field<K, V, T>(mut self, key: K, value: V, field_type: T) -> Self
+    where
         K: Into<String>,
         V: Into<String>,
         T: Into<String>,
     {
         self.fields.insert(
-            key.into(), 
+            key.into(),
             CardField {
                 value: value.into(),
                 field_type: field_type.into(),
-            }
+            },
         );
         self
     }
 
     /// Add an expiration field - shows countdown timer until auto-close
     /// Duration should be specified in seconds
-    pub fn expiration<K>(mut self, key: K, duration_seconds: u64) -> Self 
-    where 
+    pub fn expiration<K>(mut self, key: K, duration_seconds: u64) -> Self
+    where
         K: Into<String>,
     {
         self.fields.insert(
@@ -167,14 +167,14 @@ impl Card {
             CardField {
                 value: duration_seconds.to_string(),
                 field_type: "expiration".to_string(),
-            }
+            },
         );
         self
     }
 
     /// Add a duration field - shows elapsed time since start
-    pub fn duration_field<K, V>(mut self, key: K, value: V) -> Self 
-    where 
+    pub fn duration_field<K, V>(mut self, key: K, value: V) -> Self
+    where
         K: Into<String>,
         V: Into<String>,
     {
@@ -183,14 +183,14 @@ impl Card {
             CardField {
                 value: value.into(),
                 field_type: "duration".to_string(),
-            }
+            },
         );
         self
     }
 
     /// Add a datetime field
-    pub fn datetime_field<K, V>(mut self, key: K, value: V) -> Self 
-    where 
+    pub fn datetime_field<K, V>(mut self, key: K, value: V) -> Self
+    where
         K: Into<String>,
         V: Into<String>,
     {
@@ -199,7 +199,7 @@ impl Card {
             CardField {
                 value: value.into(),
                 field_type: "datetime".to_string(),
-            }
+            },
         );
         self
     }
@@ -249,8 +249,8 @@ impl Card {
     }
 
     /// Set the body content from multiple lines
-    pub fn body_lines<I, S>(mut self, lines: I) -> Self 
-    where 
+    pub fn body_lines<I, S>(mut self, lines: I) -> Self
+    where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
@@ -318,21 +318,24 @@ impl Card {
 
         // Add fields
         for (key, field) in &self.fields {
-            doc.push_str(&format!("{} | {} | {}\n", key, field.value, field.field_type));
+            doc.push_str(&format!(
+                "{} | {} | {}\n",
+                key, field.value, field.field_type
+            ));
         }
 
         // Check if we have structured content
-        let has_structured_content = self.title.is_some() || 
-                                   self.header.is_some() || 
-                                   self.caption.is_some() || 
-                                   !self.body.is_empty();
-        
+        let has_structured_content = self.title.is_some()
+            || self.header.is_some()
+            || self.caption.is_some()
+            || !self.body.is_empty();
+
         // Check if we have legacy content (for backward compatibility)
         #[allow(deprecated)]
         let has_legacy_content = !self.content.is_empty() || !self.additional_content.is_empty();
-        
+
         let has_content = has_structured_content || has_legacy_content;
-        
+
         // Add separator line if we have CLI arguments or fields and content
         let has_cli_args = !doc.is_empty();
         if has_cli_args && has_content {
@@ -341,7 +344,7 @@ impl Card {
 
         // Add structured content according to e_window protocol:
         // Line 1: Title
-        // Line 2: Header  
+        // Line 2: Header
         // Line 3: Caption
         // Lines 4+: Body
         if has_structured_content {
@@ -350,19 +353,19 @@ impl Card {
                 doc.push_str(title);
             }
             doc.push('\n');
-            
+
             // Add header (or empty line if none)
             if let Some(ref header) = self.header {
                 doc.push_str(header);
             }
             doc.push('\n');
-            
+
             // Add caption (or empty line if none)
             if let Some(ref caption) = self.caption {
                 doc.push_str(caption);
             }
             doc.push('\n');
-            
+
             // Add body lines
             for line in &self.body {
                 doc.push_str(line);
@@ -400,7 +403,7 @@ impl Card {
     pub async fn show(&self) -> Result<()> {
         // Create window config from card settings
         let mut config = WindowConfig::new();
-        
+
         if let Some(ref title) = self.window_title {
             config = config.title(title);
         }
@@ -419,7 +422,7 @@ impl Card {
         let mut window = EWindow::launch(config).await?;
         window.show_card(self.clone()).await?;
         window.wait().await?;
-        
+
         Ok(())
     }
 

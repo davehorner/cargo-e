@@ -1,8 +1,8 @@
 // Test with e_window stdout/stderr visible
 
-use e_window_api::{EWindow, WindowConfig, Card};
-use tokio::time::{sleep, Duration};
+use e_window_api::{Card, EWindow, WindowConfig};
 use std::process::{Command, Stdio};
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Launch e_window manually with visible output
     println!("[DEBUG] Starting e_window with visible output...");
-    
+
     let e_window_project = std::path::Path::new("../e_window");
     if !e_window_project.exists() {
         return Err("e_window project not found at ../e_window".into());
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     cmd.stderr(Stdio::inherit());
 
     println!("[DEBUG] Command: {:?}", cmd);
-    
+
     let mut process = cmd.spawn()?;
     let stdin = process.stdin.take().unwrap();
     let mut stdin = std::io::BufWriter::new(stdin);

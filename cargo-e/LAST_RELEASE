@@ -1,6 +1,6 @@
-﻿25/10/11|6cbb51e|0.3.1
-## [0.3.1](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.3.0...cargo-e-v0.3.1) - 2025-10-11
+﻿25/10/12|2df47c2|0.3.2
+## [0.3.2](https://github.com/davehorner/cargo-e/compare/cargo-e-v0.3.1...cargo-e-v0.3.2) - 2025-10-12
 
-### Added
+### Other
 
-- *(e_window)* Implement message box functionality and auto-centering
+- updated the following local packages: e_crate_version_checker

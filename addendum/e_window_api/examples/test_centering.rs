@@ -1,16 +1,17 @@
-use e_window_api::{message_box, MessageBoxType, MessageBoxIcon, MessageBoxResult};
+use e_window_api::{message_box, MessageBoxIcon, MessageBoxResult, MessageBoxType};
 
 fn main() {
     println!("Testing auto-centering behavior...");
-    
+
     // Test a simple message box that should be auto-centered
     let response = message_box(
         "Centered Test",
         "This message should be properly centered on screen!",
         MessageBoxType::Ok,
         MessageBoxIcon::Information,
-        None
-    ).expect("Failed to show message box");
-    
+        None,
+    )
+    .expect("Failed to show message box");
+
     println!("User clicked: {:?}", response);
 }

@@ -3,7 +3,7 @@
 pub enum ControlCommand {
     /// Exit the window
     Exit,
-    
+
     /// Set window position and size immediately
     SetRect {
         x: i32,
@@ -11,7 +11,7 @@ pub enum ControlCommand {
         width: u32,
         height: u32,
     },
-    
+
     /// Set window position and size with animation
     SetRectEased {
         x: i32,
@@ -21,19 +21,19 @@ pub enum ControlCommand {
         duration_ms: u32,
         easing: AnimationEasing,
     },
-    
+
     /// Set window title
     SetTitle(String),
-    
+
     /// Begin a new document
     BeginDocument,
-    
+
     /// End the current document
     EndDocument,
-    
+
     /// Add content to the current document
     Content(String),
-    
+
     /// Wait for a specified duration
     Delay(u32),
 }
@@ -71,30 +71,42 @@ impl ControlCommand {
     pub fn to_control_string(&self) -> String {
         match self {
             ControlCommand::Exit => "!control: exit".to_string(),
-            
-            ControlCommand::SetRect { x, y, width, height } => {
+
+            ControlCommand::SetRect {
+                x,
+                y,
+                width,
+                height,
+            } => {
                 format!("!control: set_rect {} {} {} {}", x, y, width, height)
             }
-            
-            ControlCommand::SetRectEased { x, y, width, height, duration_ms, easing } => {
+
+            ControlCommand::SetRectEased {
+                x,
+                y,
+                width,
+                height,
+                duration_ms,
+                easing,
+            } => {
                 format!(
                     "!control: set_rect_eased {} {} {} {} {} {}",
                     x, y, width, height, duration_ms, easing
                 )
             }
-            
+
             ControlCommand::SetTitle(title) => {
                 format!("!control: set_title {}", title)
             }
-            
+
             ControlCommand::BeginDocument => "!control: begin_document".to_string(),
-            
+
             ControlCommand::EndDocument => "!control: end_document".to_string(),
-            
+
             ControlCommand::Content(content) => {
                 format!("!control: content {}", content)
             }
-            
+
             ControlCommand::Delay(ms) => {
                 format!("!control: delay {}", ms)
             }

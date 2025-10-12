@@ -10,13 +10,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .window_title("Task Manager")
         .size(500, 400)
         .position(200, 150)
-        
         // Fields section
         .field("project", "e_window")
         .field("language", "Rust")
         .typed_field("tasks_completed", "15", "number")
         .typed_field("progress", "75%", "percentage")
-        
         // Content section
         .card_title("Daily Progress Report")
         .header("Development Status")
@@ -35,13 +33,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("---");
     println!("{}", card.to_document());
     println!("---");
-    
+
     println!("\nShowing the card (press OK to close)...");
-    
+
     // Display the card
     card.show_blocking()?;
-    
+
     println!("Demo completed!");
-    
+
     Ok(())
 }
