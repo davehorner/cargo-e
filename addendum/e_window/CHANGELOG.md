@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.14...e_window-v0.1.15) - 2025-10-12
+
+### Added
+
+- *(e_window)* integrate cross-platform screen size detection with e_window_native module
+
 ## [0.1.14](https://github.com/davehorner/cargo-e/compare/e_window-v0.1.13...e_window-v0.1.14) - 2025-10-11
 
 ### Added

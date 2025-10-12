@@ -720,8 +720,10 @@ Shows how to display error/panic information:
 
 #### Grid Demo
 ```bash
-cargo run --example grid_demo_api
+cargo run --example demo_ewindow_grid
 ```
+or `demo_ewindow_grid` if you installed it.
+
 Demonstrates precise positioning in a grid layout:
 - 3x3 grid positioning
 - Animated movement between grid cells

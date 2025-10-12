@@ -2127,15 +2127,15 @@ dependencies = [
 
 [[package]]
 name = "e_window"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "chrono",
- "core-graphics 0.25.0",
  "ctrlc",
  "dashmap",
  "e_grid 0.2.1",
  "e_midi",
+ "e_window_native 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "e_window_types 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "eframe",
  "egui",
@@ -2163,23 +2163,36 @@ dependencies = [
  "winapi",
  "windows 0.62.2",
  "winit",
- "x11",
  "zerocopy 0.8.27",
 ]
 
 [[package]]
 name = "e_window_api"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
- "core-graphics 0.25.0",
+ "e_window_native 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "e_window_types 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "eframe",
- "ordered-float 5.1.0",
- "ratatui 0.29.0",
  "thiserror 2.0.17",
  "tokio",
- "unicode-width 0.2.0",
  "which 8.0.0",
+]
+
+[[package]]
+name = "e_window_native"
+version = "0.1.0"
+dependencies = [
+ "core-graphics 0.25.0",
+ "winapi",
+ "x11",
+]
+
+[[package]]
+name = "e_window_native"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c52fc5bc14e203db64a2befb66280fb9dc79599365bab76fd190a7a10b68edf"
+dependencies = [
+ "core-graphics 0.25.0",
  "winapi",
  "x11",
 ]

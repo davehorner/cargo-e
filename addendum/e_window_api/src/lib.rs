@@ -51,4 +51,5 @@ pub use error::{EWindowError, Result};
 pub use msgbox::{
     message_box, notify, notify_async, MessageBoxIcon, MessageBoxResult, MessageBoxType,
 };
-pub use window::{get_screen_size, EWindow};
+pub use window::EWindow;
+pub use e_window_native::get_screen_size as get_screen_size;

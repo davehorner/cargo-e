@@ -1,6 +1,5 @@
 use e_window_api::msgbox::{message_box_async, MessageBoxIcon, MessageBoxType};
 use std::env;
-use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

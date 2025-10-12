@@ -3,59 +3,6 @@ use std::io::{BufWriter, Write};
 use std::process::{Child, Command, Stdio};
 use tokio::time::{sleep, Duration};
 
-/// Get the primary screen dimensions
-/// Returns (width, height) of the primary screen
-pub fn get_screen_size() -> (u32, u32) {
-    #[cfg(target_os = "windows")]
-    {
-        use winapi::um::winuser::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
-
-        let width = unsafe { GetSystemMetrics(SM_CXSCREEN) } as u32;
-        let height = unsafe { GetSystemMetrics(SM_CYSCREEN) } as u32;
-        (width, height)
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        unsafe {
-            use core_graphics::display::{CGDisplayBounds, CGMainDisplayID};
-
-            let display_id = CGMainDisplayID();
-            let bounds = unsafe { CGDisplayBounds(display_id) };
-            let width = bounds.size.width as u32;
-            let height = bounds.size.height as u32;
-            (width, height)
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux screen detection using X11
-        use std::ptr;
-        use x11::xlib::*;
-
-        unsafe {
-            let display = XOpenDisplay(ptr::null());
-            if !display.is_null() {
-                let screen = XDefaultScreen(display);
-                let width = XDisplayWidth(display, screen) as u32;
-                let height = XDisplayHeight(display, screen) as u32;
-                XCloseDisplay(display);
-                (width, height)
-            } else {
-                // Fallback if X11 display fails
-                (1920, 1080)
-            }
-        }
-    }
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        // Fallback for unsupported platforms
-        (1920, 1080)
-    }
-}
-
 /// A handle to a running e_window instance
 pub struct EWindow {
     process: Child,
